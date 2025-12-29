@@ -9,7 +9,7 @@ Accurately simulate seeding behavior by emulating **uTorrent**, **qBittorrent**,
 
 ## 🎥 Demo
 
-[https://github.com/takitsu21/rustatio/assets/demo.mp4](https://github.com/user-attachments/assets/3866b112-b575-436f-b7ac-73c9793315ff)
+[https://github.com/takitsu21/rustatio/assets/demo.mp4](https://github.com/user-attachments/assets/58db1bb5-37a6-4e93-9939-1d28556aeff8)
 
 ## ✨ Features
 

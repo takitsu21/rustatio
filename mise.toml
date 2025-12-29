@@ -18,8 +18,17 @@ RUST_BACKTRACE = "1"
 # Project-specific paths
 _.path = ["./node_modules/.bin", "./ui/node_modules/.bin"]
 
+[tasks.install-tools]
+description = "Install mise tools (Rust + Node)"
+run = [
+    "echo '📦 Installing mise tools (Rust + Node)...'",
+    "mise install",
+    "echo '✅ Tools installed!'"
+]
+
 [tasks.rust-install]
 description = "Install Rust dependencies"
+depends = ["install-tools"]
 run = [
     "echo '📦 Installing Rust dependencies...'",
     "cargo fetch",
@@ -27,7 +36,7 @@ run = [
 ]
 
 [tasks.install]
-description = "Install all dependencies (Rust + UI)"
+description = "Install all dependencies (tools + packages)"
 depends = ["rust-install", "ui-install"]
 run = "echo '✅ All dependencies installed!'"
 
@@ -141,20 +150,54 @@ run = [
     "echo '✅ Audit complete!'"
 ]
 
+[tasks.ci-install]
+description = "CI step: install dependencies"
+depends = ["rust-install"]
+run = [
+    "echo '📦 Installing UI dependencies...'",
+    "cd ui && npm ci",
+    "echo '✅ UI dependencies installed!'"
+]
+
+[tasks.ci-build]
+description = "CI step: build UI"
+depends = ["ci-install"]
+run = [
+    "echo '🏗️  Building UI...'",
+    "cd ui && npm run build",
+    "echo '✅ UI built!'"
+]
+
 [tasks.ci-format]
 description = "CI step: format check"
-depends = ["rust-install", "ui-install"]
-run = "mise run format-check"
+depends = ["ci-build"]
+run = [
+    "echo '🔍 Checking Rust formatting...'",
+    "cargo fmt --check",
+    "echo '🔍 Checking UI formatting...'",
+    "cd ui && npm run format:check",
+    "echo '✅ Format check complete!'"
+]
 
 [tasks.ci-lint]
 description = "CI step: lint"
-depends = ["ci-format", "ui-build"]
-run = "mise run lint"
+depends = ["ci-format"]
+run = [
+    "echo '🔍 Linting Rust code...'",
+    "cargo clippy --all-targets --all-features -- -D warnings",
+    "echo '🔍 Linting UI code...'",
+    "cd ui && npm run lint",
+    "echo '✅ All linting passed!'"
+]
 
 [tasks.ci-test]
 description = "CI step: test"
 depends = ["ci-lint"]
-run = "mise run test"
+run = [
+    "echo '🧪 Running Rust tests...'",
+    "cargo test",
+    "echo '✅ All tests passed!'"
+]
 
 [tasks.ci]
 description = "Run CI checks (same as GitHub Actions)"

@@ -15,31 +15,31 @@ tauri = { version = "2.9", features = [] }
 tauri-plugin-dialog = "2.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-
 serde_bencode = "0.2"
-serde_bytes = "0.11"
 
 reqwest = { version = "0.12", features = ["gzip", "rustls-tls"], default-features = false }
 tokio = { version = "1.48", features = ["full"] }
 
 toml = "0.8"
-serde_derive = "1.0"
-
 sha1 = "0.10"
-
 url = "2.5"
-percent-encoding = "2.3"
-
 rand = "0.9"
 
 log = "0.4"
 env_logger = "0.11"
-
-anyhow = "1.0"
 thiserror = "2.0"
 
 [build-dependencies]
 tauri-build = { version = "2.0", features = [] }
+
+[profile.dev]
+# Faster compilation for development
+incremental = true
+opt-level = 0
+
+[profile.dev.package."*"]
+# Optimize dependencies even in dev mode
+opt-level = 2
 
 [profile.release]
 opt-level = 3
@@ -47,6 +47,4 @@ lto = true
 codegen-units = 1
 strip = false
 panic = "abort"
-
-[profile.dev.package."*"]
-opt-level = 2
+incremental = false

@@ -30,7 +30,9 @@ jobs:
             build-essential \
             libssl-dev \
             libayatana-appindicator3-dev \
-            librsvg2-dev
+            librsvg2-dev \
+            clang \
+            mold
 
       - name: Cache cargo
         uses: actions/cache@v4
@@ -40,6 +42,9 @@ jobs:
             ~/.cargo/git
             target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install mise tools
+        run: mise install
 
       - name: Run all CI checks
         run: mise run ci

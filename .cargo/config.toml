@@ -1,0 +1,32 @@
+# Cargo configuration for faster builds
+# https://doc.rust-lang.org/cargo/reference/config.html
+
+[build]
+# Incremental compilation (enabled by default in dev, but explicit here)
+incremental = true
+
+[target.x86_64-unknown-linux-gnu]
+# Use mold linker (fastest on Linux)
+linker = "clang"
+rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+
+[target.aarch64-unknown-linux-gnu]
+# Use mold linker (fastest on Linux ARM)
+linker = "clang"
+rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+
+[target.x86_64-pc-windows-msvc]
+# Use lld on Windows
+rustflags = ["-C", "link-arg=-fuse-ld=lld-link"]
+
+[target.x86_64-apple-darwin]
+# Use zld on macOS (faster than default ld)
+rustflags = ["-C", "link-arg=-fuse-ld=zld"]
+
+[target.aarch64-apple-darwin]
+# Use zld on macOS ARM (faster than default ld)
+rustflags = ["-C", "link-arg=-fuse-ld=zld"]
+
+[profile.dev]
+# Split debuginfo to speed up linking
+split-debuginfo = "unpacked"  # Linux/macOS: unpacked, Windows: packed

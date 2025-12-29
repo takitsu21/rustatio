@@ -133,7 +133,13 @@ jobs:
             libxdo-dev \
             pkg-config \
             libayatana-appindicator3-dev \
-            librsvg2-dev
+            librsvg2-dev \
+            clang \
+            mold
+
+      - name: Install fast linker (macOS)
+        if: startsWith(matrix.platform, 'macos')
+        run: brew install michaeleisel/zld/zld
 
       - name: Install mise
         uses: jdx/mise-action@v2
