@@ -195,7 +195,6 @@ jobs:
         with:
           tagName: ${{ needs.prepare-release.outputs.tag }}
           releaseName: "Rustatio ${{ needs.prepare-release.outputs.tag }}"
-          releaseBody: "Release ${{ needs.prepare-release.outputs.tag }}"
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
@@ -206,12 +205,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Publish release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.prepare-release.outputs.tag }}
           name: "Rustatio ${{ needs.prepare-release.outputs.tag }}"
           draft: false
           generate_release_notes: true
+          fail_on_unmatched_files: false
+          make_latest: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
