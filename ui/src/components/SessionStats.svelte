@@ -4,8 +4,8 @@
   let { stats, formatBytes } = $props();
 </script>
 
-<Card class="p-5">
-  <h2 class="mb-4 text-primary text-xl font-semibold">⚡ Session Stats</h2>
+<Card class="p-3">
+  <h2 class="mb-3 text-primary text-lg font-semibold">⚡ Session Stats</h2>
   <div class="flex flex-col gap-2">
     <div
       class="flex justify-between items-center p-2.5 bg-muted rounded-md border border-border transition-all hover:translate-x-0.5 hover:border-primary"

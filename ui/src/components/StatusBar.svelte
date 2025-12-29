@@ -18,7 +18,7 @@
 
 <div
   class={cn(
-    'max-w-7xl mx-auto mb-6 px-6 py-4 rounded-xl flex items-center gap-3 font-semibold transition-all border-2 backdrop-blur-sm',
+    'max-w-7xl mx-auto mb-3 px-6 py-4 rounded-xl flex items-center gap-3 font-semibold transition-all border-2 backdrop-blur-sm',
     statusStyles[statusType] || statusStyles.idle
   )}
 >

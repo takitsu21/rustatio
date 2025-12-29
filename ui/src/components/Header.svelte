@@ -18,11 +18,11 @@
   } = $props();
 </script>
 
-<header class="max-w-7xl mx-auto mb-8">
-  <div class="flex justify-between items-center py-6 border-b-2 border-primary/20">
+<header class="max-w-7xl mx-auto mb-3">
+  <div class="flex justify-between items-center py-3 border-b-2 border-primary/20">
     <div class="flex flex-col">
-      <h1 class="text-4xl font-bold text-foreground tracking-tight">Rustatio</h1>
-      <p class="text-base text-muted-foreground mt-1">Modern BitTorrent Ratio Faker</p>
+      <h1 class="text-2xl font-bold text-foreground tracking-tight">Rustatio</h1>
+      <p class="text-xs text-muted-foreground mt-0.5">Modern BitTorrent Ratio Faker</p>
     </div>
     <div class="flex items-center gap-4">
       <!-- Compact control buttons -->

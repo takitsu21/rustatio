@@ -193,31 +193,23 @@ jobs:
         with:
           tagName: ${{ needs.prepare-release.outputs.tag }}
           releaseName: "Rustatio ${{ needs.prepare-release.outputs.tag }}"
-          releaseBody: |
-            ## What's Changed
-
-            See the full changelog below for all commits and contributors.
-
-            **Full Changelog**: https://github.com/${{ github.repository }}/commits/${{ needs.prepare-release.outputs.tag }}
-          releaseDraft: false
+          releaseBody: "Release ${{ needs.prepare-release.outputs.tag }}"
+          releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
 
   publish-release:
-    name: Generate Release Notes
+    name: Publish Release
     needs: [prepare-release, build-tauri]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Generate Release Notes
+      - name: Publish release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ needs.prepare-release.outputs.tag }}
+          name: "Rustatio ${{ needs.prepare-release.outputs.tag }}"
+          draft: false
           generate_release_notes: true
-          append_body: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

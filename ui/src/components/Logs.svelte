@@ -55,7 +55,7 @@
   }
 </script>
 
-<Card class="p-5">
+<Card class="p-3">
   <div class="flex justify-between items-center mb-3">
     <div class="flex items-center gap-3">
       <Checkbox

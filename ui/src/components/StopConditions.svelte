@@ -60,8 +60,8 @@
   }
 </script>
 
-<Card class="p-5">
-  <h2 class="mb-4 text-primary text-xl font-semibold">🎯 Stop Conditions</h2>
+<Card class="p-3">
+  <h2 class="mb-3 text-primary text-lg font-semibold">🎯 Stop Conditions</h2>
   <div class="flex flex-col gap-3">
     <div class="flex items-center gap-2 p-2 bg-muted rounded-md">
       <Checkbox

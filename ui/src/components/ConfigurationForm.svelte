@@ -18,6 +18,10 @@
     updateIntervalSeconds,
     randomizeRates,
     randomRangePercent,
+    progressiveRatesEnabled,
+    targetUploadRate,
+    targetDownloadRate,
+    progressiveDurationHours,
     isRunning,
     onUpdate,
   } = $props();
@@ -33,6 +37,10 @@
   let localUpdateIntervalSeconds = $state();
   let localRandomizeRates = $state();
   let localRandomRangePercent = $state();
+  let localProgressiveRatesEnabled = $state();
+  let localTargetUploadRate = $state();
+  let localTargetDownloadRate = $state();
+  let localProgressiveDurationHours = $state();
 
   // Track if we're currently editing to prevent external updates from interfering
   let isEditing = $state(false);
@@ -51,6 +59,10 @@
       localUpdateIntervalSeconds = updateIntervalSeconds;
       localRandomizeRates = randomizeRates;
       localRandomRangePercent = randomRangePercent;
+      localProgressiveRatesEnabled = progressiveRatesEnabled;
+      localTargetUploadRate = targetUploadRate;
+      localTargetDownloadRate = targetDownloadRate;
+      localProgressiveDurationHours = progressiveDurationHours;
     }
   });
 
@@ -70,11 +82,11 @@
   }
 </script>
 
-<Card class="p-6">
-  <h2 class="mb-5 text-primary text-2xl font-semibold">⚙️ Configuration</h2>
+<Card class="p-3">
+  <h2 class="mb-3 text-primary text-lg font-semibold">⚙️ Configuration</h2>
 
   <!-- Client Settings -->
-  <div class="mb-5">
+  <div class="mb-3">
     <h3
       class="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 pb-2 border-b border-border"
     >
@@ -125,7 +137,7 @@
   </div>
 
   <!-- Transfer Rates -->
-  <div class="mb-5">
+  <div class="mb-3">
     <h3
       class="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 pb-2 border-b border-border"
     >
@@ -161,7 +173,7 @@
   </div>
 
   <!-- Initial State -->
-  <div class="mb-5">
+  <div class="mb-3">
     <h3
       class="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 pb-2 border-b border-border"
     >
@@ -210,8 +222,8 @@
   </div>
 
   <!-- Randomization -->
-  <div class="mb-0">
-    <div class="flex items-center gap-3 mb-4">
+  <div class="mb-3">
+    <div class="flex items-center gap-3 mb-3">
       <Checkbox
         id="randomize"
         checked={localRandomizeRates}
@@ -249,6 +261,89 @@
         <div class="flex justify-between mt-2">
           <span class="text-xs text-muted-foreground">±1%</span>
           <span class="text-xs text-muted-foreground">±50%</span>
+        </div>
+      </div>
+    {/if}
+  </div>
+
+  <!-- Progressive Rates -->
+  <div class="mb-0">
+    <h3
+      class="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 pb-2 border-b border-border"
+    >
+      Progressive Rates
+    </h3>
+    <div class="flex items-center gap-3 p-2 bg-muted rounded-md mb-3">
+      <Checkbox
+        id="progressive-enabled"
+        checked={localProgressiveRatesEnabled}
+        disabled={isRunning}
+        onchange={checked => {
+          localProgressiveRatesEnabled = checked;
+          updateValue('progressiveRatesEnabled', checked);
+        }}
+      />
+      <Label
+        for="progressive-enabled"
+        class="cursor-pointer text-sm text-muted-foreground font-medium"
+        >Enable Progressive Adjustment</Label
+      >
+    </div>
+
+    {#if localProgressiveRatesEnabled}
+      <div class="flex flex-col gap-2">
+        <div class="flex items-center gap-2 p-2 bg-muted rounded-md">
+          <Label for="targetUpload" class="min-w-[70px] text-xs text-muted-foreground font-semibold"
+            >↑ Target</Label
+          >
+          <Input
+            id="targetUpload"
+            type="number"
+            bind:value={localTargetUploadRate}
+            disabled={isRunning}
+            min="0"
+            step="0.1"
+            class="flex-1 max-w-[100px] h-9"
+            oninput={() => updateValue('targetUploadRate', localTargetUploadRate)}
+          />
+          <span class="text-xs text-muted-foreground font-semibold min-w-[40px]">KB/s</span>
+        </div>
+
+        <div class="flex items-center gap-2 p-2 bg-muted rounded-md">
+          <Label
+            for="targetDownload"
+            class="min-w-[70px] text-xs text-muted-foreground font-semibold">↓ Target</Label
+          >
+          <Input
+            id="targetDownload"
+            type="number"
+            bind:value={localTargetDownloadRate}
+            disabled={isRunning}
+            min="0"
+            step="0.1"
+            class="flex-1 max-w-[100px] h-9"
+            oninput={() => updateValue('targetDownloadRate', localTargetDownloadRate)}
+          />
+          <span class="text-xs text-muted-foreground font-semibold min-w-[40px]">KB/s</span>
+        </div>
+
+        <div class="flex items-center gap-2 p-2 bg-muted rounded-md">
+          <Label
+            for="progressiveDuration"
+            class="min-w-[70px] text-xs text-muted-foreground font-semibold">Duration</Label
+          >
+          <Input
+            id="progressiveDuration"
+            type="number"
+            bind:value={localProgressiveDurationHours}
+            disabled={isRunning}
+            min="0.1"
+            max="48"
+            step="0.1"
+            class="flex-1 max-w-[100px] h-9"
+            oninput={() => updateValue('progressiveDurationHours', localProgressiveDurationHours)}
+          />
+          <span class="text-xs text-muted-foreground font-semibold min-w-[40px]">hrs</span>
         </div>
       </div>
     {/if}

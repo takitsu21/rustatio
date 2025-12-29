@@ -21,7 +21,6 @@
   import TorrentSelector from './components/TorrentSelector.svelte';
   import ConfigurationForm from './components/ConfigurationForm.svelte';
   import StopConditions from './components/StopConditions.svelte';
-  import ProgressiveRates from './components/ProgressiveRates.svelte';
   import Controls from './components/Controls.svelte';
   import ProgressBars from './components/ProgressBars.svelte';
   import SessionStats from './components/SessionStats.svelte';
@@ -777,7 +776,7 @@
   }
 </script>
 
-<main class="min-h-screen p-8 bg-background text-foreground">
+<main class="min-h-screen p-3 bg-background text-foreground">
   {#if !isInitialized}
     <div class="flex flex-col items-center justify-center min-h-[60vh] gap-6">
       <div class="w-15 h-15 border-4 border-muted border-t-primary rounded-full animate-spin"></div>
@@ -808,7 +807,7 @@
 
     <div class="max-w-7xl mx-auto">
       <!-- Torrent Selection & Configuration -->
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
         <TorrentSelector torrent={$activeInstance?.torrent} {selectTorrent} {formatBytes} />
 
         {#if $activeInstance}
@@ -825,6 +824,10 @@
             updateIntervalSeconds={$activeInstance.updateIntervalSeconds}
             randomizeRates={$activeInstance.randomizeRates}
             randomRangePercent={$activeInstance.randomRangePercent}
+            progressiveRatesEnabled={$activeInstance.progressiveRatesEnabled}
+            targetUploadRate={$activeInstance.targetUploadRate}
+            targetDownloadRate={$activeInstance.targetDownloadRate}
+            progressiveDurationHours={$activeInstance.progressiveDurationHours}
             isRunning={$activeInstance.isRunning || false}
             onUpdate={updates => {
               instanceActions.updateInstance($activeInstance.id, updates);
@@ -833,9 +836,16 @@
         {/if}
       </div>
 
-      <!-- Stop Conditions & Progressive Rates -->
+      <!-- Stop Conditions & Progress Bars -->
       {#if $activeInstance}
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+        {@const hasActiveStopCondition =
+          $activeInstance.stopAtRatioEnabled ||
+          $activeInstance.stopAtUploadedEnabled ||
+          $activeInstance.stopAtDownloadedEnabled ||
+          $activeInstance.stopAtSeedTimeEnabled}
+        {@const showProgressBars = hasActiveStopCondition && $activeInstance?.stats}
+
+        <div class="grid grid-cols-1 {showProgressBars ? 'md:grid-cols-2' : ''} gap-3 mb-3">
           <StopConditions
             stopAtRatioEnabled={$activeInstance.stopAtRatioEnabled}
             stopAtRatio={$activeInstance.stopAtRatio}
@@ -851,16 +861,21 @@
             }}
           />
 
-          <ProgressiveRates
-            progressiveRatesEnabled={$activeInstance.progressiveRatesEnabled}
-            targetUploadRate={$activeInstance.targetUploadRate}
-            targetDownloadRate={$activeInstance.targetDownloadRate}
-            progressiveDurationHours={$activeInstance.progressiveDurationHours}
-            isRunning={$activeInstance.isRunning || false}
-            onUpdate={updates => {
-              instanceActions.updateInstance($activeInstance.id, updates);
-            }}
-          />
+          {#if showProgressBars}
+            <ProgressBars
+              stats={$activeInstance.stats}
+              stopAtRatioEnabled={$activeInstance.stopAtRatioEnabled}
+              stopAtRatio={$activeInstance.stopAtRatio}
+              stopAtUploadedEnabled={$activeInstance.stopAtUploadedEnabled}
+              stopAtUploadedGB={$activeInstance.stopAtUploadedGB}
+              stopAtDownloadedEnabled={$activeInstance.stopAtDownloadedEnabled}
+              stopAtDownloadedGB={$activeInstance.stopAtDownloadedGB}
+              stopAtSeedTimeEnabled={$activeInstance.stopAtSeedTimeEnabled}
+              stopAtSeedTimeHours={$activeInstance.stopAtSeedTimeHours}
+              {formatBytes}
+              {formatDuration}
+            />
+          {/if}
         </div>
       {/if}
 
@@ -878,31 +893,14 @@
 
       <!-- Stats -->
       {#if $activeInstance?.stats}
-        <!-- Progress Bars -->
-        {#if $activeInstance.stopAtRatioEnabled || $activeInstance.stopAtUploadedEnabled || $activeInstance.stopAtDownloadedEnabled || $activeInstance.stopAtSeedTimeEnabled}
-          <ProgressBars
-            stats={$activeInstance.stats}
-            stopAtRatioEnabled={$activeInstance.stopAtRatioEnabled}
-            stopAtRatio={$activeInstance.stopAtRatio}
-            stopAtUploadedEnabled={$activeInstance.stopAtUploadedEnabled}
-            stopAtUploadedGB={$activeInstance.stopAtUploadedGB}
-            stopAtDownloadedEnabled={$activeInstance.stopAtDownloadedEnabled}
-            stopAtDownloadedGB={$activeInstance.stopAtDownloadedGB}
-            stopAtSeedTimeEnabled={$activeInstance.stopAtSeedTimeEnabled}
-            stopAtSeedTimeHours={$activeInstance.stopAtSeedTimeHours}
-            {formatBytes}
-            {formatDuration}
-          />
-        {/if}
-
         <!-- Session & Total Stats -->
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
           <SessionStats stats={$activeInstance.stats} {formatBytes} />
           <TotalStats stats={$activeInstance.stats} {formatBytes} />
         </div>
 
         <!-- Performance & Peer Analytics (merged) -->
-        <div class="mb-6">
+        <div class="mb-3">
           <RateGraph stats={$activeInstance.stats} {formatDuration} />
         </div>
       {/if}

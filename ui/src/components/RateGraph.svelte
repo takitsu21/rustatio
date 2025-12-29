@@ -17,7 +17,7 @@
         console.log('Initializing ECharts...', { chartContainer, stats });
         chart = echarts.init(chartContainer);
 
-        chart.on('dataZoom', (params) => {
+        chart.on('dataZoom', params => {
           const option = chart.getOption();
           if (option.dataZoom && option.dataZoom[0]) {
             currentZoom = {
@@ -86,10 +86,10 @@
     const backgroundColor = 'transparent';
 
     const xAxisData = stats.upload_rate_history.map((_, i) => i + 1);
-    
+
     // Track data length changes but don't modify zoom on every update
     const dataLength = stats.upload_rate_history.length;
-    
+
     // Only reset zoom when starting fresh (data went from 0 to some value)
     if (!userHasZoomed && lastDataLength === 0 && dataLength > 0) {
       currentZoom = { start: 0, end: 100 };
@@ -310,9 +310,9 @@
   }
 </script>
 
-<Card class="p-8">
-  <div class="flex justify-between items-center mb-6">
-    <h2 class="text-primary text-2xl font-semibold">📊 Performance & Peer Analytics</h2>
+<Card class="p-3">
+  <div class="flex justify-between items-center mb-3">
+    <h2 class="text-primary text-lg font-semibold">📊 Performance & Peer Analytics</h2>
     {#if userHasZoomed}
       <button
         onclick={resetZoom}
@@ -326,50 +326,50 @@
 
   <!-- Live Stats Grid -->
   {#if stats}
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-      <div class="bg-muted p-4 rounded-lg text-center border border-border">
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+      <div class="bg-muted p-3 rounded-lg text-center border border-border">
         <span
           class="block text-xs text-muted-foreground mb-1 uppercase tracking-wider font-semibold"
           >↑ Upload</span
         >
-        <span class="block text-2xl font-bold text-green-500"
+        <span class="block text-base font-bold text-green-500"
           >{stats.current_upload_rate.toFixed(1)} KB/s</span
         >
       </div>
-      <div class="bg-muted p-4 rounded-lg text-center border border-border">
+      <div class="bg-muted p-3 rounded-lg text-center border border-border">
         <span
           class="block text-xs text-muted-foreground mb-1 uppercase tracking-wider font-semibold"
           >↓ Download</span
         >
-        <span class="block text-2xl font-bold text-indigo-500"
+        <span class="block text-base font-bold text-indigo-500"
           >{stats.current_download_rate.toFixed(1)} KB/s</span
         >
       </div>
-      <div class="bg-muted p-4 rounded-lg text-center border border-border">
+      <div class="bg-muted p-3 rounded-lg text-center border border-border">
         <span
           class="block text-xs text-muted-foreground mb-1 uppercase tracking-wider font-semibold"
           >Ratio</span
         >
-        <span class="block text-2xl font-bold text-amber-500">{stats.ratio.toFixed(2)}</span>
+        <span class="block text-base font-bold text-amber-500">{stats.ratio.toFixed(2)}</span>
       </div>
-      <div class="bg-muted p-4 rounded-lg text-center border border-border">
+      <div class="bg-muted p-3 rounded-lg text-center border border-border">
         <span
           class="block text-xs text-muted-foreground mb-1 uppercase tracking-wider font-semibold"
           >Elapsed Time</span
         >
-        <span class="block text-2xl font-bold text-foreground"
+        <span class="block text-base font-bold text-foreground"
           >{formatDuration(stats.elapsed_time?.secs || 0)}</span
         >
       </div>
     </div>
   {/if}
 
-  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-3">
     <!-- Performance Chart (2/3 width) -->
     <div class="lg:col-span-2">
       <div
         bind:this={chartContainer}
-        class="w-full h-[400px] bg-muted rounded-lg border border-border p-4"
+        class="w-full h-[250px] bg-muted rounded-lg border border-border p-3"
       >
         {#if !stats || !stats.upload_rate_history || stats.upload_rate_history.length === 0}
           <div class="w-full h-full flex items-center justify-center">
@@ -385,81 +385,53 @@
         {@const total = stats.seeders + stats.leechers}
         {@const seederPercent = total > 0 ? (stats.seeders / total) * 100 : 50}
         {@const leecherPercent = total > 0 ? (stats.leechers / total) * 100 : 50}
-        {@const seederAngle = (seederPercent / 100) * 360}
 
-        <div class="bg-muted rounded-lg border border-border p-6">
-          <h3 class="text-lg font-semibold text-primary mb-4">🌐 Peer Distribution</h3>
-          <div class="flex flex-col items-center gap-4">
-            <svg viewBox="0 0 200 200" class="max-w-[200px] w-full h-auto">
-              <defs>
-                <filter id="shadow">
-                  <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.3" />
-                </filter>
-              </defs>
+        <div class="bg-muted rounded-lg border border-border p-3 h-[250px] flex flex-col">
+          <h3 class="text-sm font-semibold text-primary mb-2">🌐 Peer Distribution</h3>
+          <div class="flex flex-col justify-center gap-3 flex-1">
+            <!-- Total Peers -->
+            <div class="text-center">
+              <div class="text-2xl font-bold text-foreground">{total}</div>
+              <div class="text-xs text-muted-foreground">Total Peers</div>
+            </div>
 
-              {#if total > 0}
-                <!-- Seeders slice (green) -->
-                {@const seederPath =
-                  seederAngle >= 360
-                    ? 'M 100 100 m 0 -90 a 90 90 0 1 1 0 180 a 90 90 0 1 1 0 -180'
-                    : `M 100 100 L 100 10 A 90 90 0 ${seederAngle > 180 ? 1 : 0} 1 ${100 + 90 * Math.sin((seederAngle * Math.PI) / 180)} ${100 - 90 * Math.cos((seederAngle * Math.PI) / 180)} Z`}
-
-                <path d={seederPath} fill="#10b981" filter="url(#shadow)" />
-
-                <!-- Leechers slice (red) -->
-                {#if leecherPercent > 0}
-                  {@const leecherPath = `M 100 100 L ${100 + 90 * Math.sin((seederAngle * Math.PI) / 180)} ${100 - 90 * Math.cos((seederAngle * Math.PI) / 180)} A 90 90 0 ${leecherPercent > 50 ? 1 : 0} 1 100 10 Z`}
-                  <path d={leecherPath} fill="#ef4444" filter="url(#shadow)" />
-                {/if}
-
-                <!-- Center circle (donut effect) -->
-                <circle cx="100" cy="100" r="50" class="fill-card" />
-
-                <!-- Center text -->
-                <text
-                  x="100"
-                  y="95"
-                  text-anchor="middle"
-                  class="fill-foreground"
-                  font-size="24"
-                  font-weight="bold">{total}</text
+            <!-- Horizontal Bar Chart -->
+            <div class="flex flex-col gap-3">
+              <!-- Seeders Bar -->
+              <div>
+                <div class="flex items-center justify-between mb-1">
+                  <span class="text-xs text-muted-foreground font-semibold">Seeders</span>
+                  <span class="text-xs text-green-500 font-bold">{stats.seeders}</span>
+                </div>
+                <div
+                  class="w-full h-6 bg-background rounded-full overflow-hidden border border-border"
                 >
-                <text
-                  x="100"
-                  y="115"
-                  text-anchor="middle"
-                  class="fill-foreground opacity-70"
-                  font-size="12">Total Peers</text
-                >
-              {:else}
-                <circle cx="100" cy="100" r="90" class="fill-muted" />
-                <circle cx="100" cy="100" r="50" class="fill-card" />
-                <text x="100" y="105" text-anchor="middle" class="fill-foreground" font-size="14"
-                  >No data</text
-                >
-              {/if}
-            </svg>
-
-            <div class="flex flex-col gap-3 w-full">
-              <div class="flex items-center gap-3">
-                <div class="w-5 h-5 bg-green-500 rounded flex-shrink-0"></div>
-                <div class="flex-1">
-                  <div class="text-xs text-muted-foreground uppercase tracking-wider font-semibold">
-                    Seeders
-                  </div>
-                  <div class="text-base text-foreground font-bold">
-                    {stats.seeders} ({seederPercent.toFixed(1)}%)
+                  <div
+                    class="h-full bg-gradient-to-r from-green-600 to-green-500 flex items-center justify-end pr-2 transition-all duration-300"
+                    style="width: {seederPercent}%"
+                  >
+                    <span class="text-xs text-white font-semibold">{seederPercent.toFixed(0)}%</span
+                    >
                   </div>
                 </div>
               </div>
-              <div class="flex items-center gap-3">
-                <div class="w-5 h-5 bg-red-500 rounded flex-shrink-0"></div>
-                <div class="flex-1">
-                  <div class="text-xs text-muted-foreground uppercase tracking-wider font-semibold">
-                    Leechers
-                  </div>
-                  <div class="text-base text-foreground font-bold">
-                    {stats.leechers} ({leecherPercent.toFixed(1)}%)
+
+              <!-- Leechers Bar -->
+              <div>
+                <div class="flex items-center justify-between mb-1">
+                  <span class="text-xs text-muted-foreground font-semibold">Leechers</span>
+                  <span class="text-xs text-red-500 font-bold">{stats.leechers}</span>
+                </div>
+                <div
+                  class="w-full h-6 bg-background rounded-full overflow-hidden border border-border"
+                >
+                  <div
+                    class="h-full bg-gradient-to-r from-red-600 to-red-500 flex items-center justify-end pr-2 transition-all duration-300"
+                    style="width: {leecherPercent}%"
+                  >
+                    <span class="text-xs text-white font-semibold"
+                      >{leecherPercent.toFixed(0)}%</span
+                    >
                   </div>
                 </div>
               </div>

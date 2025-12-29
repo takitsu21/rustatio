@@ -65,7 +65,7 @@ pub fn validate_rate(rate: f64, field_name: &str) -> Result<f64, ValidationError
     const MIN_RATE: f64 = 0.0;
     const MAX_RATE: f64 = 1_000_000.0; // 1 TB/s should be more than enough
 
-    if rate < MIN_RATE || rate > MAX_RATE {
+    if !(MIN_RATE..=MAX_RATE).contains(&rate) {
         return Err(ValidationError::InvalidRange {
             field: field_name.to_string(),
             min: MIN_RATE,
@@ -92,7 +92,7 @@ pub fn validate_update_interval(interval: u64) -> Result<u64, ValidationError> {
     const MIN_INTERVAL: u64 = 1; // At least 1 second
     const MAX_INTERVAL: u64 = 3600; // At most 1 hour
 
-    if interval < MIN_INTERVAL || interval > MAX_INTERVAL {
+    if !(MIN_INTERVAL..=MAX_INTERVAL).contains(&interval) {
         return Err(ValidationError::InvalidRange {
             field: "update_interval".to_string(),
             min: MIN_INTERVAL as f64,
@@ -106,7 +106,7 @@ pub fn validate_update_interval(interval: u64) -> Result<u64, ValidationError> {
 
 /// Validate percentage (0-100)
 pub fn validate_percentage(value: f64, field_name: &str) -> Result<f64, ValidationError> {
-    if value < 0.0 || value > 100.0 {
+    if !(0.0..=100.0).contains(&value) {
         return Err(ValidationError::InvalidRange {
             field: field_name.to_string(),
             min: 0.0,

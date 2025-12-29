@@ -16,10 +16,10 @@
   } = $props();
 </script>
 
-<Card class="p-5">
-  <h2 class="mb-4 text-primary text-xl font-semibold">📊 Progress</h2>
+<Card class="p-3">
+  <h2 class="mb-3 text-primary text-lg font-semibold">📊 Progress</h2>
   <div class="flex flex-col gap-3">
-    {#if stopAtRatioEnabled && stats.ratio_progress > 0}
+    {#if stopAtRatioEnabled && stats.ratio_progress >= 0}
       <div>
         <div class="flex justify-between items-center mb-2 flex-wrap gap-2">
           <span class="font-semibold text-foreground text-sm">Ratio</span>
@@ -44,7 +44,7 @@
       </div>
     {/if}
 
-    {#if stopAtUploadedEnabled && stats.upload_progress > 0}
+    {#if stopAtUploadedEnabled && stats.upload_progress >= 0}
       <div>
         <div class="flex justify-between items-center mb-2 flex-wrap gap-2">
           <span class="font-semibold text-foreground text-sm">Uploaded ↑</span>
@@ -70,7 +70,7 @@
       </div>
     {/if}
 
-    {#if stopAtDownloadedEnabled && stats.download_progress > 0}
+    {#if stopAtDownloadedEnabled && stats.download_progress >= 0}
       <div>
         <div class="flex justify-between items-center mb-2 flex-wrap gap-2">
           <span class="font-semibold text-foreground text-sm">Downloaded ↓</span>
@@ -91,7 +91,7 @@
       </div>
     {/if}
 
-    {#if stopAtSeedTimeEnabled && stats.seed_time_progress > 0}
+    {#if stopAtSeedTimeEnabled && stats.seed_time_progress >= 0}
       <div>
         <div class="flex justify-between items-center mb-2 flex-wrap gap-2">
           <span class="font-semibold text-foreground text-sm">⏱️ Seed Time</span>

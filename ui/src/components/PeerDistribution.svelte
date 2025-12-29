@@ -4,8 +4,8 @@
   let { stats } = $props();
 </script>
 
-<Card class="p-8">
-  <h2 class="mb-6 text-primary text-2xl font-semibold">🌐 Peer Distribution</h2>
+<Card class="p-3">
+  <h2 class="mb-3 text-primary text-lg font-semibold">🌐 Peer Distribution</h2>
   <div class="flex flex-col items-center gap-6 p-4">
     {#if stats}
       {@const total = stats.seeders + stats.leechers}

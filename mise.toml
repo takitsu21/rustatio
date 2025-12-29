@@ -8,10 +8,8 @@ lockfile = true
 # Node.js for UI development
 node = "latest"
 
-# Rust with components (rustfmt and clippy)
-[tools.rust]
-version = "latest"
-profile = "default"  # default profile includes rustfmt and clippy
+# Rust toolchain with components
+rust = { version = "latest", components = "rustfmt,clippy" }
 
 [env]
 CARGO_TERM_COLOR = "always"
@@ -20,25 +18,18 @@ RUST_BACKTRACE = "1"
 # Project-specific paths
 _.path = ["./node_modules/.bin", "./ui/node_modules/.bin"]
 
-[tasks.install]
-description = "Install all dependencies"
+[tasks.rust-install]
+description = "Install Rust dependencies"
 run = [
     "echo '📦 Installing Rust dependencies...'",
     "cargo fetch",
-    "echo '📦 Installing UI dependencies...'",
-    "cd ui && npm ci",
-    "echo '✅ All dependencies installed!'"
+    "echo '✅ Rust dependencies installed!'"
 ]
 
-[tasks.dev]
-description = "Run development server"
-depends = ["install"]
-run = [
-    "echo '🚀 Starting Tauri development server...'",
-    "cd ui && npm run dev &",
-    "sleep 2",
-    "cargo tauri dev"
-]
+[tasks.install]
+description = "Install all dependencies (Rust + UI)"
+depends = ["rust-install", "ui-install"]
+run = "echo '✅ All dependencies installed!'"
 
 [tasks.run-app]
 description = "Build UI and run the application directly"
@@ -52,10 +43,8 @@ run = [
 
 [tasks.build]
 description = "Build for production"
-depends = ["install"]
+depends = ["rust-install", "ui-build"]
 run = [
-    "echo '🏗️  Building UI...'",
-    "cd ui && npm run build",
     "echo '🏗️  Building Rust backend...'",
     "cargo build --release",
     "echo '✅ Build complete!'"
@@ -63,17 +52,15 @@ run = [
 
 [tasks.build-tauri]
 description = "Build Tauri application for production"
-depends = ["install"]
+depends = ["rust-install", "ui-build"]
 run = [
     "echo '🏗️  Building Tauri app...'",
-    "cd ui && npm run build",
     "cargo tauri build",
     "echo '✅ Tauri build complete!'"
 ]
 
 [tasks.test]
 description = "Run all tests"
-depends = ["install"]
 run = [
     "echo '🧪 Running Rust tests...'",
     "cargo test",
@@ -82,7 +69,6 @@ run = [
 
 [tasks.lint]
 description = "Run all linters"
-depends = ["install"]
 run = [
     "echo '🔍 Linting Rust code...'",
     "cargo clippy --all-targets --all-features -- -D warnings",
@@ -155,27 +141,25 @@ run = [
     "echo '✅ Audit complete!'"
 ]
 
-[tasks.release-check]
-description = "Pre-release checks (format, lint, test, build)"
-run = [
-    "echo '🚀 Running pre-release checks...'",
-    "mise run format-check",
-    "mise run lint",
-    "mise run test",
-    "mise run build-tauri",
-    "echo '✅ Ready for release!'"
-]
+[tasks.ci-format]
+description = "CI step: format check"
+depends = ["rust-install", "ui-install"]
+run = "mise run format-check"
+
+[tasks.ci-lint]
+description = "CI step: lint"
+depends = ["ci-format", "ui-build"]
+run = "mise run lint"
+
+[tasks.ci-test]
+description = "CI step: test"
+depends = ["ci-lint"]
+run = "mise run test"
 
 [tasks.ci]
 description = "Run CI checks (same as GitHub Actions)"
-run = [
-    "echo '🔄 Running CI checks...'",
-    "mise run format-check",
-    "mise run lint",
-    "mise run test",
-    "mise run build",
-    "echo '✅ CI checks passed!'"
-]
+depends = ["ci-test"]
+run = "echo '✅ CI checks passed!'"
 
 # UI-specific tasks
 [tasks.ui-install]
@@ -187,19 +171,6 @@ description = "Build UI for production"
 depends = ["ui-install"]
 run = "cd ui && npm run build"
 
-[tasks.ui-preview]
-description = "Preview production UI build"
-run = "cd ui && npm run preview"
-
-# Rust-specific tasks
-[tasks.rust-build]
-description = "Build Rust backend only"
-run = "cargo build --release"
-
-[tasks.rust-test]
-description = "Run Rust tests only"
-run = "cargo test"
-
 [tasks.rust-doc]
 description = "Generate Rust documentation"
 run = "cargo doc --open --no-deps"
@@ -210,9 +181,6 @@ description = "Show current version"
 run = "grep '^version' Cargo.toml | head -1"
 
 # Convenience aliases
-[tasks.d]
-alias = "dev"
-
 [tasks.b]
 alias = "build"
 

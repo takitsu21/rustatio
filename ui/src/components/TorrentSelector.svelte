@@ -23,8 +23,8 @@
   let trackers = $derived(getAllTrackers(torrent));
 </script>
 
-<Card class="p-6">
-  <h2 class="mb-5 text-primary text-2xl font-semibold">📁 Torrent File</h2>
+<Card class="p-3">
+  <h2 class="mb-3 text-primary text-lg font-semibold">📁 Torrent File</h2>
   <div class="flex flex-col gap-3.5">
     <Button onclick={selectTorrent} class="w-full">
       {#snippet children()}
@@ -104,17 +104,21 @@
               <strong class="text-foreground text-sm font-semibold"
                 >🌐 Tracker{trackers.length > 1 ? 's' : ''} ({trackers.length}):</strong
               >
-              <div class="flex flex-col gap-2 mt-2">
+              <div class="flex flex-col gap-1 mt-1 max-h-[120px] overflow-y-auto pr-1">
                 {#each trackers as tracker, index (tracker)}
-                  <div class="flex items-center gap-2 flex-wrap">
+                  <div class="flex items-center gap-2">
                     {#if index === 0}
                       <span
-                        class="inline-block px-2 py-1 rounded text-xs font-semibold uppercase bg-primary text-primary-foreground"
+                        class="inline-block px-1.5 py-0.5 rounded text-[0.65rem] font-semibold uppercase bg-primary text-primary-foreground flex-shrink-0"
                         >Primary</span
+                      >
+                    {:else}
+                      <span class="text-xs text-muted-foreground w-10 flex-shrink-0"
+                        >#{index + 1}</span
                       >
                     {/if}
                     <code
-                      class="bg-background text-green-600 px-2.5 py-1.5 rounded text-xs break-all font-mono flex-1 min-w-0"
+                      class="bg-background text-green-600 px-2 py-1 rounded text-[0.7rem] break-all font-mono flex-1 min-w-0"
                       >{tracker}</code
                     >
                   </div>

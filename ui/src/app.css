@@ -1,4 +1,24 @@
 @import 'tailwindcss';
+@import url('https://cdn.jsdelivr.net/npm/@fontsource/jetbrains-mono@5.0.0/index.css');
+
+/* Maple Mono font via CDN - fallback to JetBrains Mono if unavailable */
+@font-face {
+  font-family: 'Maple Mono';
+  src: url('https://cdn.jsdelivr.net/gh/subframe7536/maple-font@main/dist/MapleMono-Regular.woff2')
+    format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Maple Mono';
+  src: url('https://cdn.jsdelivr.net/gh/subframe7536/maple-font@main/dist/MapleMono-Bold.woff2')
+    format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
 
 html,
 body {
@@ -6,6 +26,7 @@ body {
   padding: 0;
   background: var(--background);
   color: var(--foreground);
+  font-family: 'Maple Mono', 'JetBrains Mono', monospace;
   transition:
     background 0.2s ease,
     color 0.2s ease;

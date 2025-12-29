@@ -46,7 +46,7 @@
   }
 </script>
 
-<div class="bg-background px-4 pt-2 mb-4">
+<div class="bg-background px-4 pt-2 mb-3">
   <div class="max-w-7xl mx-auto border-b-2 border-primary/10 pb-2">
     <div
       class="flex items-center gap-2 overflow-x-auto scrollbar-thin scrollbar-thumb-primary scrollbar-track-muted"
