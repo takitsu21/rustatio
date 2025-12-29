@@ -356,11 +356,16 @@
           statusType: 'success',
         });
 
+        const instanceId = $activeInstance.id;
         setTimeout(() => {
-          instanceActions.updateInstance($activeInstance.id, {
-            statusMessage: 'Ready to start faking',
-            statusType: 'idle',
-          });
+          // Only update status if the instance is not running
+          const instance = $instances.find(i => i.id === instanceId);
+          if (instance && !instance.isRunning) {
+            instanceActions.updateInstance(instanceId, {
+              statusMessage: 'Ready to start faking',
+              statusType: 'idle',
+            });
+          }
         }, 2000);
       } else {
         // User cancelled - only update status if no torrent is loaded
@@ -403,18 +408,16 @@
     }
 
     try {
-      // Preserve total stats from previous session if they exist
-      // This allows total uploaded/downloaded to accumulate across sessions
-      let preservedUploaded = parseInt($activeInstance.initialUploaded ?? 0) * 1024 * 1024;
-      let preservedDownloaded = parseInt($activeInstance.initialDownloaded ?? 0) * 1024 * 1024;
+      // Use the initial uploaded/downloaded values from the form inputs
+      // Do NOT preserve stats from previous session - each session should start fresh
+      // This ensures stop conditions work correctly and don't trigger immediately
+      const initialUploaded = parseInt($activeInstance.initialUploaded ?? 0) * 1024 * 1024;
+      const initialDownloaded = parseInt($activeInstance.initialDownloaded ?? 0) * 1024 * 1024;
 
-      if ($activeInstance.stats) {
-        // Use the totals from the previous session as the new initial values
-        preservedUploaded = $activeInstance.stats.uploaded;
-        preservedDownloaded = $activeInstance.stats.downloaded;
-      }
-
+      // Reset stats and progress bars when starting a new session
+      // This ensures stop conditions and progress indicators start fresh
       instanceActions.updateInstance($activeInstance.id, {
+        stats: null,
         statusMessage: 'Starting ratio faker...',
         statusType: 'running',
       });
@@ -427,8 +430,8 @@
         client_version:
           $activeInstance.selectedClientVersion ||
           clientVersions[$activeInstance.selectedClient || 'qbittorrent'][0],
-        initial_uploaded: preservedUploaded,
-        initial_downloaded: preservedDownloaded,
+        initial_uploaded: initialUploaded,
+        initial_downloaded: initialDownloaded,
         completion_percent: parseFloat($activeInstance.completionPercent ?? 0),
         num_want: 50,
         randomize_rates: $activeInstance.randomizeRates ?? true,
@@ -643,11 +646,16 @@
         statusType: 'success',
       });
 
+      const instanceId = $activeInstance.id;
       setTimeout(() => {
-        instanceActions.updateInstance($activeInstance.id, {
-          statusMessage: 'Ready to start a new session',
-          statusType: 'idle',
-        });
+        // Only update status if the instance is not running
+        const instance = $instances.find(i => i.id === instanceId);
+        if (instance && !instance.isRunning) {
+          instanceActions.updateInstance(instanceId, {
+            statusMessage: 'Ready to start a new session',
+            statusType: 'idle',
+          });
+        }
       }, 2000);
     } catch (error) {
       instanceActions.updateInstance($activeInstance.id, {
@@ -731,11 +739,16 @@
         statusType: 'error',
       });
 
+      const instanceId = $activeInstance.id;
       setTimeout(() => {
-        instanceActions.updateInstance($activeInstance.id, {
-          statusMessage: '🚀 Actively faking ratio...',
-          statusType: 'running',
-        });
+        // Only update status if the instance is still running
+        const instance = $instances.find(i => i.id === instanceId);
+        if (instance && instance.isRunning) {
+          instanceActions.updateInstance(instanceId, {
+            statusMessage: '🚀 Actively faking ratio...',
+            statusType: 'running',
+          });
+        }
       }, 2000);
     }
   }

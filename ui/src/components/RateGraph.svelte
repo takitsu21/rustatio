@@ -8,6 +8,8 @@
   let chartContainer = $state();
   let chart = $state();
   let currentZoom = $state({ start: 0, end: 100 });
+  let userHasZoomed = $state(false);
+  let lastDataLength = $state(0);
 
   onMount(() => {
     setTimeout(() => {
@@ -15,13 +17,17 @@
         console.log('Initializing ECharts...', { chartContainer, stats });
         chart = echarts.init(chartContainer);
 
-        chart.on('dataZoom', () => {
+        chart.on('dataZoom', (params) => {
           const option = chart.getOption();
           if (option.dataZoom && option.dataZoom[0]) {
             currentZoom = {
               start: option.dataZoom[0].start,
               end: option.dataZoom[0].end,
             };
+            // Mark that user has manually zoomed if this wasn't triggered by our auto-scroll
+            if (params.batch && params.batch.length > 0) {
+              userHasZoomed = true;
+            }
           }
         });
 
@@ -44,6 +50,14 @@
   function handleResize() {
     if (chart) {
       chart.resize();
+    }
+  }
+
+  function resetZoom() {
+    userHasZoomed = false;
+    currentZoom = { start: 0, end: 100 };
+    if (chart) {
+      updateChart();
     }
   }
 
@@ -72,9 +86,19 @@
     const backgroundColor = 'transparent';
 
     const xAxisData = stats.upload_rate_history.map((_, i) => i + 1);
+    
+    // Track data length changes but don't modify zoom on every update
+    const dataLength = stats.upload_rate_history.length;
+    
+    // Only reset zoom when starting fresh (data went from 0 to some value)
+    if (!userHasZoomed && lastDataLength === 0 && dataLength > 0) {
+      currentZoom = { start: 0, end: 100 };
+    }
+    lastDataLength = dataLength;
 
     const option = {
       backgroundColor: backgroundColor,
+      animation: false, // Disable animations to prevent chart redrawing
       tooltip: {
         trigger: 'axis',
         backgroundColor: isDark ? '#1f2937' : '#ffffff',
@@ -254,6 +278,10 @@
           start: currentZoom.start,
           end: currentZoom.end,
           filterMode: 'none',
+          zoomLock: false,
+          moveOnMouseMove: true,
+          moveOnMouseWheel: true,
+          preventDefaultMouseMove: true,
         },
         {
           type: 'slider',
@@ -271,16 +299,30 @@
           moveHandleStyle: {
             color: '#7c3aed',
           },
+          brushSelect: false,
+          zoomLock: false,
         },
       ],
     };
 
-    chart.setOption(option, true);
+    // Use silent mode to update without triggering events/redraws
+    chart.setOption(option, false, false);
   }
 </script>
 
 <Card class="p-8">
-  <h2 class="mb-6 text-primary text-2xl font-semibold">📊 Performance & Peer Analytics</h2>
+  <div class="flex justify-between items-center mb-6">
+    <h2 class="text-primary text-2xl font-semibold">📊 Performance & Peer Analytics</h2>
+    {#if userHasZoomed}
+      <button
+        onclick={resetZoom}
+        class="px-3 py-1 text-sm bg-primary text-white rounded hover:bg-primary/90 transition-colors"
+        title="Reset zoom to show all data"
+      >
+        Reset Zoom
+      </button>
+    {/if}
+  </div>
 
   <!-- Live Stats Grid -->
   {#if stats}
