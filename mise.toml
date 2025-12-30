@@ -11,6 +11,9 @@ node = "latest"
 # Rust toolchain with components
 rust = { version = "latest", components = "rustfmt,clippy" }
 
+# WASM tools
+"github:WebAssembly/binaryen" = "latest"
+
 [env]
 CARGO_TERM_COLOR = "always"
 RUST_BACKTRACE = "1"
@@ -41,31 +44,56 @@ depends = ["rust-install", "ui-install"]
 run = "echo '✅ All dependencies installed!'"
 
 [tasks.run-app]
-description = "Build UI and run the application directly"
+description = "Run the desktop application in dev mode (requires dev server on :1420)"
 depends = ["install"]
 run = [
-    "echo '🏗️  Building UI...'",
-    "cd ui && npm run build",
-    "echo '🚀 Running application...'",
-    "cargo run"
+    "echo '🚀 Running Tauri desktop app in dev mode...'",
+    "echo '⚠️  Make sure dev server is running: mise run run-web'",
+    "cd rustatio-desktop && cargo tauri dev"
 ]
 
 [tasks.build]
-description = "Build for production"
-depends = ["rust-install", "ui-build"]
+description = "Build desktop app for production"
+depends = ["ui-build"]
 run = [
-    "echo '🏗️  Building Rust backend...'",
-    "cargo build --release",
-    "echo '✅ Build complete!'"
+    "echo '🏗️  Building Tauri desktop app...'",
+    "cd rustatio-desktop && cargo tauri build",
+    "echo '✅ Desktop build complete!'"
 ]
 
 [tasks.build-tauri]
 description = "Build Tauri application for production"
-depends = ["rust-install", "ui-build"]
+depends = ["build"]
+run = "echo '✅ Tauri build complete!'"
+
+[tasks.build-wasm]
+description = "Build WASM for web version"
+depends = ["install-wasm-pack"]
+run = """
+echo '🏗️  Building WASM...'
+cd rustatio-wasm
+wasm-pack build --target web --out-dir ../ui/src/lib/wasm --release
+
+echo '🗜️  Optimizing WASM...'
+wasm-opt -Oz -o ../ui/src/lib/wasm/rustatio_wasm_bg.wasm \
+  ../ui/src/lib/wasm/rustatio_wasm_bg.wasm
+echo '✅ WASM optimized with wasm-opt'
+echo '✅ WASM build complete!'
+"""
+
+[tasks.build-web]
+description = "Build complete web version (WASM + UI)"
+depends = ["build-wasm", "ui-build"]
+run = "echo '✅ Web version build complete! Output in ui/dist/'"
+
+[tasks.run-web]
+description = "Run web version in development mode"
+depends = ["ui-install"]
 run = [
-    "echo '🏗️  Building Tauri app...'",
-    "cargo tauri build",
-    "echo '✅ Tauri build complete!'"
+    "echo '🏗️  Building WASM in dev mode...'",
+    "cd rustatio-wasm && wasm-pack build --target web --out-dir ../ui/src/lib/wasm --dev",
+    "echo '🚀 Starting web dev server...'",
+    "cd ui && npm run dev"
 ]
 
 [tasks.test]
@@ -150,9 +178,20 @@ run = [
     "echo '✅ Audit complete!'"
 ]
 
+[tasks.install-wasm-pack]
+description = "Install wasm-pack if not already installed"
+run = """
+echo '📦 Checking for wasm-pack...'
+if ! command -v wasm-pack &> /dev/null; then
+    echo 'Installing wasm-pack via installer...'
+    curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+fi
+echo '✅ wasm-pack is available'
+"""
+
 [tasks.ci-install]
 description = "CI step: install dependencies"
-depends = ["rust-install"]
+depends = ["rust-install", "install-wasm-pack"]
 run = [
     "echo '📦 Installing UI dependencies...'",
     "cd ui && npm ci",
@@ -160,8 +199,8 @@ run = [
 ]
 
 [tasks.ci-build]
-description = "CI step: build UI"
-depends = ["ci-install"]
+description = "CI step: build web version (WASM + UI)"
+depends = ["ci-install", "build-wasm"]
 run = [
     "echo '🏗️  Building UI...'",
     "cd ui && npm run build",

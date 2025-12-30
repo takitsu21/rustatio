@@ -1,0 +1,44 @@
+[package]
+name = "rustatio-core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Core BitTorrent ratio faking library"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_bencode = "0.2"
+toml = "0.8"
+sha1 = "0.10"
+url = "2.5"
+rand = "0.9"
+getrandom = { version = "0.3", features = ["wasm_js"] }
+thiserror = "2.0"
+log = "0.4"
+instant = { version = "0.1", features = ["wasm-bindgen"] }
+
+# HTTP client - works on both native and WASM
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"], optional = true }
+
+# Async runtime
+tokio = { version = "1.48", default-features = false, features = ["sync", "time", "macros", "rt"], optional = true }
+
+# Native-only dependencies
+tauri = { version = "2.9", optional = true }
+
+# WASM-only dependencies
+wasm-bindgen = { version = "0.2", optional = true }
+wasm-bindgen-futures = { version = "0.4", optional = true }
+js-sys = { version = "0.3", optional = true }
+web-sys = { version = "0.3", features = ["Window", "Storage", "console"], optional = true }
+percent-encoding = "2.3"
+
+[features]
+default = ["native"]
+native = ["dep:tokio", "dep:tauri", "dep:reqwest"]
+wasm = ["dep:wasm-bindgen", "dep:wasm-bindgen-futures", "dep:js-sys", "dep:web-sys", "dep:reqwest"]

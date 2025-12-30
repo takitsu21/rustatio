@@ -1,44 +1,19 @@
-[package]
-name = "rustatio"
+[workspace]
+members = ["rustatio-desktop", "rustatio-core", "rustatio-wasm"]
+resolver = "2"
+
+[workspace.package]
 version = "0.1.0"
 edition = "2021"
 authors = ["Dylann Batisse <dylann.batisse@protonmail.com>"]
-description = "Modern BitTorrent ratio faker"
 license = "MIT"
-
-[[bin]]
-name = "rustatio"
-path = "src/main.rs"
-
-[dependencies]
-tauri = { version = "2.9", features = [] }
-tauri-plugin-dialog = "2.0"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-serde_bencode = "0.2"
-
-reqwest = { version = "0.12", features = ["gzip", "rustls-tls"], default-features = false }
-tokio = { version = "1.48", features = ["full"] }
-
-toml = "0.8"
-sha1 = "0.10"
-url = "2.5"
-rand = "0.9"
-
-log = "0.4"
-env_logger = "0.11"
-thiserror = "2.0"
-
-[build-dependencies]
-tauri-build = { version = "2.0", features = [] }
+repository = "https://github.com/takitsu21/rustatio"
 
 [profile.dev]
-# Faster compilation for development
 incremental = true
 opt-level = 0
 
 [profile.dev.package."*"]
-# Optimize dependencies even in dev mode
 opt-level = 2
 
 [profile.release]
@@ -48,3 +23,7 @@ codegen-units = 1
 strip = false
 panic = "abort"
 incremental = false
+
+# WASM-specific optimizations (smaller binary size)
+[profile.release.package.rustatio-wasm]
+opt-level = "z"

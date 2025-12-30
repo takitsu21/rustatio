@@ -15,6 +15,8 @@ on:
 
 permissions:
   contents: write
+  pages: write
+  id-token: write
 
 env:
   CARGO_TERM_COLOR: always
@@ -199,6 +201,51 @@ jobs:
           prerelease: false
           args: ${{ matrix.args }}
 
+  build-web:
+    name: Build Web Version
+    needs: prepare-release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare-release.outputs.tag }}
+
+      - name: Install mise
+        uses: jdx/mise-action@v2
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install wasm32 target
+        run: rustup target add wasm32-unknown-unknown
+
+      - name: Install wasm-opt
+        run: |
+          wget -q https://github.com/WebAssembly/binaryen/releases/download/version_118/binaryen-version_118-x86_64-linux.tar.gz
+          tar -xzf binaryen-version_118-x86_64-linux.tar.gz
+          sudo cp binaryen-version_118/bin/wasm-opt /usr/local/bin/
+          rm -rf binaryen-version_118*
+
+      - name: Build Web Version
+        run: mise run build-web
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: './ui/dist'
+
   publish-release:
     name: Publish Release
     needs: [prepare-release, build-tauri]
@@ -220,3 +267,20 @@ jobs:
         run: |
           echo "✅ Release ${{ needs.prepare-release.outputs.tag }} has been published!"
           echo "🎉 Binaries are now available on GitHub Releases"
+
+  deploy-pages:
+    name: Deploy to GitHub Pages
+    needs: [prepare-release, build-web]
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: Pages deployed
+        run: |
+          echo "✅ Web version deployed to GitHub Pages!"
+          echo "🌐 URL: ${{ steps.deployment.outputs.page_url }}"

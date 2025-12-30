@@ -1,16 +1,13 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
-  import { invoke } from '@tauri-apps/api/core';
-  import { open } from '@tauri-apps/plugin-dialog';
-  import { listen } from '@tauri-apps/api/event';
   import { get } from 'svelte/store';
+  import { initWasm, api, listenToLogs } from './lib/api.js';
 
   // Import instance stores
   import {
     instances,
     activeInstance,
     instanceActions,
-    globalConfig,
     saveSession,
   } from './lib/instanceStore.js';
 
@@ -27,9 +24,7 @@
   import TotalStats from './components/TotalStats.svelte';
   import RateGraph from './components/RateGraph.svelte';
   import Logs from './components/Logs.svelte';
-
-  // Global config (shared across instances)
-  let config = $state(null);
+  import ProxySettings from './components/ProxySettings.svelte';
 
   // Loading state to prevent UI flash during initialization
   let isInitialized = $state(false);
@@ -61,7 +56,6 @@
   // Logs
   let logs = $state([]);
   let showLogs = $state(false);
-  let logUnlisten = null;
 
   // Development logging helper - only logs in development mode
   function devLog(level, ...args) {
@@ -98,14 +92,24 @@
   // Load configuration on mount
   onMount(async () => {
     try {
-      // Load global config
-      config = await invoke('get_config');
-      showLogs = config.ui.show_logs || false;
+      // Initialize WASM
+      await initWasm();
 
-      // Set global config in store for new instances
-      globalConfig.set(config);
+      // Load config from localStorage
+      const storedShowLogs = localStorage.getItem('rustatio-show-logs');
+      showLogs = storedShowLogs ? JSON.parse(storedShowLogs) : false;
 
-      // Initialize instance store (will restore session or create first instance with config defaults)
+      // Set up log listener (works for both Tauri and web)
+      await listenToLogs((logEvent) => {
+        logs = [...logs, logEvent];
+        
+        // Limit logs to prevent memory issues (keep last 500)
+        if (logs.length > 500) {
+          logs = logs.slice(-500);
+        }
+      });
+
+      // Initialize instance store (will restore session from localStorage)
       await instanceActions.initialize();
 
       // Wait a tick for stores to update before showing UI
@@ -115,23 +119,13 @@
       isInitialized = true;
     } catch (error) {
       console.error('Failed to initialize app:', error);
-      devLog('error', 'Failed to load config:', error);
+      devLog('error', 'Failed to initialize:', error);
       // Still show UI even if there's an error
       isInitialized = true;
     }
 
     // Initialize theme
     initializeTheme();
-
-    // Listen for log events from Rust backend
-    try {
-      logUnlisten = await listen('log-event', event => {
-        const logData = event.payload;
-        logs = [...logs, logData];
-      });
-    } catch (error) {
-      console.warn('Failed to set up log listener:', error);
-    }
 
     // Close dropdown when clicking outside
     document.addEventListener('click', handleClickOutside);
@@ -306,81 +300,61 @@
     }
 
     // Clean up event listeners
-    if (logUnlisten) {
-      logUnlisten();
-    }
     document.removeEventListener('click', handleClickOutside);
   });
 
-  // Select torrent file
-  async function selectTorrent() {
+  // Select torrent file (called from TorrentSelector with File object)
+  async function selectTorrent(file) {
     if (!$activeInstance) {
       alert('No active instance');
       return;
     }
 
+    if (!file) {
+      // User cancelled - only update status if no torrent is loaded
+      if (!$activeInstance.torrent) {
+        instanceActions.updateInstance($activeInstance.id, {
+          statusMessage: 'Select a torrent file to begin',
+          statusType: 'warning',
+        });
+      } else {
+        // Keep existing status (torrent still loaded)
+        instanceActions.updateInstance($activeInstance.id, {
+          statusMessage: 'Ready to start faking',
+          statusType: 'idle',
+        });
+      }
+      return;
+    }
+
     try {
       instanceActions.updateInstance($activeInstance.id, {
-        statusMessage: 'Opening file dialog...',
+        statusMessage: 'Loading torrent...',
         statusType: 'running',
       });
 
-      const selected = await open({
-        multiple: false,
-        filters: [
-          {
-            name: 'Torrent',
-            extensions: ['torrent'],
-          },
-        ],
+      const torrent = await api.loadTorrent(file);
+      devLog('log', 'Loaded torrent:', torrent);
+
+      // Update instance with torrent info
+      instanceActions.updateInstance($activeInstance.id, {
+        torrent,
+        torrentPath: file.name,
+        statusMessage: 'Torrent loaded successfully',
+        statusType: 'success',
       });
 
-      if (selected) {
-        instanceActions.updateInstance($activeInstance.id, {
-          statusMessage: 'Loading torrent...',
-          statusType: 'running',
-        });
-
-        const torrent = await invoke('load_torrent', {
-          instanceId: $activeInstance.id,
-          path: selected,
-        });
-        devLog('log', 'Loaded torrent:', torrent);
-
-        // Update instance with torrent info
-        instanceActions.updateInstance($activeInstance.id, {
-          torrent,
-          torrentPath: selected,
-          statusMessage: 'Torrent loaded successfully',
-          statusType: 'success',
-        });
-
-        const instanceId = $activeInstance.id;
-        setTimeout(() => {
-          // Only update status if the instance is not running
-          const instance = $instances.find(i => i.id === instanceId);
-          if (instance && !instance.isRunning) {
-            instanceActions.updateInstance(instanceId, {
-              statusMessage: 'Ready to start faking',
-              statusType: 'idle',
-            });
-          }
-        }, 2000);
-      } else {
-        // User cancelled - only update status if no torrent is loaded
-        if (!$activeInstance.torrent) {
-          instanceActions.updateInstance($activeInstance.id, {
-            statusMessage: 'Select a torrent file to begin',
-            statusType: 'warning',
-          });
-        } else {
-          // Keep existing status (torrent still loaded)
-          instanceActions.updateInstance($activeInstance.id, {
+      const instanceId = $activeInstance.id;
+      setTimeout(() => {
+        // Only update status if the instance is not running
+        const instance = $instances.find(i => i.id === instanceId);
+        if (instance && !instance.isRunning) {
+          instanceActions.updateInstance(instanceId, {
             statusMessage: 'Ready to start faking',
             statusType: 'idle',
           });
         }
-      }
+      }, 2000);
     } catch (error) {
       instanceActions.updateInstance($activeInstance.id, {
         statusMessage: 'Failed to load torrent: ' + error,
@@ -457,11 +431,7 @@
         progressive_duration: parseFloat($activeInstance.progressiveDurationHours ?? 1) * 3600,
       };
 
-      await invoke('start_faker', {
-        instanceId: $activeInstance.id,
-        torrent: $activeInstance.torrent,
-        config: fakerConfig,
-      });
+      await api.startFaker($activeInstance.id, $activeInstance.torrent, fakerConfig);
 
       // Update instance status
       instanceActions.updateInstance($activeInstance.id, {
@@ -491,8 +461,8 @@
         }
 
         try {
-          await invoke('update_faker', { instanceId });
-          const stats = await invoke('get_stats', { instanceId });
+          await api.updateFaker(instanceId);
+          const stats = await api.getStats(instanceId);
 
           instanceActions.updateInstance(instanceId, {
             stats,
@@ -548,7 +518,7 @@
         }
 
         try {
-          const latestStats = await invoke('update_stats_only', { instanceId });
+          const latestStats = await api.updateStatsOnly(instanceId);
 
           if (latestStats && currentInstance.isRunning) {
             instanceActions.updateInstance(instanceId, { stats: latestStats });
@@ -597,7 +567,7 @@
       });
 
       // Get initial stats
-      const initialStats = await invoke('get_stats', { instanceId: $activeInstance.id });
+      const initialStats = await api.getStats($activeInstance.id);
       instanceActions.updateInstance($activeInstance.id, { stats: initialStats });
     } catch (error) {
       instanceActions.updateInstance($activeInstance.id, {
@@ -621,7 +591,7 @@
         statusType: 'running',
       });
 
-      await invoke('stop_faker', { instanceId: $activeInstance.id });
+      await api.stopFaker($activeInstance.id);
 
       // Clear intervals
       if ($activeInstance.updateInterval) {
@@ -673,7 +643,7 @@
     }
 
     try {
-      await invoke('pause_faker', { instanceId: $activeInstance.id });
+      await api.pauseFaker($activeInstance.id);
       instanceActions.updateInstance($activeInstance.id, {
         isPaused: true,
         statusMessage: '⏸️ Paused',
@@ -696,7 +666,7 @@
     }
 
     try {
-      await invoke('resume_faker', { instanceId: $activeInstance.id });
+      await api.resumeFaker($activeInstance.id);
       instanceActions.updateInstance($activeInstance.id, {
         isPaused: false,
         statusMessage: '🚀 Actively faking ratio...',
@@ -723,8 +693,8 @@
         statusType: 'running',
       });
 
-      await invoke('update_faker', { instanceId: $activeInstance.id });
-      const stats = await invoke('get_stats', { instanceId: $activeInstance.id });
+      await api.updateFaker($activeInstance.id);
+      const stats = await api.getStats($activeInstance.id);
       instanceActions.updateInstance($activeInstance.id, {
         stats,
         nextUpdateIn: $activeInstance.updateIntervalSeconds ?? 5,
@@ -806,6 +776,8 @@
     />
 
     <div class="max-w-7xl mx-auto">
+      <!-- CORS Proxy Settings -->
+      <ProxySettings />
       <!-- Torrent Selection & Configuration -->
       <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
         <TorrentSelector torrent={$activeInstance?.torrent} {selectTorrent} {formatBytes} />
@@ -912,12 +884,7 @@
         onUpdate={async updates => {
           if (updates.showLogs !== undefined) {
             showLogs = updates.showLogs;
-            config.ui.show_logs = updates.showLogs;
-            try {
-              await invoke('update_config', { config });
-            } catch (error) {
-              console.error('Failed to save logs config:', error);
-            }
+            localStorage.setItem('rustatio-show-logs', JSON.stringify(updates.showLogs));
           }
         }}
       />

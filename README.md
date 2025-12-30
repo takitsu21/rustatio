@@ -25,7 +25,12 @@ Accurately simulate seeding behavior by emulating **uTorrent**, **qBittorrent**,
 
 ## 🚀 Getting Started
 
-### Installation
+Rustatio is available in **two versions**:
+
+- **🖥️ Desktop App** - Native application with full features, no CORS limitations
+- **🌐 Web App** - Browser-based version, works on any device, deployable to GitHub Pages
+
+### Desktop App Installation
 
 **Windows**
 
@@ -34,7 +39,10 @@ Accurately simulate seeding behavior by emulating **uTorrent**, **qBittorrent**,
 3. Launch Rustatio from the Start Menu
 
 **macOS**
-Download the latest `Rustatio_*.dmg` file from [Releases](https://github.com/takitsu21/rustatio/releases) 2. Open the downloaded file and drag Rustatio to your Applications folder 3. Launch Rustatio from Applications (you may need to allow it in System Preferences → Security & Privacy)
+
+1. Download the latest `Rustatio_*.dmg` file from [Releases](https://github.com/takitsu21/rustatio/releases) 
+2. Open the downloaded file and drag Rustatio to your Applications folder 
+3. Launch Rustatio from Applications (you may need to allow it in System Preferences → Security & Privacy)
 
 **Linux**
 
@@ -58,7 +66,24 @@ AppImage (Universal):
 chmod +x Rustatio_*.AppImage && ./Rustatio_*.AppImage
 ```
 
-## 📖 Usage
+### Web App Usage
+
+**Live Demo**: [https://takitsu21.github.io/rustatio/](https://takitsu21.github.io/rustatio/)
+
+The web version runs entirely in your browser using WebAssembly. 
+
+⚠️ **CORS Setup Required**: Most BitTorrent trackers don't allow browser requests. You'll need to set up a free CORS proxy (takes 5 minutes).
+
+📖 **[Complete Setup Guide](WEB_VERSION.md)** - Step-by-step instructions for setting up your free Cloudflare Workers CORS proxy
+
+**Features compared to Desktop**:
+- ✅ Same core functionality (ratio faking, client emulation)
+- ✅ Works on any device with a modern browser
+- ✅ No installation required
+- ✅ Session persistence via localStorage
+- ⚠️ Requires CORS proxy for most trackers
+
+## 📖 Usage (Desktop & Web)
 
 1. **Select Torrent**: Click "Select Torrent File" and choose your .torrent file
 2. **Configure Settings**:
@@ -118,6 +143,9 @@ Each client is accurately emulated with proper:
 3. **Tracker Announce**: Sends periodic announces to tracker with fake stats
 4. **Stat Accumulation**: Simulates upload/download based on configured rates
 5. **Real-time Updates**: Updates statistics and re-announces at tracker-specified intervals
+
+**For Users:**
+- 📖 [**WEB_VERSION.md**](WEB_VERSION.md) - How to use the web version and set up CORS proxy (5 minute guide)
 
 ## 🤝 Contributing
 

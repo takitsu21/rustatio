@@ -1,5 +1,8 @@
 import { writable, get } from 'svelte/store';
-import { invoke } from '@tauri-apps/api/core';
+import { api } from '$lib/api';
+
+// Check if running in Tauri
+const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
 // Create default instance state
 function createDefaultInstance(id, defaults = {}) {
@@ -68,92 +71,142 @@ function createDefaultInstance(id, defaults = {}) {
 // Global lock to prevent concurrent config saves from different sources
 export let isConfigSaving = false;
 
-// Save session to TOML config
+// Save session (localStorage for web, Tauri config for desktop)
 async function saveSession(instances, activeId) {
   // Prevent concurrent saves
   if (isConfigSaving) return;
 
   try {
     isConfigSaving = true;
-    const config = get(globalConfig);
-    if (!config) return;
 
-    // Update config with current instances
-    config.instances = instances.map(inst => ({
-      torrent_path: inst.torrentPath || null,
-      selected_client: inst.selectedClient,
-      selected_client_version: inst.selectedClientVersion,
-      upload_rate: parseFloat(inst.uploadRate),
-      download_rate: parseFloat(inst.downloadRate),
-      port: parseInt(inst.port),
-      completion_percent: parseFloat(inst.completionPercent),
-      initial_uploaded: parseInt(inst.initialUploaded) * 1024 * 1024, // Convert MB to bytes
-      initial_downloaded: parseInt(inst.initialDownloaded) * 1024 * 1024,
-      randomize_rates: inst.randomizeRates,
-      random_range_percent: parseFloat(inst.randomRangePercent),
-      update_interval_seconds: parseInt(inst.updateIntervalSeconds),
-      stop_at_ratio_enabled: inst.stopAtRatioEnabled,
-      stop_at_ratio: parseFloat(inst.stopAtRatio),
-      stop_at_uploaded_enabled: inst.stopAtUploadedEnabled,
-      stop_at_uploaded_gb: parseFloat(inst.stopAtUploadedGB),
-      stop_at_downloaded_enabled: inst.stopAtDownloadedEnabled,
-      stop_at_downloaded_gb: parseFloat(inst.stopAtDownloadedGB),
-      stop_at_seed_time_enabled: inst.stopAtSeedTimeEnabled,
-      stop_at_seed_time_hours: parseFloat(inst.stopAtSeedTimeHours),
-      progressive_rates_enabled: inst.progressiveRatesEnabled,
-      target_upload_rate: parseFloat(inst.targetUploadRate),
-      target_download_rate: parseFloat(inst.targetDownloadRate),
-      progressive_duration_hours: parseFloat(inst.progressiveDurationHours),
-    }));
+    if (isTauri) {
+      // Desktop: Save to Tauri config file
+      const config = get(globalConfig);
+      if (!config) return;
 
-    // Find the index of the active instance
-    const activeIndex = instances.findIndex(inst => inst.id === activeId);
-    config.active_instance_id = activeIndex >= 0 ? activeIndex : null;
+      config.instances = instances.map(inst => ({
+        torrent_path: inst.torrentPath || null,
+        selected_client: inst.selectedClient,
+        selected_client_version: inst.selectedClientVersion,
+        upload_rate: parseFloat(inst.uploadRate),
+        download_rate: parseFloat(inst.downloadRate),
+        port: parseInt(inst.port),
+        completion_percent: parseFloat(inst.completionPercent),
+        initial_uploaded: parseInt(inst.initialUploaded) * 1024 * 1024,
+        initial_downloaded: parseInt(inst.initialDownloaded) * 1024 * 1024,
+        randomize_rates: inst.randomizeRates,
+        random_range_percent: parseFloat(inst.randomRangePercent),
+        update_interval_seconds: parseInt(inst.updateIntervalSeconds),
+        stop_at_ratio_enabled: inst.stopAtRatioEnabled,
+        stop_at_ratio: parseFloat(inst.stopAtRatio),
+        stop_at_uploaded_enabled: inst.stopAtUploadedEnabled,
+        stop_at_uploaded_gb: parseFloat(inst.stopAtUploadedGB),
+        stop_at_downloaded_enabled: inst.stopAtDownloadedEnabled,
+        stop_at_downloaded_gb: parseFloat(inst.stopAtDownloadedGB),
+        stop_at_seed_time_enabled: inst.stopAtSeedTimeEnabled,
+        stop_at_seed_time_hours: parseFloat(inst.stopAtSeedTimeHours),
+        progressive_rates_enabled: inst.progressiveRatesEnabled,
+        target_upload_rate: parseFloat(inst.targetUploadRate),
+        target_download_rate: parseFloat(inst.targetDownloadRate),
+        progressive_duration_hours: parseFloat(inst.progressiveDurationHours),
+      }));
 
-    // Save to TOML file via backend
-    await invoke('update_config', { config });
+      config.active_instance_id = instances.findIndex(inst => inst.id === activeId);
+      await api.updateConfig(config);
+    } else {
+      // Web: Save to localStorage
+      const sessionData = {
+      instances: instances.map(inst => ({
+        torrent_path: inst.torrentPath || null,
+        selected_client: inst.selectedClient,
+        selected_client_version: inst.selectedClientVersion,
+        upload_rate: parseFloat(inst.uploadRate),
+        download_rate: parseFloat(inst.downloadRate),
+        port: parseInt(inst.port),
+        completion_percent: parseFloat(inst.completionPercent),
+        initial_uploaded: parseInt(inst.initialUploaded) * 1024 * 1024, // Convert MB to bytes
+        initial_downloaded: parseInt(inst.initialDownloaded) * 1024 * 1024,
+        randomize_rates: inst.randomizeRates,
+        random_range_percent: parseFloat(inst.randomRangePercent),
+        update_interval_seconds: parseInt(inst.updateIntervalSeconds),
+        stop_at_ratio_enabled: inst.stopAtRatioEnabled,
+        stop_at_ratio: parseFloat(inst.stopAtRatio),
+        stop_at_uploaded_enabled: inst.stopAtUploadedEnabled,
+        stop_at_uploaded_gb: parseFloat(inst.stopAtUploadedGB),
+        stop_at_downloaded_enabled: inst.stopAtDownloadedEnabled,
+        stop_at_downloaded_gb: parseFloat(inst.stopAtDownloadedGB),
+        stop_at_seed_time_enabled: inst.stopAtSeedTimeEnabled,
+        stop_at_seed_time_hours: parseFloat(inst.stopAtSeedTimeHours),
+        progressive_rates_enabled: inst.progressiveRatesEnabled,
+        target_upload_rate: parseFloat(inst.targetUploadRate),
+        target_download_rate: parseFloat(inst.targetDownloadRate),
+        progressive_duration_hours: parseFloat(inst.progressiveDurationHours),
+      })),
+        active_instance_id: instances.findIndex(inst => inst.id === activeId),
+      };
+
+      // Save to localStorage
+      localStorage.setItem('rustatio-session', JSON.stringify(sessionData));
+    }
   } catch (error) {
-    console.error('Failed to save session to config:', error);
+    console.error('Failed to save session:', error);
   } finally {
     isConfigSaving = false;
   }
 }
 
-// Load session from TOML config
-function loadSessionFromConfig(config) {
-  if (!config || !config.instances || config.instances.length === 0) {
+// Load session from storage (localStorage for web, Tauri config for desktop)
+function loadSessionFromStorage(config = null) {
+  try {
+    let sessionData;
+    
+    if (isTauri && config) {
+      // Desktop: Load from Tauri config
+      sessionData = config;
+    } else {
+      // Web: Load from localStorage
+      const stored = localStorage.getItem('rustatio-session');
+      if (!stored) return null;
+      sessionData = JSON.parse(stored);
+    }
+
+    if (!sessionData || !sessionData.instances || sessionData.instances.length === 0) {
+      return null;
+    }
+
+    return {
+      instances: sessionData.instances.map(inst => ({
+        torrentPath: inst.torrent_path,
+        selectedClient: inst.selected_client,
+        selectedClientVersion: inst.selected_client_version,
+        uploadRate: inst.upload_rate,
+        downloadRate: inst.download_rate,
+        port: inst.port,
+        completionPercent: inst.completion_percent,
+        initialUploaded: inst.initial_uploaded / (1024 * 1024), // Convert bytes to MB
+        initialDownloaded: inst.initial_downloaded / (1024 * 1024),
+        randomizeRates: inst.randomize_rates,
+        randomRangePercent: inst.random_range_percent,
+        updateIntervalSeconds: inst.update_interval_seconds,
+        stopAtRatioEnabled: inst.stop_at_ratio_enabled,
+        stopAtRatio: inst.stop_at_ratio,
+        stopAtUploadedEnabled: inst.stop_at_uploaded_enabled,
+        stopAtUploadedGB: inst.stop_at_uploaded_gb,
+        stopAtDownloadedEnabled: inst.stop_at_downloaded_enabled,
+        stopAtDownloadedGB: inst.stop_at_downloaded_gb,
+        stopAtSeedTimeEnabled: inst.stop_at_seed_time_enabled,
+        stopAtSeedTimeHours: inst.stop_at_seed_time_hours,
+        progressiveRatesEnabled: inst.progressive_rates_enabled,
+        targetUploadRate: inst.target_upload_rate,
+        targetDownloadRate: inst.target_download_rate,
+        progressiveDurationHours: inst.progressive_duration_hours,
+      })),
+      activeInstanceIndex: sessionData.active_instance_id,
+    };
+  } catch (error) {
+    console.error('Failed to load session from storage:', error);
     return null;
   }
-
-  return {
-    instances: config.instances.map(inst => ({
-      torrentPath: inst.torrent_path,
-      selectedClient: inst.selected_client,
-      selectedClientVersion: inst.selected_client_version,
-      uploadRate: inst.upload_rate,
-      downloadRate: inst.download_rate,
-      port: inst.port,
-      completionPercent: inst.completion_percent,
-      initialUploaded: inst.initial_uploaded / (1024 * 1024), // Convert bytes to MB
-      initialDownloaded: inst.initial_downloaded / (1024 * 1024),
-      randomizeRates: inst.randomize_rates,
-      randomRangePercent: inst.random_range_percent,
-      updateIntervalSeconds: inst.update_interval_seconds,
-      stopAtRatioEnabled: inst.stop_at_ratio_enabled,
-      stopAtRatio: inst.stop_at_ratio,
-      stopAtUploadedEnabled: inst.stop_at_uploaded_enabled,
-      stopAtUploadedGB: inst.stop_at_uploaded_gb,
-      stopAtDownloadedEnabled: inst.stop_at_downloaded_enabled,
-      stopAtDownloadedGB: inst.stop_at_downloaded_gb,
-      stopAtSeedTimeEnabled: inst.stop_at_seed_time_enabled,
-      stopAtSeedTimeHours: inst.stop_at_seed_time_hours,
-      progressiveRatesEnabled: inst.progressive_rates_enabled,
-      targetUploadRate: inst.target_upload_rate,
-      targetDownloadRate: inst.target_download_rate,
-      progressiveDurationHours: inst.progressive_duration_hours,
-    })),
-    activeInstanceIndex: config.active_instance_id,
-  };
 }
 
 // Store for all instances
@@ -181,35 +234,45 @@ function updateActiveInstanceStore() {
 
 // Actions
 export const instanceActions = {
-  // Initialize - create first instance or restore from config
+  // Initialize - create first instance or restore from storage
   initialize: async () => {
     try {
-      const config = get(globalConfig);
-      const savedSession = config ? loadSessionFromConfig(config) : null;
+      // Load config if in Tauri mode
+      let config = null;
+      if (isTauri) {
+        config = await api.getConfig();
+        globalConfig.set(config);
+      }
+      
+      const savedSession = loadSessionFromStorage(config);
 
       if (savedSession && savedSession.instances && savedSession.instances.length > 0) {
-        // Restore from saved config
+        // Restore from saved session
         const restoredInstances = [];
         for (const savedInst of savedSession.instances) {
           // Create backend instance
-          const instanceId = await invoke('create_instance');
+          const instanceId = await api.createInstance();
 
           // Create frontend instance with saved settings
           const instance = createDefaultInstance(instanceId, savedInst);
 
-          // If there was a torrent path, try to reload it
+          // Try to restore torrent file
           if (savedInst.torrentPath) {
-            try {
-              const torrent = await invoke('load_torrent', {
-                instanceId,
-                path: savedInst.torrentPath,
-              });
-              instance.torrent = torrent;
-              instance.torrentPath = savedInst.torrentPath;
-              instance.statusMessage = 'Ready to start faking';
-              instance.statusType = 'idle';
-            } catch {
-              instance.statusMessage = 'Torrent file not found - please select again';
+            if (isTauri) {
+              // Desktop: Try to reload from path
+              try {
+                const torrent = await api.loadTorrent(savedInst.torrentPath);
+                instance.torrent = torrent;
+                instance.torrentPath = savedInst.torrentPath;
+                instance.statusMessage = 'Ready to start faking';
+                instance.statusType = 'idle';
+              } catch {
+                instance.statusMessage = 'Torrent file not found - please select again';
+                instance.statusType = 'warning';
+              }
+            } else {
+              // Web: Can't restore from path, user must re-upload
+              instance.statusMessage = 'Please re-upload your torrent file';
               instance.statusType = 'warning';
             }
           }
@@ -233,24 +296,10 @@ export const instanceActions = {
         updateActiveInstanceStore();
         return restoredInstances[0].id;
       } else {
-        // No saved session - create first instance with config defaults
-        const instanceId = await invoke('create_instance');
+        // No saved session - create first instance with defaults
+        const instanceId = await api.createInstance();
 
-        // Use globalConfig if available
-        let configDefaults = {};
-        const config = get(globalConfig);
-        if (config) {
-          configDefaults = {
-            selectedClient: config.client.default_type,
-            selectedClientVersion: config.client.default_version,
-            uploadRate: config.faker.default_upload_rate,
-            downloadRate: config.faker.default_download_rate,
-            port: config.client.default_port,
-            updateIntervalSeconds: config.faker.update_interval || 5,
-          };
-        }
-
-        const newInstance = createDefaultInstance(instanceId, configDefaults);
+        const newInstance = createDefaultInstance(instanceId, {});
         instances.set([newInstance]);
         activeInstanceId.set(instanceId);
         updateActiveInstanceStore();
@@ -265,25 +314,8 @@ export const instanceActions = {
   // Add a new instance
   addInstance: async (defaults = {}) => {
     try {
-      const instanceId = await invoke('create_instance');
-
-      // If no defaults provided, use globalConfig
-      let configDefaults = defaults;
-      if (Object.keys(defaults).length === 0) {
-        const config = get(globalConfig);
-        if (config) {
-          configDefaults = {
-            selectedClient: config.client.default_type,
-            selectedClientVersion: config.client.default_version,
-            uploadRate: config.faker.default_upload_rate,
-            downloadRate: config.faker.default_download_rate,
-            port: config.client.default_port,
-            updateIntervalSeconds: config.faker.update_interval || 5,
-          };
-        }
-      }
-
-      const newInstance = createDefaultInstance(instanceId, configDefaults);
+      const instanceId = api.createInstance();
+      const newInstance = createDefaultInstance(instanceId, defaults);
 
       instances.update(insts => [...insts, newInstance]);
       activeInstanceId.set(instanceId);
@@ -310,8 +342,8 @@ export const instanceActions = {
     }
 
     try {
-      // Stop the instance on the backend
-      await invoke('delete_instance', { instanceId: id });
+      // Delete the instance on the backend
+      await api.deleteInstance(id);
 
       let newActiveId = null;
 

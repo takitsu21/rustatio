@@ -5,6 +5,10 @@
   let { torrent, selectTorrent, formatBytes } = $props();
 
   let showDetails = $state(false);
+  let fileInput;
+  
+  // Check if running in Tauri
+  const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
   function getAllTrackers(torrent) {
     if (!torrent) return [];
@@ -20,13 +24,44 @@
     return Array.from(trackers);
   }
 
+  async function handleFileSelect() {
+    if (isTauri) {
+      // Use Tauri file dialog
+      const { open } = await import('@tauri-apps/plugin-dialog');
+      const selected = await open({
+        multiple: false,
+        filters: [{ name: 'Torrent', extensions: ['torrent'] }],
+      });
+      if (selected) {
+        await selectTorrent(selected);
+      }
+    } else {
+      // Use HTML5 file input
+      fileInput.click();
+    }
+  }
+
+  async function handleFileChange(event) {
+    const file = event.target.files?.[0];
+    if (file) {
+      await selectTorrent(file);
+    }
+  }
+
   let trackers = $derived(getAllTrackers(torrent));
 </script>
 
 <Card class="p-3">
   <h2 class="mb-3 text-primary text-lg font-semibold">📁 Torrent File</h2>
   <div class="flex flex-col gap-3.5">
-    <Button onclick={selectTorrent} class="w-full">
+    <input
+      type="file"
+      accept=".torrent"
+      bind:this={fileInput}
+      onchange={handleFileChange}
+      class="hidden"
+    />
+    <Button onclick={handleFileSelect} class="w-full">
       {#snippet children()}
         {torrent ? '📄 Change File' : '📂 Select Torrent File'}
       {/snippet}

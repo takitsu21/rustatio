@@ -1,7 +1,7 @@
 // Platform-agnostic logger module
 // Native (desktop) uses Tauri Emitter, WASM uses web_sys console
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "native"))]
 pub mod native {
     use serde::Serialize;
     use std::sync::OnceLock;
@@ -78,24 +78,70 @@ pub mod native {
 pub mod wasm {
     use wasm_bindgen::prelude::*;
 
-    /// Log at info level to browser console
+    #[wasm_bindgen]
+    extern "C" {
+        #[wasm_bindgen(js_namespace = console, js_name = log)]
+        fn console_log(s: &str);
+        #[wasm_bindgen(js_namespace = console, js_name = warn)]
+        fn console_warn(s: &str);
+        #[wasm_bindgen(js_namespace = console, js_name = error)]
+        fn console_error(s: &str);
+        #[wasm_bindgen(js_namespace = console, js_name = debug)]
+        fn console_debug(s: &str);
+    }
+
+    // Store log callback - will be set from JavaScript
+    thread_local! {
+        static LOG_CALLBACK: std::cell::RefCell<Option<js_sys::Function>> = std::cell::RefCell::new(None);
+    }
+
+    /// Set the JavaScript callback for log events (called from JS during init)
+    #[wasm_bindgen]
+    pub fn set_log_callback(callback: js_sys::Function) {
+        LOG_CALLBACK.with(|cb| {
+            *cb.borrow_mut() = Some(callback);
+        });
+    }
+
+    /// Internal helper to emit log to both console and callback
+    fn emit_log(level: &str, message: &str) {
+        // Log to console
+        match level {
+            "error" => console_error(message),
+            "warn" => console_warn(message),
+            "debug" => console_debug(message),
+            _ => console_log(message),
+        }
+
+        // Call JavaScript callback if set
+        LOG_CALLBACK.with(|cb| {
+            if let Some(callback) = cb.borrow().as_ref() {
+                let this = JsValue::NULL;
+                let level_js = JsValue::from_str(level);
+                let message_js = JsValue::from_str(message);
+                let _ = callback.call2(&this, &level_js, &message_js);
+            }
+        });
+    }
+
+    /// Log at info level to browser console and UI
     pub fn info(message: String) {
-        web_sys::console::log_1(&message.into());
+        emit_log("info", &message);
     }
 
-    /// Log at warn level to browser console
+    /// Log at warn level to browser console and UI
     pub fn warn(message: String) {
-        web_sys::console::warn_1(&message.into());
+        emit_log("warn", &message);
     }
 
-    /// Log at error level to browser console
+    /// Log at error level to browser console and UI
     pub fn error(message: String) {
-        web_sys::console::error_1(&message.into());
+        emit_log("error", &message);
     }
 
-    /// Log at debug level to browser console
+    /// Log at debug level to browser console and UI
     pub fn debug(message: String) {
-        web_sys::console::debug_1(&message.into());
+        emit_log("debug", &message);
     }
 
     /// No-op for WASM (no app handle needed)
@@ -105,7 +151,7 @@ pub mod wasm {
 }
 
 // Re-export based on platform
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "native"))]
 pub use native::*;
 
 #[cfg(target_arch = "wasm32")]
@@ -115,27 +161,27 @@ pub use wasm::*;
 #[macro_export]
 macro_rules! log_info {
     ($($arg:tt)*) => {
-        $crate::core::logger::info(format!($($arg)*))
+        $crate::logger::info(format!($($arg)*))
     };
 }
 
 #[macro_export]
 macro_rules! log_warn {
     ($($arg:tt)*) => {
-        $crate::core::logger::warn(format!($($arg)*))
+        $crate::logger::warn(format!($($arg)*))
     };
 }
 
 #[macro_export]
 macro_rules! log_error {
     ($($arg:tt)*) => {
-        $crate::core::logger::error(format!($($arg)*))
+        $crate::logger::error(format!($($arg)*))
     };
 }
 
 #[macro_export]
 macro_rules! log_debug {
     ($($arg:tt)*) => {
-        $crate::core::logger::debug(format!($($arg)*))
+        $crate::logger::debug(format!($($arg)*))
     };
 }

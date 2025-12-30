@@ -4,6 +4,7 @@ import path from 'path';
 
 // https://vitejs.dev/config/
 export default defineConfig({
+  base: process.env.GITHUB_PAGES ? '/rustatio/' : '/', // Only use /rustatio/ for GitHub Pages
   plugins: [svelte()],
 
   resolve: {
@@ -12,22 +13,18 @@ export default defineConfig({
     },
   },
 
-  // Prevent vite from obscuring rust errors
+  // Prevent vite from obscuring errors
   clearScreen: false,
 
-  // Tauri expects a fixed port, fail if that port is not available
   server: {
     port: 1420,
-    strictPort: true,
+    strictPort: false,
   },
 
-  // To make use of `TAURI_DEBUG` and other env variables
-  envPrefix: ['VITE_', 'TAURI_'],
-
   build: {
-    target: process.env.TAURI_PLATFORM == 'windows' ? 'chrome105' : 'safari13',
-    minify: !process.env.TAURI_DEBUG ? 'esbuild' : false,
-    sourcemap: !!process.env.TAURI_DEBUG,
+    target: 'esnext', // Required for top-level await in WASM
+    minify: 'esbuild',
+    sourcemap: false,
     chunkSizeWarningLimit: 1500,
 
     rollupOptions: {
@@ -39,5 +36,9 @@ export default defineConfig({
         },
       },
     },
+  },
+
+  optimizeDeps: {
+    exclude: ['$lib/wasm/rustatio_wasm.js'],
   },
 });
