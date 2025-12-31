@@ -1,6 +1,7 @@
 <script>
   import Button from '$lib/components/ui/button.svelte';
   import ThemeIcon from './ThemeIcon.svelte';
+  import DownloadButton from './DownloadButton.svelte';
 
   let {
     theme,
@@ -16,6 +17,9 @@
     resumeFaking = null,
     manualUpdate = null,
   } = $props();
+
+  // Detect if running in Tauri (desktop app) or web
+  const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 </script>
 
 <header class="max-w-7xl mx-auto mb-3">
@@ -25,6 +29,11 @@
       <p class="text-xs text-muted-foreground mt-0.5">Modern BitTorrent Ratio Faker</p>
     </div>
     <div class="flex items-center gap-4">
+      <!-- Download button (web only) -->
+      {#if !isTauri}
+        <DownloadButton />
+      {/if}
+
       <!-- Compact control buttons -->
       {#if startFaking && stopFaking}
         <div class="flex gap-2 items-center">

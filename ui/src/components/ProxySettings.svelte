@@ -40,7 +40,18 @@
           the web browser from making requests to them.
         </p>
         <p class="mb-2">
-          <strong>Solution:</strong> Deploy a free Cloudflare Worker as a CORS proxy. See our
+          <strong>Solution 1 (Recommended):</strong> Use the
+          <a
+            href="https://github.com/takitsu21/rustatio/releases/latest"
+            target="_blank"
+            class="text-primary hover:underline font-semibold"
+          >
+            desktop app
+          </a>
+          which has no CORS limitations and works with all trackers out of the box.
+        </p>
+        <p class="mb-2">
+          <strong>Solution 2:</strong> Deploy a free Cloudflare Worker as a CORS proxy. See our
           <a
             href="https://github.com/takitsu21/rustatio/blob/main/WEB_VERSION.md"
             target="_blank"
