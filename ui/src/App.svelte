@@ -20,6 +20,7 @@
   import RateGraph from './components/RateGraph.svelte';
   import Logs from './components/Logs.svelte';
   import ProxySettings from './components/ProxySettings.svelte';
+  import UpdateChecker from './components/UpdateChecker.svelte';
 
   // Check if running in Tauri
   const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
@@ -385,8 +386,9 @@
     try {
       // Use cumulative stats if available (preserved across sessions), otherwise use form input values
       // Cumulative stats take precedence to maintain lifetime totals
-      const hasCumulativeStats = ($activeInstance.cumulativeUploaded > 0 || $activeInstance.cumulativeDownloaded > 0);
-      const initialUploaded = hasCumulativeStats 
+      const hasCumulativeStats =
+        $activeInstance.cumulativeUploaded > 0 || $activeInstance.cumulativeDownloaded > 0;
+      const initialUploaded = hasCumulativeStats
         ? parseInt($activeInstance.cumulativeUploaded ?? 0) * 1024 * 1024
         : parseInt($activeInstance.initialUploaded ?? 0) * 1024 * 1024;
       const initialDownloaded = hasCumulativeStats
@@ -908,4 +910,7 @@
       />
     </div>
   {/if}
+
+  <!-- Update Checker (only shown in Tauri) -->
+  <UpdateChecker />
 </main>

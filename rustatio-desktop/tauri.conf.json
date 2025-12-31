@@ -9,6 +9,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/icon.icns",
       "icons/icon.ico",
@@ -25,6 +26,14 @@
       "rpm": {
         "depends": []
       }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/takitsu21/rustatio/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDgxMkYzQTg0RDJCOUMxQ0UKUldUT3diblNoRG92Z2RBVnhHS0NjbVpNMXZCMGUvZ0JKelBrR1lMVVl0dlFlRG90TFp4M3oxcTMK"
     }
   },
   "app": {
@@ -47,7 +56,13 @@
         {
           "identifier": "main-capability",
           "windows": ["main"],
-          "permissions": ["core:default", "dialog:default"]
+          "permissions": [
+            "core:default",
+            "dialog:default",
+            "updater:default",
+            "updater:allow-check",
+            "updater:allow-download-and-install"
+          ]
         }
       ]
     }

@@ -23,7 +23,8 @@ function createDefaultInstance(id, defaults = {}) {
 
     // Cumulative stats (preserved across sessions, not editable by user)
     cumulativeUploaded: defaults.cumulativeUploaded !== undefined ? defaults.cumulativeUploaded : 0,
-    cumulativeDownloaded: defaults.cumulativeDownloaded !== undefined ? defaults.cumulativeDownloaded : 0,
+    cumulativeDownloaded:
+      defaults.cumulativeDownloaded !== undefined ? defaults.cumulativeDownloaded : 0,
 
     // Form values
     selectedClient: defaults.selectedClient || 'qbittorrent',

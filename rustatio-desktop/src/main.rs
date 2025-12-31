@@ -264,8 +264,14 @@ async fn start_faker(
         // Use cumulative stats from previous session
         config_with_cumulative.initial_uploaded = existing.cumulative_uploaded;
         config_with_cumulative.initial_downloaded = existing.cumulative_downloaded;
-        log_and_emit!(&app, instance_id, info, "Continuing with cumulative stats: uploaded={} bytes, downloaded={} bytes",
-            existing.cumulative_uploaded, existing.cumulative_downloaded);
+        log_and_emit!(
+            &app,
+            instance_id,
+            info,
+            "Continuing with cumulative stats: uploaded={} bytes, downloaded={} bytes",
+            existing.cumulative_uploaded,
+            existing.cumulative_downloaded
+        );
     }
     drop(fakers); // Release read lock before acquiring write lock
 
@@ -289,13 +295,16 @@ async fn start_faker(
 
     // Store in state with cumulative stats
     let mut fakers = state.fakers.write().await;
-    
-    fakers.insert(instance_id, FakerInstance { 
-        faker, 
-        torrent_name,
-        cumulative_uploaded,
-        cumulative_downloaded,
-    });
+
+    fakers.insert(
+        instance_id,
+        FakerInstance {
+            faker,
+            torrent_name,
+            cumulative_uploaded,
+            cumulative_downloaded,
+        },
+    );
 
     log_and_emit!(&app, instance_id, info, "Faker started successfully");
     Ok(())
@@ -314,7 +323,7 @@ async fn stop_faker(instance_id: u32, state: State<'_, AppState>, app: AppHandle
     if let Some(instance) = fakers.get_mut(&instance_id) {
         // Get final stats before stopping to save cumulative totals
         let final_stats = instance.faker.get_stats().await;
-        
+
         instance.faker.stop().await.map_err(|e| {
             let error_msg = format!("Failed to stop faker: {}", e);
             log_and_emit!(&app, instance_id, error, "{}", error_msg);
@@ -324,9 +333,15 @@ async fn stop_faker(instance_id: u32, state: State<'_, AppState>, app: AppHandle
         // Update cumulative stats in instance (for next session)
         instance.cumulative_uploaded = final_stats.uploaded;
         instance.cumulative_downloaded = final_stats.downloaded;
-        
-        log_and_emit!(&app, instance_id, info, "Faker stopped successfully - Cumulative: uploaded={} bytes, downloaded={} bytes", 
-            instance.cumulative_uploaded, instance.cumulative_downloaded);
+
+        log_and_emit!(
+            &app,
+            instance_id,
+            info,
+            "Faker stopped successfully - Cumulative: uploaded={} bytes, downloaded={} bytes",
+            instance.cumulative_uploaded,
+            instance.cumulative_downloaded
+        );
 
         Ok(())
     } else {
@@ -483,6 +498,7 @@ fn main() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(app_state)
         .invoke_handler(tauri::generate_handler![
             create_instance,
