@@ -16,6 +16,7 @@ rustatio-core = { path = "../rustatio-core", features = ["native"] }
 tauri = { version = "2.9", features = [] }
 tauri-plugin-dialog = "2.0"
 tauri-plugin-updater = "2.0"
+tauri-plugin-process = "2.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 

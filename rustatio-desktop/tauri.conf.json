@@ -58,10 +58,13 @@
           "windows": ["main"],
           "permissions": [
             "core:default",
+            "core:app:allow-app-show",
+            "core:app:allow-app-hide",
             "dialog:default",
             "updater:default",
             "updater:allow-check",
-            "updater:allow-download-and-install"
+            "updater:allow-download-and-install",
+            "process:allow-restart"
           ]
         }
       ]

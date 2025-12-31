@@ -47,7 +47,7 @@
 
     try {
       const { check } = await import('@tauri-apps/plugin-updater');
-      const { relaunch } = await import('@tauri-apps/plugin-process');
+      const process = await import('@tauri-apps/plugin-process');
 
       const update = await check();
 
@@ -59,7 +59,7 @@
         });
 
         console.log('Update downloaded and installed, relaunching...');
-        await relaunch();
+        await process.relaunch();
       }
     } catch (e) {
       console.error('Failed to download and install update:', e);
