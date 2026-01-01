@@ -10,13 +10,13 @@
     const sessionBytes = stats.session_uploaded || 0;
     return cumulativeBytes + sessionBytes;
   });
-  
+
   let totalDownloaded = $derived(() => {
     const cumulativeBytes = (cumulativeDownloaded || 0) * 1024 * 1024;
     const sessionBytes = stats.session_downloaded || 0;
     return cumulativeBytes + sessionBytes;
   });
-  
+
   // Ratio = total_uploaded / torrent_total_size (not downloaded!)
   let cumulativeRatio = $derived(() => {
     const torrentSize = torrent?.total_size || 1;

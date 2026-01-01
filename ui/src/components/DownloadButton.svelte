@@ -15,10 +15,10 @@
   onMount(async () => {
     os = detectOS();
     downloadType = getDownloadType(os);
-    
+
     // Fetch latest version
     latestVersion = await fetchLatestVersion();
-    
+
     // Set download URL and options
     downloadUrl = await getDirectDownloadUrl(os, downloadType);
     downloadOptions = getDownloadOptions();
@@ -39,7 +39,7 @@
 
   async function getDirectDownloadUrl(os, type) {
     const version = await fetchLatestVersion();
-    
+
     if (!version) {
       // Fallback to releases page if we can't get version
       return `${GITHUB_REPO}/releases/latest`;
@@ -48,7 +48,7 @@
     // Direct download URLs for latest release
     // Pattern: Rustatio_<version>_<arch>.<ext>
     const versionNumber = version.replace('v', ''); // Remove 'v' prefix: "0.4.0"
-    
+
     switch (os) {
       case 'windows':
         return `${GITHUB_REPO}/releases/download/${version}/Rustatio_${versionNumber}_x64-setup.exe`;
@@ -94,7 +94,7 @@
     }
     return os;
   }
-  
+
   function getCurrentDownloadOS() {
     // Get the OS type for the current default download
     return getOSForIcon(os, downloadType);
@@ -136,7 +136,7 @@
     }
 
     const versionNumber = latestVersion.replace('v', '');
-    
+
     return [
       {
         label: 'Windows (.exe)',
@@ -176,7 +176,13 @@
   >
     {#snippet children()}
       <!-- OS Icon -->
-      <img src={getOSIconUrl(getCurrentDownloadOS())} alt={getCurrentDownloadOS()} width="16" height="16" class="inline-block" />
+      <img
+        src={getOSIconUrl(getCurrentDownloadOS())}
+        alt={getCurrentDownloadOS()}
+        width="16"
+        height="16"
+        class="inline-block"
+      />
       <svg
         width="16"
         height="16"
@@ -193,7 +199,7 @@
       </svg>
       <span>({getDownloadFormat(os, downloadType)})</span>
       <button
-        onclick={(e) => {
+        onclick={e => {
           e.stopPropagation();
           toggleDropdown();
         }}
@@ -227,7 +233,13 @@
             showDropdown = false;
           }}
         >
-          <img src={getOSIconUrl(option.os)} alt={option.os} width="16" height="16" class="inline-block flex-shrink-0 opacity-80" />
+          <img
+            src={getOSIconUrl(option.os)}
+            alt={option.os}
+            width="16"
+            height="16"
+            class="inline-block flex-shrink-0 opacity-80"
+          />
           <span class="flex-1 text-left text-sm font-medium">{option.label}</span>
           <svg
             width="14"

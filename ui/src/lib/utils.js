@@ -11,22 +11,22 @@ export function cn(...inputs) {
  */
 export function detectOS() {
   if (typeof window === 'undefined') return 'unknown';
-  
+
   const userAgent = window.navigator.userAgent.toLowerCase();
   const platform = window.navigator.platform?.toLowerCase() || '';
-  
+
   if (userAgent.indexOf('win') !== -1 || platform.indexOf('win') !== -1) {
     return 'windows';
   }
-  
+
   if (userAgent.indexOf('mac') !== -1 || platform.indexOf('mac') !== -1) {
     return 'macos';
   }
-  
+
   if (userAgent.indexOf('linux') !== -1 || platform.indexOf('linux') !== -1) {
     return 'linux';
   }
-  
+
   return 'unknown';
 }
 
@@ -55,32 +55,36 @@ export function getDownloadType(os) {
  */
 function detectLinuxDistro() {
   if (typeof window === 'undefined') return 'deb';
-  
+
   const userAgent = window.navigator.userAgent.toLowerCase();
   const platform = window.navigator.platform?.toLowerCase() || '';
-  
+
   // Check user agent and platform for distro hints
   const fullInfo = userAgent + ' ' + platform;
-  
+
   // Check for Debian/Ubuntu-based distributions
-  if (fullInfo.includes('ubuntu') || 
-      fullInfo.includes('debian') || 
-      fullInfo.includes('mint') ||
-      fullInfo.includes('pop') ||
-      fullInfo.includes('elementary')) {
+  if (
+    fullInfo.includes('ubuntu') ||
+    fullInfo.includes('debian') ||
+    fullInfo.includes('mint') ||
+    fullInfo.includes('pop') ||
+    fullInfo.includes('elementary')
+  ) {
     return 'deb';
   }
-  
+
   // Check for Fedora/RHEL/CentOS/RPM-based distributions
-  if (fullInfo.includes('fedora') || 
-      fullInfo.includes('rhel') || 
-      fullInfo.includes('centos') ||
-      fullInfo.includes('red hat') ||
-      fullInfo.includes('suse') ||
-      fullInfo.includes('opensuse')) {
+  if (
+    fullInfo.includes('fedora') ||
+    fullInfo.includes('rhel') ||
+    fullInfo.includes('centos') ||
+    fullInfo.includes('red hat') ||
+    fullInfo.includes('suse') ||
+    fullInfo.includes('opensuse')
+  ) {
     return 'rpm';
   }
-  
+
   // For most Linux systems, .deb is more common than .rpm
   // Default to .deb instead of AppImage as it's more user-friendly
   return 'deb';

@@ -63,11 +63,13 @@
             "core:default",
             "core:app:allow-app-show",
             "core:app:allow-app-hide",
+            "core:app:allow-version",
             "dialog:default",
             "updater:default",
             "updater:allow-check",
             "updater:allow-download-and-install",
-            "process:allow-restart"
+            "process:allow-restart",
+            "shell:allow-open"
           ]
         }
       ]

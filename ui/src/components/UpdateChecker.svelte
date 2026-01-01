@@ -8,9 +8,45 @@
   let checking = $state(false);
   let downloading = $state(false);
   let error = $state('');
+  let installMethod = $state<'appimage' | 'deb' | 'rpm' | 'unknown'>('unknown');
+  let downloadUrl = $state('');
 
   // Check if we're running in Tauri
   const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+
+  async function detectInstallMethod() {
+    if (!isTauri) return;
+
+    try {
+      const { platform } = await import('@tauri-apps/plugin-os');
+      const currentPlatform = platform();
+
+      // Windows and macOS use native updater (MSI, NSIS, DMG, etc.)
+      if (currentPlatform === 'windows' || currentPlatform === 'macos') {
+        installMethod = 'appimage'; // Treat as auto-updatable
+        return;
+      }
+
+      // On Linux, check the executable path to determine install method
+      const { invoke } = await import('@tauri-apps/api/core');
+      const exePath = await invoke('plugin:process|current_dir').catch(() => '');
+
+      // Check common installation paths
+      if (exePath.includes('tmp/.mount_') || exePath.includes('AppImage')) {
+        installMethod = 'appimage';
+      } else if (exePath.includes('/usr/') || exePath.includes('/opt/')) {
+        // Installed via package manager - try to detect which one
+        // Default to .deb for Debian-based systems
+        installMethod = 'deb';
+      } else {
+        installMethod = 'unknown';
+      }
+    } catch (e) {
+      console.error('Failed to detect install method:', e);
+      // Default to auto-updatable on error (safer for Windows/macOS)
+      installMethod = 'appimage';
+    }
+  }
 
   async function checkForUpdates() {
     if (!isTauri) return;
@@ -28,20 +64,93 @@
         updateVersion = update.version;
         currentVersion = update.currentVersion;
         console.log(`Update available: ${update.currentVersion} -> ${update.version}`);
+
+        // If not AppImage, prepare download URL for manual download
+        if (installMethod !== 'appimage') {
+          await prepareManualDownload();
+        }
       } else {
         console.log('No updates available');
       }
     } catch (e) {
       console.error('Failed to check for updates:', e);
-      error = `Failed to check for updates: ${e}`;
+
+      // Check if this is the known Linux non-AppImage error
+      const errorMsg = `${e}`;
+      if (
+        errorMsg.includes('updater on this Linux') ||
+        errorMsg.includes('invalid updater binary format')
+      ) {
+        // This means running as .deb/.rpm on Linux - try manual update check
+        console.log('Using manual update check for package installation');
+        await checkManualUpdate();
+      } else {
+        error = `Failed to check for updates: ${e}`;
+      }
     } finally {
       checking = false;
+    }
+  }
+
+  async function checkManualUpdate() {
+    try {
+      // Fetch the latest.json to get version info
+      const response = await fetch(
+        'https://github.com/takitsu21/rustatio/releases/latest/download/latest.json'
+      );
+      const data = await response.json();
+
+      if (data.version) {
+        const { version } = await import('@tauri-apps/api/app');
+        const current = await version();
+
+        if (data.version !== current) {
+          updateAvailable = true;
+          updateVersion = data.version;
+          currentVersion = current;
+          console.log(`Manual update available: ${current} -> ${data.version}`);
+
+          await prepareManualDownload();
+        }
+      }
+    } catch (e) {
+      console.error('Failed to check for manual updates:', e);
+    }
+  }
+
+  async function prepareManualDownload() {
+    const { arch } = await import('@tauri-apps/plugin-os');
+    const currentArch = arch();
+
+    // Detect if system uses rpm or deb
+    if (installMethod === 'unknown') {
+      // Try to detect from common package manager files
+      installMethod = 'deb'; // Default to deb
+    }
+
+    // Build download URL based on install method
+    const archString = currentArch === 'x86_64' ? 'amd64' : currentArch;
+
+    if (installMethod === 'deb') {
+      downloadUrl = `https://github.com/takitsu21/rustatio/releases/download/v${updateVersion}/Rustatio_${updateVersion}_${archString}.deb`;
+    } else if (installMethod === 'rpm') {
+      downloadUrl = `https://github.com/takitsu21/rustatio/releases/download/v${updateVersion}/Rustatio-${updateVersion}-1.x86_64.rpm`;
     }
   }
 
   async function downloadAndInstall() {
     if (!isTauri || !updateAvailable) return;
 
+    // For .deb/.rpm installations, open download URL instead of auto-update
+    if (installMethod === 'deb' || installMethod === 'rpm') {
+      if (downloadUrl) {
+        const { open } = await import('@tauri-apps/plugin-shell');
+        await open(downloadUrl);
+      }
+      return;
+    }
+
+    // For AppImage, use the built-in updater
     downloading = true;
     error = '';
 
@@ -74,8 +183,9 @@
   }
 
   // Check for updates on mount
-  onMount(() => {
+  onMount(async () => {
     if (isTauri) {
+      await detectInstallMethod();
       checkForUpdates();
     }
   });
@@ -122,10 +232,20 @@
 
       <div class="flex gap-2">
         <Button onclick={downloadAndInstall} disabled={downloading} class="flex-1">
-          {downloading ? 'Installing...' : 'Update Now'}
+          {#if installMethod === 'deb' || installMethod === 'rpm'}
+            Download (.{installMethod})
+          {:else}
+            {downloading ? 'Installing...' : 'Update Now'}
+          {/if}
         </Button>
         <Button onclick={dismissUpdate} variant="outline">Later</Button>
       </div>
+
+      {#if installMethod === 'deb' || installMethod === 'rpm'}
+        <p class="text-xs text-muted-foreground">
+          The package will be downloaded. Install it with your package manager.
+        </p>
+      {/if}
     </div>
   </div>
 {/if}
