@@ -948,31 +948,10 @@
 
     <!-- Main Content -->
     <div class="flex-1 flex flex-col overflow-hidden">
-      <!-- Mobile Menu Toggle -->
-      <button
-        class="lg:hidden fixed top-4 left-4 z-30 p-2 bg-primary text-primary-foreground rounded-md shadow-lg"
-        onclick={() => (sidebarOpen = !sidebarOpen)}
-        aria-label="Toggle menu"
-      >
-        <svg
-          width="24"
-          height="24"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-        >
-          <line x1="3" y1="12" x2="21" y2="12"></line>
-          <line x1="3" y1="6" x2="21" y2="6"></line>
-          <line x1="3" y1="18" x2="21" y2="18"></line>
-        </svg>
-      </button>
-
       <!-- Theme Toggle (Absolute Top-Right) -->
       <div class="fixed top-4 right-4 z-30 flex items-center gap-3">
         {#if !isTauri}
-          <div>
+          <div class="hidden sm:block">
             <DownloadButton />
           </div>
         {/if}
@@ -1072,7 +1051,7 @@
       </div>
 
       <!-- Header -->
-      <Header />
+      <Header onToggleSidebar={() => (sidebarOpen = !sidebarOpen)} />
 
       <!-- Full-width border separator -->
       <div class="border-b-2 border-primary/20"></div>

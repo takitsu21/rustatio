@@ -1,6 +1,6 @@
 # 🚀 Rustatio
 
-A modern, cross-platform BitTorrent ratio management tool that emulates popular torrent clients. Built with Rust for blazing-fast performance and Tauri for a native desktop experience.
+A modern, cross-platform BitTorrent ratio management tool that emulates popular torrent clients. Built with Rust for blazingly fast performance and Tauri for a native desktop/mobile experience.
 
 Accurately simulate seeding behavior by emulating **uTorrent**, **qBittorrent**, **Transmission**, or **Deluge** with customizable upload/download rates and tracker interactions.
 
