@@ -1,3 +1,8 @@
+<div align="center">
+  <img src="rustatio-desktop/icons/icon.png" alt="Rustatio Logo" width="128" height="128">
+</div>
+
+
 # 🚀 Rustatio
 
 A modern, cross-platform BitTorrent ratio management tool that emulates popular torrent clients. Built with Rust for blazingly fast performance and Tauri for a native desktop/mobile experience.
