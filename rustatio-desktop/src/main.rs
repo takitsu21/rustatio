@@ -89,6 +89,8 @@ macro_rules! log_and_emit {
 struct FakerInstance {
     faker: RatioFaker,
     torrent_name: String,
+    // Info hash to detect torrent changes
+    torrent_info_hash: [u8; 20],
     // Cumulative stats across all sessions for this instance
     cumulative_uploaded: u64,
     cumulative_downloaded: u64,
@@ -253,6 +255,7 @@ async fn start_faker(
     );
 
     let torrent_name = torrent.name.clone();
+    let torrent_info_hash = torrent.info_hash;
 
     // Set instance context for logging
     rustatio_core::logger::set_instance_context(Some(instance_id));
@@ -261,17 +264,28 @@ async fn start_faker(
     let mut config_with_cumulative = config.clone();
     let fakers = state.fakers.read().await;
     if let Some(existing) = fakers.get(&instance_id) {
-        // Use cumulative stats from previous session
-        config_with_cumulative.initial_uploaded = existing.cumulative_uploaded;
-        config_with_cumulative.initial_downloaded = existing.cumulative_downloaded;
-        log_and_emit!(
-            &app,
-            instance_id,
-            info,
-            "Continuing with cumulative stats: uploaded={} bytes, downloaded={} bytes",
-            existing.cumulative_uploaded,
-            existing.cumulative_downloaded
-        );
+        // Only preserve cumulative stats if it's the SAME torrent (same info_hash)
+        if existing.torrent_info_hash == torrent_info_hash {
+            config_with_cumulative.initial_uploaded = existing.cumulative_uploaded;
+            config_with_cumulative.initial_downloaded = existing.cumulative_downloaded;
+            log_and_emit!(
+                &app,
+                instance_id,
+                info,
+                "Same torrent detected - continuing with cumulative stats: uploaded={} bytes, downloaded={} bytes",
+                existing.cumulative_uploaded,
+                existing.cumulative_downloaded
+            );
+        } else {
+            log_and_emit!(
+                &app,
+                instance_id,
+                info,
+                "Different torrent detected - resetting cumulative stats (was: {}, now: {})",
+                existing.torrent_name,
+                torrent_name
+            );
+        }
     }
     drop(fakers); // Release read lock before acquiring write lock
 
@@ -301,6 +315,7 @@ async fn start_faker(
         FakerInstance {
             faker,
             torrent_name,
+            torrent_info_hash,
             cumulative_uploaded,
             cumulative_downloaded,
         },
