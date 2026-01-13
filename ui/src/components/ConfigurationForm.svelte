@@ -75,6 +75,8 @@
   // Validation constants
   const PORT_MIN = 1024;
   const PORT_MAX = 65535;
+  const COMPLETION_MIN = 0;
+  const COMPLETION_MAX = 100;
 
   // Validate and sanitize port value
   function validatePort(value) {
@@ -84,6 +86,18 @@
     }
     if (parsed > PORT_MAX) {
       return PORT_MAX;
+    }
+    return parsed;
+  }
+
+  // Validate and sanitize completion percent value
+  function validateCompletionPercent(value) {
+    const parsed = parseFloat(value);
+    if (isNaN(parsed) || parsed < COMPLETION_MIN) {
+      return COMPLETION_MIN;
+    }
+    if (parsed > COMPLETION_MAX) {
+      return COMPLETION_MAX;
     }
     return parsed;
   }
@@ -102,6 +116,24 @@
     if (validPort !== localPort) {
       localPort = validPort;
       updateValue('port', validPort);
+    }
+    isEditing = false;
+  }
+
+  // Handle completion percent input
+  function handleCompletionPercentInput() {
+    const parsed = parseFloat(localCompletionPercent);
+    if (!isNaN(parsed)) {
+      updateValue('completionPercent', parsed);
+    }
+  }
+
+  // Handle completion percent blur - validate and fix invalid values
+  function handleCompletionPercentBlur() {
+    const validPercent = validateCompletionPercent(localCompletionPercent);
+    if (validPercent !== localCompletionPercent) {
+      localCompletionPercent = validPercent;
+      updateValue('completionPercent', validPercent);
     }
     isEditing = false;
   }
@@ -231,9 +263,10 @@
           min="0"
           max="100"
           onfocus={handleFocus}
-          onblur={handleBlur}
-          oninput={() => updateValue('completionPercent', localCompletionPercent)}
+          onblur={handleCompletionPercentBlur}
+          oninput={handleCompletionPercentInput}
         />
+        <span class="text-xs text-muted-foreground">Range: 0-100</span>
       </div>
 
       <div class="flex flex-col gap-2">

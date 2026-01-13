@@ -3,6 +3,7 @@
   import { cn } from '$lib/utils.js';
   import Button from '$lib/components/ui/button.svelte';
   import AboutDialog from './AboutDialog.svelte';
+  import NetworkStatus from './NetworkStatus.svelte';
 
   let {
     onStartAll = () => {},
@@ -236,7 +237,9 @@
         </div>
         <div class="flex justify-between text-muted-foreground">
           <span>Running</span>
-          <span class="font-semibold text-foreground">{totalStats().running}/{totalStats().total}</span>
+          <span class="font-semibold text-foreground"
+            >{totalStats().running}/{totalStats().total}</span
+          >
         </div>
       </div>
     {/if}
@@ -324,10 +327,7 @@
       >
         <div class="flex items-center justify-between gap-2">
           <div
-            class={cn(
-              'flex items-center gap-2 min-w-0 flex-1',
-              isCollapsed && 'lg:justify-center'
-            )}
+            class={cn('flex items-center gap-2 min-w-0 flex-1', isCollapsed && 'lg:justify-center')}
           >
             <!-- Status Indicator -->
             <span
@@ -448,8 +448,12 @@
     {/each}
   </div>
 
-  <!-- Footer with About Button -->
-  <div class="border-t border-border p-3">
+  <!-- Footer with Network Status and About Button -->
+  <div class="border-t border-border p-3 space-y-2">
+    <!-- Network Status -->
+    <NetworkStatus {isCollapsed} />
+
+    <!-- About Button -->
     <button
       onclick={() => (showAbout = true)}
       class={cn(

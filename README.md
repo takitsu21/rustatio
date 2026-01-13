@@ -55,9 +55,10 @@ Accurately simulate seeding behavior by emulating **uTorrent**, **qBittorrent**,
 
 ## 🚀 Getting Started
 
-Rustatio is available in **two versions**:
+Rustatio is available in **three versions**:
 
 - **🖥️ Desktop App** - Native application with full features, no CORS limitations
+- **🐳 Docker** - Self-hosted server version, accessible via web UI from any device
 - **🌐 Web App** - Browser-based version, works on any device, deployable to GitHub Pages
 
 ### Desktop App Installation
@@ -95,6 +96,107 @@ AppImage (Universal):
 ```bash
 chmod +x Rustatio_*.AppImage && ./Rustatio_*.AppImage
 ```
+
+### Docker (Self-Hosted)
+
+Run Rustatio on your server, NAS, or any Docker-enabled system. The web UI is accessible from any device on your network.
+
+**Quick Start with Docker Compose**
+
+1. Create a `docker-compose.yml` file:
+
+```yaml
+services:
+  rustatio:
+    image: ghcr.io/takitsu21/rustatio:latest
+    container_name: rustatio
+    environment:
+      - PORT=8080
+      - RUST_LOG=${RUST_LOG:-info}
+    ports:
+      - "${WEBUI_PORT:-8080}:8080"  # Web UI port
+    volumes:
+      - rustatio_data:/data
+    restart: unless-stopped
+
+volumes:
+  rustatio_data:
+```
+
+2. Start the container:
+
+```bash
+docker compose up -d
+```
+
+3. Access the web UI at `http://localhost:8080` (or your server's IP)
+
+**Custom Port Configuration**
+
+To change the web UI port, use the `WEBUI_PORT` environment variable or change the default port.
+
+**Using Docker Run**
+
+```bash
+# Default port 8080
+docker run -d -p 8080:8080 --name rustatio ghcr.io/takitsu21/rustatio:latest
+
+# Custom port 3000
+docker run -d -p 3000:8080 --name rustatio ghcr.io/takitsu21/rustatio:latest
+```
+
+**Running Behind a VPN (Recommended)**
+
+For privacy, route all tracker requests through a VPN using [gluetun](https://github.com/qdm12/gluetun):
+
+```yaml
+services:
+  gluetun:
+    image: qmcgaw/gluetun
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    environment:
+      # Configure your VPN provider - see https://github.com/qdm12/gluetun-wiki
+      - VPN_SERVICE_PROVIDER=protonvpn  # or: mullvad, nordvpn, expressvpn, etc.
+      - VPN_TYPE=wireguard              # or: openvpn
+      # Provider-specific settings (example for ProtonVPN WireGuard)
+      - WIREGUARD_PRIVATE_KEY=${WIREGUARD_PRIVATE_KEY}
+      - SERVER_COUNTRIES=${SERVER_COUNTRIES:-Switzerland}
+    ports:
+      - "${WEBUI_PORT:-8080}:8080"  # Rustatio Web UI
+    restart: unless-stopped
+
+  rustatio:
+    image: ghcr.io/takitsu21/rustatio:latest
+    container_name: rustatio
+    # Run as non-root user (UID/GID 1000 by default, matches Dockerfile)
+    user: "${PUID:-1000}:${PGID:-1000}"
+    environment:
+      - PORT=8080
+      - RUST_LOG=${RUST_LOG:-info}
+    volumes:
+      - rustatio_data:/data
+    restart: unless-stopped
+    network_mode: service:gluetun
+
+volumes:
+  rustatio_data:
+```
+
+To customize the web UI port with VPN:
+
+```bash
+WEBUI_PORT=3000 docker compose up -d
+```
+
+> **Note**: The `ports` are defined on the `gluetun` container since Rustatio uses its network stack. See the [gluetun wiki](https://github.com/qdm12/gluetun-wiki) for VPN provider-specific configuration.
+
+**Docker Features**:
+- ✅ No CORS limitations (server handles tracker requests)
+- ✅ Runs on any Docker-enabled system (Linux, Windows, macOS, NAS)
+- ✅ Multi-architecture support (amd64, arm64)
 
 ### Web App Usage
 

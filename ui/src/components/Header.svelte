@@ -25,7 +25,7 @@
           <line x1="3" y1="18" x2="21" y2="18"></line>
         </svg>
       </button>
-      
+
       <div class="flex flex-col">
         <h1 class="text-2xl font-bold text-foreground tracking-tight">Rustatio</h1>
         <p class="text-xs text-muted-foreground mt-0.5">Modern BitTorrent Ratio Faker</p>

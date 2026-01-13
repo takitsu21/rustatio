@@ -1,0 +1,38 @@
+# Git
+.git
+.gitignore
+
+# Build artifacts
+target/
+ui/node_modules/
+ui/.vite/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Documentation (not needed in image)
+*.md
+!README.md
+
+# GitHub
+.github/
+
+# Development configs
+.env*
+*.local
+
+# Rust
+**/*.rs.bk
+
+# Tauri/Desktop (not needed for server)
+rustatio-desktop/
+
+# WASM (built separately)
+rustatio-wasm/

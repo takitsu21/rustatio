@@ -243,6 +243,51 @@ run = [
 description = "Run CLI (pass arguments after --)"
 run = "cargo run -p rustatio-cli --"
 
+# Server tasks
+[tasks."build:server"]
+description = "Build server for release"
+depends = ["build:web"]
+run = [
+    "echo '🏗️  Building server...'",
+    "cargo build --release -p rustatio-server",
+    "echo '✅ Server build complete! Binary at target/release/rustatio-server'"
+]
+
+[tasks."run:server"]
+description = "Run server in development mode"
+depends = ["build:web"]
+run = [
+    "echo '🚀 Running server...'",
+    "cargo run -p rustatio-server"
+]
+
+# Docker tasks
+[tasks."docker:build"]
+description = "Build Docker image locally"
+depends = ["build:web"]
+run = [
+    "echo '🐳 Building Docker image...'",
+    "docker build -t rustatio:local .",
+    "echo '✅ Docker image built as rustatio:local'"
+]
+
+[tasks."docker:run"]
+description = "Run Docker container locally"
+depends = ["docker:stop"]
+run = [
+    "echo '🐳 Running Docker container...'",
+    "docker run -d -p 8080:8080 --name rustatio rustatio:local",
+    "echo '✅ Container started at http://localhost:8080'"
+]
+
+[tasks."docker:stop"]
+description = "Stop and remove Docker container"
+run = [
+    "docker stop rustatio || true",
+    "docker rm rustatio || true",
+    "echo '✅ Container stopped and removed'"
+]
+
 [tasks.rust-doc]
 description = "Generate Rust documentation"
 run = "cargo doc --open --no-deps"

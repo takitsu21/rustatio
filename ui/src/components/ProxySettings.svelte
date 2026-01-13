@@ -1,10 +1,11 @@
 <script>
   import Card from '$lib/components/ui/card.svelte';
   import Button from '$lib/components/ui/button.svelte';
-  import { getProxyUrl, setProxyUrl } from '$lib/api.js';
+  import { getProxyUrl, setProxyUrl, getRunMode } from '$lib/api.js';
 
-  // Check if running in Tauri (desktop app)
-  const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+  // Only show proxy settings in WASM mode (GitHub Pages)
+  // Desktop (Tauri) and Server modes don't have CORS limitations
+  let runMode = $derived(getRunMode());
 
   let proxyUrl = $state(getProxyUrl());
   let showHelp = $state(false);
@@ -21,7 +22,8 @@
   }
 </script>
 
-{#if !isTauri}
+<!-- Only show in WASM mode (GitHub Pages) - Desktop and Server don't need CORS proxy -->
+{#if runMode === 'wasm'}
   <Card class="p-3 mb-3">
     <div class="flex items-center justify-between mb-3">
       <h2 class="text-primary text-lg font-semibold">🌐 CORS Proxy (Optional)</h2>

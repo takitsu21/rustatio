@@ -1,0 +1,33 @@
+services:
+  gluetun:
+    image: qmcgaw/gluetun
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    environment:
+      # Configure your VPN provider - see https://github.com/qdm12/gluetun-wiki
+      - VPN_SERVICE_PROVIDER=protonvpn  # or: mullvad, nordvpn, expressvpn, etc.
+      - VPN_TYPE=wireguard              # or: openvpn
+      # Provider-specific settings (example for ProtonVPN WireGuard)
+      - WIREGUARD_PRIVATE_KEY=${WIREGUARD_PRIVATE_KEY}
+      - SERVER_COUNTRIES=${SERVER_COUNTRIES:-Switzerland}
+    ports:
+      - "${WEBUI_PORT:-8080}:8080"  # Rustatio Web UI
+    restart: unless-stopped
+
+  rustatio:
+    image: ghcr.io/rustatio/rustatio:latest
+    container_name: rustatio
+    # Run as non-root user (UID/GID 1000 by default, matches Dockerfile)
+    user: "${PUID:-1000}:${PGID:-1000}"
+    environment:
+      - PORT=8080
+      - RUST_LOG=${RUST_LOG:-info}
+    volumes:
+      - rustatio_data:/data
+    restart: unless-stopped
+    network_mode: service:gluetun
+
+volumes:
+  rustatio_data:

@@ -3,7 +3,8 @@
 
   let { isOpen = $bindable(false) } = $props();
 
-  let version = $state('0.0.0');
+  /* global __APP_VERSION__ */
+  let version = $state(__APP_VERSION__);
   const author = 'Dylann Batisse';
   const license = 'MIT';
   const repository = 'https://github.com/takitsu21/rustatio';
@@ -13,16 +14,15 @@
 
   onMount(async () => {
     if (isTauri) {
+      // In Tauri, get the native app version (may differ from web version)
       try {
         const { getVersion } = await import('@tauri-apps/api/app');
         version = await getVersion();
       } catch (e) {
         console.error('Failed to get app version:', e);
       }
-    } else {
-      // For web version, try to get from package.json or use a default
-      version = 'Web';
     }
+    // For web/server mode, __APP_VERSION__ is already set at build time
   });
 
   function close() {

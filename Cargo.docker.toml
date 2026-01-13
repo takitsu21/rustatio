@@ -1,5 +1,8 @@
+# Minimal workspace configuration for Docker builds
+# Only includes crates needed for rustatio-server
+
 [workspace]
-members = ["rustatio-desktop", "rustatio-core", "rustatio-wasm", "rustatio-cli", "rustatio-server"]
+members = ["rustatio-core", "rustatio-server"]
 resolver = "2"
 
 [workspace.package]
@@ -9,13 +12,6 @@ authors = ["Dylann Batisse <dylann.batisse@protonmail.com>"]
 license = "MIT"
 repository = "https://github.com/takitsu21/rustatio"
 
-[profile.dev]
-incremental = true
-opt-level = 0
-
-[profile.dev.package."*"]
-opt-level = 2
-
 [profile.release]
 opt-level = 3
 lto = true
@@ -23,7 +19,3 @@ codegen-units = 1
 strip = false
 panic = "abort"
 incremental = false
-
-# WASM-specific optimizations (smaller binary size)
-[profile.release.package.rustatio-wasm]
-opt-level = "z"
