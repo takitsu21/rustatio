@@ -113,15 +113,27 @@ jobs:
       - name: Install wasm32 target
         run: rustup target add wasm32-unknown-unknown
 
-      - name: Build Web Version (WASM + UI)
+      - name: Build Web Version for GitHub Pages
         env:
           GITHUB_PAGES: true
         run: mise run build:web
 
-      - name: Upload web dist artifact
+      - name: Upload GitHub Pages artifact
         uses: actions/upload-artifact@v4
         with:
-          name: web-dist
+          name: web-dist-pages
+          path: ui/dist
+          retention-days: 1
+
+      - name: Build Web Version for Docker (no base path)
+        run: |
+          rm -rf ui/dist
+          mise run build:web
+
+      - name: Upload Docker artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-dist-docker
           path: ui/dist
           retention-days: 1
 
@@ -175,9 +187,17 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build-docker:
-    name: Build Docker Image
+    name: Build Docker Image (${{ matrix.platform }})
     needs: [prepare-release, build-web-assets]
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -187,14 +207,67 @@ jobs:
       - name: Download web dist artifact
         uses: actions/download-artifact@v4
         with:
-          name: web-dist
+          name: web-dist-docker
           path: ./ui/dist
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Set up QEMU for multi-platform builds
-        uses: docker/setup-qemu-action@v3
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract platform short name
+        id: platform
+        run: |
+          PLATFORM="${{ matrix.platform }}"
+          echo "short=${PLATFORM//\//-}" >> $GITHUB_OUTPUT
+
+      - name: Build and push Docker image by digest
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          platforms: ${{ matrix.platform }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.version=${{ needs.prepare-release.outputs.version }}
+          outputs: type=image,name=ghcr.io/${{ github.repository }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=${{ matrix.platform }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.platform }}
+
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ steps.platform.outputs.short }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge-docker:
+    name: Merge Docker Manifests
+    needs: [prepare-release, build-docker]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digests-*
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
@@ -213,16 +286,15 @@ jobs:
             type=semver,pattern={{major}}.{{minor}},value=${{ needs.prepare-release.outputs.version }}
             type=raw,value=latest
 
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: true
-          platforms: linux/amd64,linux/arm64
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      - name: Create manifest list and push
+        working-directory: /tmp/digests
+        run: |
+          docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf 'ghcr.io/${{ github.repository }}@sha256:%s ' *)
+
+      - name: Inspect image
+        run: |
+          docker buildx imagetools inspect ghcr.io/${{ github.repository }}:${{ needs.prepare-release.outputs.version }}
 
   build-tauri:
     needs: prepare-release
@@ -366,7 +438,7 @@ jobs:
       - name: Download web dist artifact
         uses: actions/download-artifact@v4
         with:
-          name: web-dist
+          name: web-dist-pages
           path: ./ui/dist
 
       - name: Setup Pages
@@ -379,7 +451,7 @@ jobs:
 
   publish-release:
     name: Publish Release
-    needs: [prepare-release, build-tauri, build-cli, build-docker]
+    needs: [prepare-release, build-tauri, build-cli, merge-docker]
     runs-on: ubuntu-latest
     steps:
       - name: Publish release
