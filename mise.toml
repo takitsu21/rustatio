@@ -189,7 +189,7 @@ description = "Check code formatting"
 depends = ["ci:install"]
 run = [
     "echo '🔍 Checking Rust formatting...'",
-    "cargo fmt --check -p rustatio-core -p rustatio-wasm",
+    "cargo fmt --check -p rustatio-core -p rustatio-wasm -p rustatio-cli",
     "echo '🔍 Checking UI formatting...'",
     "cd ui && npm run format:check",
     "echo '✅ Format check complete!'"
@@ -200,7 +200,7 @@ description = "Lint code"
 depends = ["ci:install"]
 run = [
     "echo '🔍 Linting Rust code...'",
-    "cargo clippy -p rustatio-core -p rustatio-wasm --all-targets --all-features -- -D warnings",
+    "cargo clippy -p rustatio-core -p rustatio-wasm -p rustatio-cli --all-targets --all-features -- -D warnings",
     "echo '🔍 Linting UI code...'",
     "cd ui && npm run lint",
     "echo '✅ All linting passed!'"
@@ -211,7 +211,7 @@ description = "Run tests"
 depends = ["ci:install"]
 run = [
     "echo '🧪 Running Rust tests...'",
-    "cargo test -p rustatio-core",
+    "cargo test -p rustatio-core -p rustatio-cli",
     "echo '✅ All tests passed!'"
 ]
 
@@ -229,6 +229,19 @@ run = "cd ui && npm ci"
 description = "Build UI for production"
 depends = ["ui:install", "build:wasm"]
 run = "cd ui && npm run build"
+
+# CLI tasks
+[tasks."build:cli"]
+description = "Build CLI for release"
+run = [
+    "echo '🏗️  Building CLI...'",
+    "cargo build --release -p rustatio-cli",
+    "echo '✅ CLI build complete! Binary at target/release/rustatio'"
+]
+
+[tasks."run:cli"]
+description = "Run CLI (pass arguments after --)"
+run = "cargo run -p rustatio-cli --"
 
 [tasks.rust-doc]
 description = "Generate Rust documentation"

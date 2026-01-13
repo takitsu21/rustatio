@@ -4,7 +4,6 @@ use crate::{log_debug, log_info};
 use reqwest;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use url::Url;
 
 #[derive(Debug, Error)]
 pub enum TrackerError {
@@ -231,14 +230,13 @@ impl TrackerClient {
     fn build_scrape_url(&self, tracker_url: &str, info_hash: &[u8; 20]) -> Result<String> {
         // Convert announce URL to scrape URL
         let scrape_url = tracker_url.replace("/announce", "/scrape");
-        let mut url = Url::parse(&scrape_url)?;
 
-        // URL encode info_hash
+        // URL encode info_hash (same format as announce)
         let info_hash_encoded: String = info_hash.iter().map(|b| format!("%{:02X}", b)).collect();
 
-        url.query_pairs_mut().append_pair("info_hash", &info_hash_encoded);
-
-        Ok(url.to_string())
+        // Build URL with query parameter
+        let separator = if scrape_url.contains('?') { '&' } else { '?' };
+        Ok(format!("{}{}info_hash={}", scrape_url, separator, info_hash_encoded))
     }
 
     /// Parse announce response from bencoded data

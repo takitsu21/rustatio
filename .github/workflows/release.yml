@@ -124,6 +124,55 @@ jobs:
           path: ui/dist
           retention-days: 1
 
+  build-cli:
+    name: Build CLI
+    needs: prepare-release
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare-release.outputs.tag }}
+
+      - name: Setup mold linker
+        uses: rui314/setup-mold@v1
+
+      - name: Install mise
+        uses: jdx/mise-action@v2
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          cache: true
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-x86_64-unknown-linux-gnu-cargo-cli-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install Rust target
+        run: rustup target add x86_64-unknown-linux-gnu
+
+      - name: Update version in Cargo.toml
+        run: |
+          VERSION="${{ needs.prepare-release.outputs.version }}"
+          sed -i "s/^version = \".*\"/version = \"$VERSION\"/" Cargo.toml
+
+      - name: Build CLI
+        run: cargo build --release --target x86_64-unknown-linux-gnu -p rustatio-cli
+
+      - name: Upload CLI binary to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare-release.outputs.tag }}
+          files: target/x86_64-unknown-linux-gnu/release/rustatio
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   build-tauri:
     needs: prepare-release
     strategy:
@@ -279,7 +328,7 @@ jobs:
 
   publish-release:
     name: Publish Release
-    needs: [prepare-release, build-tauri]
+    needs: [prepare-release, build-tauri, build-cli]
     runs-on: ubuntu-latest
     steps:
       - name: Publish release

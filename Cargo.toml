@@ -1,5 +1,5 @@
 [workspace]
-members = ["rustatio-desktop", "rustatio-core", "rustatio-wasm"]
+members = ["rustatio-desktop", "rustatio-core", "rustatio-wasm", "rustatio-cli"]
 resolver = "2"
 
 [workspace.package]

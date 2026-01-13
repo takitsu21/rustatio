@@ -216,6 +216,7 @@ pub struct FakerStats {
     pub last_announce: Option<Instant>,
     #[serde(skip)]
     pub next_announce: Option<Instant>,
+    pub announce_count: u32,
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -325,6 +326,7 @@ impl RatioFaker {
             // Internal
             last_announce: None,
             next_announce: None,
+            announce_count: 0,
         };
 
         #[cfg(not(target_arch = "wasm32"))]
@@ -387,6 +389,7 @@ impl RatioFaker {
         stats.leechers = response.incomplete;
         stats.last_announce = Some(Instant::now());
         stats.next_announce = Some(Instant::now() + self.announce_interval);
+        stats.announce_count += 1;
 
         log_info!(
             "Started successfully. Seeders: {}, Leechers: {}, Interval: {}s",
@@ -409,7 +412,9 @@ impl RatioFaker {
         *write_lock!(self.state) = FakerState::Stopped;
 
         // CRITICAL: Also update the state in stats so frontend can detect the stop
-        write_lock!(self.stats).state = FakerState::Stopped;
+        let mut stats = write_lock!(self.stats);
+        stats.state = FakerState::Stopped;
+        stats.announce_count += 1;
 
         Ok(())
     }
@@ -555,6 +560,7 @@ impl RatioFaker {
         stats.leechers = response.incomplete;
         stats.last_announce = Some(Instant::now());
         stats.next_announce = Some(Instant::now() + self.announce_interval);
+        stats.announce_count += 1;
 
         log_info!(
             "Periodic announce complete. Seeders: {}, Leechers: {}",
@@ -579,6 +585,7 @@ impl RatioFaker {
         stats.state = FakerState::Completed; // CRITICAL: Update state in stats too
         stats.seeders = response.complete;
         stats.leechers = response.incomplete;
+        stats.announce_count += 1;
 
         Ok(())
     }
