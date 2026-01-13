@@ -44,7 +44,6 @@
 
   // Track if we're currently editing to prevent external updates from interfering
   let isEditing = $state(false);
-  let editTimeout;
 
   // Update local state when props change (only when not actively editing)
   $effect(() => {
@@ -66,19 +65,54 @@
     }
   });
 
-  // Helper to call onUpdate and manage editing state
+  // Helper to call onUpdate
   function updateValue(key, value) {
-    isEditing = true;
-    clearTimeout(editTimeout);
-
     if (onUpdate) {
       onUpdate({ [key]: value });
     }
+  }
 
-    // Clear editing flag after a short delay
-    editTimeout = setTimeout(() => {
-      isEditing = false;
-    }, 100);
+  // Validation constants
+  const PORT_MIN = 1024;
+  const PORT_MAX = 65535;
+
+  // Validate and sanitize port value
+  function validatePort(value) {
+    const parsed = parseInt(value, 10);
+    if (isNaN(parsed) || parsed < PORT_MIN) {
+      return PORT_MIN;
+    }
+    if (parsed > PORT_MAX) {
+      return PORT_MAX;
+    }
+    return parsed;
+  }
+
+  // Handle port input - only update if it's a valid number
+  function handlePortInput() {
+    const parsed = parseInt(localPort, 10);
+    if (!isNaN(parsed)) {
+      updateValue('port', parsed);
+    }
+  }
+
+  // Handle port blur - validate and fix invalid values
+  function handlePortBlur() {
+    const validPort = validatePort(localPort);
+    if (validPort !== localPort) {
+      localPort = validPort;
+      updateValue('port', validPort);
+    }
+    isEditing = false;
+  }
+
+  // Focus/blur handlers to track editing state
+  function handleFocus() {
+    isEditing = true;
+  }
+
+  function handleBlur() {
+    isEditing = false;
   }
 </script>
 
@@ -130,8 +164,11 @@
           disabled={isRunning}
           min="1024"
           max="65535"
-          oninput={() => updateValue('port', localPort)}
+          onfocus={handleFocus}
+          onblur={handlePortBlur}
+          oninput={handlePortInput}
         />
+        <span class="text-xs text-muted-foreground">Range: 1024-65535</span>
       </div>
     </div>
   </div>
@@ -153,6 +190,8 @@
           disabled={isRunning}
           min="0"
           step="0.1"
+          onfocus={handleFocus}
+          onblur={handleBlur}
           oninput={() => updateValue('uploadRate', localUploadRate)}
         />
       </div>
@@ -166,6 +205,8 @@
           disabled={isRunning}
           min="0"
           step="0.1"
+          onfocus={handleFocus}
+          onblur={handleBlur}
           oninput={() => updateValue('downloadRate', localDownloadRate)}
         />
       </div>
@@ -189,6 +230,8 @@
           disabled={isRunning}
           min="0"
           max="100"
+          onfocus={handleFocus}
+          onblur={handleBlur}
           oninput={() => updateValue('completionPercent', localCompletionPercent)}
         />
       </div>
@@ -201,6 +244,8 @@
           bind:value={localInitialUploaded}
           disabled={isRunning}
           min="0"
+          onfocus={handleFocus}
+          onblur={handleBlur}
           oninput={() => updateValue('initialUploaded', localInitialUploaded)}
         />
       </div>
@@ -215,6 +260,8 @@
           min="1"
           max="300"
           step="1"
+          onfocus={handleFocus}
+          onblur={handleBlur}
           oninput={() => updateValue('updateIntervalSeconds', localUpdateIntervalSeconds)}
         />
       </div>
@@ -256,6 +303,8 @@
           max="50"
           step="1"
           class="w-full h-2 rounded bg-primary appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-6 [&::-webkit-slider-thumb]:h-6 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:border-4 [&::-webkit-slider-thumb]:border-primary [&::-webkit-slider-thumb]:shadow-lg [&::-webkit-slider-thumb]:cursor-pointer [&::-webkit-slider-thumb]:transition-transform [&::-webkit-slider-thumb]:hover:scale-110 [&::-moz-range-thumb]:w-6 [&::-moz-range-thumb]:h-6 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-white [&::-moz-range-thumb]:border-4 [&::-moz-range-thumb]:border-primary [&::-moz-range-thumb]:shadow-lg [&::-moz-range-thumb]:cursor-pointer [&::-moz-range-thumb]:transition-transform [&::-moz-range-thumb]:hover:scale-110 [&::-moz-range-track]:bg-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+          onfocus={handleFocus}
+          onblur={handleBlur}
           oninput={() => updateValue('randomRangePercent', localRandomRangePercent)}
         />
         <div class="flex justify-between mt-2">
@@ -304,6 +353,8 @@
             min="0"
             step="0.1"
             class="flex-1 max-w-[100px] h-9"
+            onfocus={handleFocus}
+            onblur={handleBlur}
             oninput={() => updateValue('targetUploadRate', localTargetUploadRate)}
           />
           <span class="text-xs text-muted-foreground font-semibold min-w-[40px]">KB/s</span>
@@ -322,6 +373,8 @@
             min="0"
             step="0.1"
             class="flex-1 max-w-[100px] h-9"
+            onfocus={handleFocus}
+            onblur={handleBlur}
             oninput={() => updateValue('targetDownloadRate', localTargetDownloadRate)}
           />
           <span class="text-xs text-muted-foreground font-semibold min-w-[40px]">KB/s</span>
@@ -341,6 +394,8 @@
             max="48"
             step="0.1"
             class="flex-1 max-w-[100px] h-9"
+            onfocus={handleFocus}
+            onblur={handleBlur}
             oninput={() => updateValue('progressiveDurationHours', localProgressiveDurationHours)}
           />
           <span class="text-xs text-muted-foreground font-semibold min-w-[40px]">hrs</span>

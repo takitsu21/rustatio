@@ -24,10 +24,104 @@
     $instances.some(inst => inst.torrent && !inst.isRunning)
   );
 
+  // Total stats across all instances
+  let totalStats = $derived(() => {
+    let totalUploaded = 0;
+    let totalDownloaded = 0;
+    let runningCount = 0;
+
+    for (const inst of $instances) {
+      if (inst.stats) {
+        totalUploaded += inst.stats.uploaded || 0;
+        totalDownloaded += inst.stats.downloaded || 0;
+      }
+      if (inst.isRunning) runningCount++;
+    }
+
+    return {
+      uploaded: totalUploaded,
+      downloaded: totalDownloaded,
+      running: runningCount,
+      total: $instances.length,
+    };
+  });
+
+  // Format bytes to human readable
+  function formatBytes(bytes) {
+    if (!bytes || bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+  }
+
+  // Format bytes compact (for sidebar)
+  function formatBytesCompact(bytes) {
+    if (!bytes || bytes === 0) return '0';
+    const k = 1024;
+    const sizes = ['B', 'K', 'M', 'G', 'T'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + sizes[i];
+  }
+
+  // Get progress percentage for stop conditions
+  function getStopConditionProgress(instance) {
+    if (!instance.stats) return null;
+
+    const stats = instance.stats;
+    let maxProgress = 0;
+    let activeCondition = null;
+
+    // Check ratio progress
+    if (instance.stopAtRatioEnabled && instance.stopAtRatio > 0) {
+      const progress = Math.min(100, (stats.session_ratio / instance.stopAtRatio) * 100);
+      if (progress > maxProgress) {
+        maxProgress = progress;
+        activeCondition = 'ratio';
+      }
+    }
+
+    // Check uploaded progress
+    if (instance.stopAtUploadedEnabled && instance.stopAtUploadedGB > 0) {
+      const targetBytes = instance.stopAtUploadedGB * 1024 * 1024 * 1024;
+      const progress = Math.min(100, (stats.session_uploaded / targetBytes) * 100);
+      if (progress > maxProgress) {
+        maxProgress = progress;
+        activeCondition = 'uploaded';
+      }
+    }
+
+    // Check downloaded progress
+    if (instance.stopAtDownloadedEnabled && instance.stopAtDownloadedGB > 0) {
+      const targetBytes = instance.stopAtDownloadedGB * 1024 * 1024 * 1024;
+      const progress = Math.min(100, (stats.session_downloaded / targetBytes) * 100);
+      if (progress > maxProgress) {
+        maxProgress = progress;
+        activeCondition = 'downloaded';
+      }
+    }
+
+    // Check seed time progress
+    if (instance.stopAtSeedTimeEnabled && instance.stopAtSeedTimeHours > 0) {
+      const targetSeconds = instance.stopAtSeedTimeHours * 3600;
+      const elapsedSeconds = stats.elapsed_time?.secs || 0;
+      const progress = Math.min(100, (elapsedSeconds / targetSeconds) * 100);
+      if (progress > maxProgress) {
+        maxProgress = progress;
+        activeCondition = 'time';
+      }
+    }
+
+    if (activeCondition) {
+      return { progress: maxProgress, condition: activeCondition };
+    }
+    return null;
+  }
+
   function getInstanceLabel(instance) {
     if (instance.torrent) {
       const name = instance.torrent.name;
-      return name.length > 25 ? name.substring(0, 25) + '...' : name;
+      return name.length > 20 ? name.substring(0, 20) + '...' : name;
     }
     return `Instance ${instance.id}`;
   }
@@ -129,6 +223,24 @@
       </button>
     </div>
 
+    <!-- Total Stats Summary -->
+    {#if !isCollapsed && (totalStats().uploaded > 0 || totalStats().downloaded > 0)}
+      <div class="mb-3 p-2 bg-muted/50 rounded-lg text-xs">
+        <div class="flex justify-between text-muted-foreground mb-1">
+          <span>Total Uploaded</span>
+          <span class="font-semibold text-green-500">↑ {formatBytes(totalStats().uploaded)}</span>
+        </div>
+        <div class="flex justify-between text-muted-foreground mb-1">
+          <span>Total Downloaded</span>
+          <span class="font-semibold text-red-500">↓ {formatBytes(totalStats().downloaded)}</span>
+        </div>
+        <div class="flex justify-between text-muted-foreground">
+          <span>Running</span>
+          <span class="font-semibold text-foreground">{totalStats().running}/{totalStats().total}</span>
+        </div>
+      </div>
+    {/if}
+
     <!-- Bulk Actions -->
     {#if hasMultipleInstancesWithTorrents}
       <div class={cn('flex gap-2 mb-3', isCollapsed && 'lg:flex-col')}>
@@ -196,23 +308,25 @@
     {#each $instances as instance (instance.id)}
       {@const status = getInstanceStatus(instance)}
       {@const isActive = $activeInstanceId === instance.id}
+      {@const stopProgress = getStopConditionProgress(instance)}
 
       <div
         class={cn(
-          'w-full px-4 py-3 border-l-4 transition-all flex items-center gap-2',
-          isActive ? 'bg-muted border-l-primary' : 'border-l-transparent',
-          isCollapsed ? 'lg:px-2 lg:justify-center' : 'justify-between'
+          'w-full px-4 py-3 border-l-4 transition-all text-left cursor-pointer',
+          isActive ? 'bg-muted border-l-primary' : 'border-l-transparent hover:bg-muted/50',
+          isCollapsed ? 'lg:px-2' : ''
         )}
+        onclick={() => handleSelectInstance(instance.id)}
+        onkeydown={e => e.key === 'Enter' && handleSelectInstance(instance.id)}
+        role="button"
+        tabindex="0"
+        title={instance.torrent ? instance.torrent.name : `Instance ${instance.id}`}
       >
-        <button
-          class="flex items-center gap-2 flex-1 min-w-0 text-left bg-transparent border-0 p-0 cursor-pointer hover:opacity-80 transition-opacity overflow-hidden"
-          onclick={() => handleSelectInstance(instance.id)}
-          title={instance.torrent ? instance.torrent.name : `Instance ${instance.id}`}
-        >
+        <div class="flex items-center justify-between gap-2">
           <div
             class={cn(
               'flex items-center gap-2 min-w-0 flex-1',
-              isCollapsed && 'lg:flex-none lg:flex-initial'
+              isCollapsed && 'lg:justify-center'
             )}
           >
             <!-- Status Indicator -->
@@ -251,30 +365,84 @@
               {getInstanceLabel(instance)}
             </span>
           </div>
-        </button>
 
-        <!-- Close Button -->
-        {#if $instances.length > 1 && !isCollapsed}
-          <button
-            class="flex-shrink-0 p-1 rounded hover:bg-destructive/20 group bg-transparent border-0 cursor-pointer"
-            onclick={e => handleRemoveInstance(e, instance.id)}
-            title="Close instance"
-            aria-label="Close instance"
-          >
-            <svg
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2.5"
-              stroke-linecap="round"
-              class="text-muted-foreground group-hover:text-destructive transition-colors"
+          <!-- Ratio Badge (when running or has stats) -->
+          {#if !isCollapsed && instance.stats && instance.stats.ratio > 0}
+            <span
+              class={cn(
+                'flex-shrink-0 text-xs font-bold px-1.5 py-0.5 rounded',
+                instance.stats.ratio >= 1
+                  ? 'bg-green-500/20 text-green-500'
+                  : 'bg-amber-500/20 text-amber-500'
+              )}
+              title="Current ratio"
             >
-              <line x1="18" y1="6" x2="6" y2="18"></line>
-              <line x1="6" y1="6" x2="18" y2="18"></line>
-            </svg>
-          </button>
+              {instance.stats.ratio.toFixed(2)}x
+            </span>
+          {/if}
+
+          <!-- Close Button -->
+          {#if $instances.length > 1 && !isCollapsed}
+            <button
+              class="flex-shrink-0 p-1 rounded hover:bg-destructive/20 group bg-transparent border-0 cursor-pointer"
+              onclick={e => handleRemoveInstance(e, instance.id)}
+              title="Close instance"
+              aria-label="Close instance"
+            >
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.5"
+                stroke-linecap="round"
+                class="text-muted-foreground group-hover:text-destructive transition-colors"
+              >
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+          {/if}
+        </div>
+
+        <!-- Stats Row (when not collapsed and has stats) -->
+        {#if !isCollapsed && instance.stats && instance.isRunning}
+          <div class="mt-1.5 flex items-center gap-3 text-xs text-muted-foreground pl-5">
+            <span class="text-green-500" title="Session uploaded">
+              ↑ {formatBytesCompact(instance.stats.session_uploaded)}
+            </span>
+            <span class="text-red-500" title="Session downloaded">
+              ↓ {formatBytesCompact(instance.stats.session_downloaded)}
+            </span>
+            {#if instance.stats.current_upload_rate > 0}
+              <span class="text-muted-foreground/70" title="Upload speed">
+                {instance.stats.current_upload_rate.toFixed(1)} KB/s
+              </span>
+            {/if}
+          </div>
+        {/if}
+
+        <!-- Progress Bar (when stop condition is active) -->
+        {#if !isCollapsed && stopProgress && instance.isRunning}
+          <div class="mt-2 pl-5">
+            <div class="h-1 bg-muted rounded-full overflow-hidden">
+              <div
+                class={cn(
+                  'h-full rounded-full transition-all duration-300',
+                  stopProgress.progress >= 100
+                    ? 'bg-green-500'
+                    : stopProgress.progress >= 75
+                      ? 'bg-amber-500'
+                      : 'bg-primary'
+                )}
+                style="width: {Math.min(100, stopProgress.progress)}%"
+              ></div>
+            </div>
+            <div class="mt-0.5 text-[10px] text-muted-foreground/70">
+              {stopProgress.progress.toFixed(0)}% to target
+            </div>
+          </div>
         {/if}
       </div>
     {/each}

@@ -168,12 +168,7 @@
 </script>
 
 <div class="relative">
-  <Button
-    onclick={handleDownload}
-    variant="default"
-    size="sm"
-    class="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white shadow-lg shadow-blue-500/30 border-0"
-  >
+  <Button onclick={handleDownload} variant="default" size="sm">
     {#snippet children()}
       <!-- OS Icon -->
       <img

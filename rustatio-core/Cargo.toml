@@ -40,5 +40,6 @@ percent-encoding = "2.3"
 
 [features]
 default = ["native"]
-native = ["dep:tokio", "dep:tauri", "dep:reqwest"]
+native = ["dep:tokio", "dep:reqwest"]
+desktop = ["native", "dep:tauri"]
 wasm = ["dep:wasm-bindgen", "dep:wasm-bindgen-futures", "dep:js-sys", "dep:web-sys", "dep:reqwest"]

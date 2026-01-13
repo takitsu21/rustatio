@@ -175,7 +175,7 @@ pub struct FakerStats {
     // === CUMULATIVE STATS (lifetime totals for display) ===
     pub uploaded: u64,   // Total uploaded across all sessions
     pub downloaded: u64, // Total downloaded across all sessions
-    pub ratio: f64,      // Cumulative ratio: uploaded / downloaded
+    pub ratio: f64,      // Cumulative ratio: uploaded / torrent_size
 
     // === TORRENT STATE ===
     pub left: u64,     // Bytes left to download for THIS torrent
@@ -698,11 +698,7 @@ impl RatioFaker {
     /// Update derived statistics (ratio, elapsed time, average rates, progress)
     fn update_derived_stats(&self, stats: &mut FakerStats, now: Instant) {
         // Cumulative ratio (for display in Total Stats)
-        // Use uploaded/downloaded if downloaded > 0, otherwise use uploaded/torrent_size
-        let current_ratio = if stats.downloaded > 0 {
-            stats.uploaded as f64 / stats.downloaded as f64
-        } else if self.torrent.total_size > 0 {
-            // For seeders with 100% completion, use torrent size as base
+        let current_ratio = if self.torrent.total_size > 0 {
             stats.uploaded as f64 / self.torrent.total_size as f64
         } else {
             0.0

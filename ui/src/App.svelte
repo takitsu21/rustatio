@@ -19,7 +19,6 @@
   import TorrentSelector from './components/TorrentSelector.svelte';
   import ConfigurationForm from './components/ConfigurationForm.svelte';
   import StopConditions from './components/StopConditions.svelte';
-  import Controls from './components/Controls.svelte';
   import ProgressBars from './components/ProgressBars.svelte';
   import SessionStats from './components/SessionStats.svelte';
   import TotalStats from './components/TotalStats.svelte';
@@ -86,6 +85,9 @@
   // Store cleanup functions
   let unsubActiveInstance = null;
   let unsubSessionSave = null;
+
+  // Track previous client to detect changes
+  let previousClient = null;
 
   // Global error handler
   if (typeof window !== 'undefined') {
@@ -158,12 +160,21 @@
         }
       }
 
-      // Update port when client changes (only if not running)
-      if (inst.selectedClient && !inst.isRunning && clientDefaultPorts[inst.selectedClient]) {
+      // Update port when client changes (only if not running and client actually changed)
+      if (
+        inst.selectedClient &&
+        !inst.isRunning &&
+        clientDefaultPorts[inst.selectedClient] &&
+        previousClient !== null &&
+        previousClient !== inst.selectedClient
+      ) {
         instanceActions.updateInstance(inst.id, {
           port: clientDefaultPorts[inst.selectedClient],
         });
       }
+
+      // Track current client for next comparison
+      previousClient = inst.selectedClient;
     });
 
     // Config save is handled by saveSession below, so we don't need a separate subscription
@@ -1154,18 +1165,6 @@
               {/if}
             </div>
           {/if}
-
-          <!-- Controls -->
-          <Controls
-            isRunning={$activeInstance?.isRunning || false}
-            isPaused={$activeInstance?.isPaused || false}
-            nextUpdateIn={$activeInstance?.nextUpdateIn || 0}
-            {startFaking}
-            {stopFaking}
-            {pauseFaking}
-            {resumeFaking}
-            {manualUpdate}
-          />
 
           <!-- Stats -->
           {#if $activeInstance?.stats}

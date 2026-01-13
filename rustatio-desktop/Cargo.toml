@@ -11,7 +11,7 @@ name = "rustatio"
 path = "src/main.rs"
 
 [dependencies]
-rustatio-core = { path = "../rustatio-core", features = ["native"] }
+rustatio-core = { path = "../rustatio-core", features = ["desktop"] }
 
 tauri = { version = "2.9", features = [] }
 tauri-plugin-dialog = "2.0"

@@ -1,5 +1,5 @@
 // Platform-agnostic logger module
-// Native (desktop) uses Tauri Emitter, WASM uses web_sys console
+// Desktop uses Tauri Emitter, CLI uses standard logging, WASM uses web_sys console
 
 use std::cell::RefCell;
 
@@ -26,7 +26,7 @@ fn get_instance_prefix() -> String {
     })
 }
 
-#[cfg(all(not(target_arch = "wasm32"), feature = "native"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "desktop"))]
 pub mod native {
     use serde::Serialize;
     use std::sync::OnceLock;
@@ -100,6 +100,39 @@ pub mod native {
         let prefixed = format!("{}{}", super::get_instance_prefix(), message);
         log::debug!("{}", prefixed);
         emit_log("debug", prefixed);
+    }
+}
+
+// CLI logger - native without desktop (no Tauri)
+#[cfg(all(not(target_arch = "wasm32"), feature = "native", not(feature = "desktop")))]
+pub mod native {
+    /// No-op for CLI (no app handle needed)
+    pub fn init_logger() {
+        // No initialization needed for CLI
+    }
+
+    /// Log at info level
+    pub fn info(message: String) {
+        let prefixed = format!("{}{}", super::get_instance_prefix(), message);
+        log::info!("{}", prefixed);
+    }
+
+    /// Log at warn level
+    pub fn warn(message: String) {
+        let prefixed = format!("{}{}", super::get_instance_prefix(), message);
+        log::warn!("{}", prefixed);
+    }
+
+    /// Log at error level
+    pub fn error(message: String) {
+        let prefixed = format!("{}{}", super::get_instance_prefix(), message);
+        log::error!("{}", prefixed);
+    }
+
+    /// Log at debug level
+    pub fn debug(message: String) {
+        let prefixed = format!("{}{}", super::get_instance_prefix(), message);
+        log::debug!("{}", prefixed);
     }
 }
 
