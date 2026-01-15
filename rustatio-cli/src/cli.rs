@@ -76,6 +76,10 @@ pub enum Commands {
         #[arg(long, value_name = "HOURS")]
         stop_time: Option<f64>,
 
+        /// Stop when there are no leechers
+        #[arg(long)]
+        stop_when_no_leechers: bool,
+
         /// Disable rate randomization
         #[arg(long)]
         no_randomize: bool,

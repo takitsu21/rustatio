@@ -1,4 +1,5 @@
 mod api;
+mod log_layer;
 mod state;
 mod static_files;
 
@@ -7,26 +8,33 @@ use std::net::SocketAddr;
 use tokio::signal;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use tracing_subscriber::layer::SubscriberExt;
 
+use crate::log_layer::BroadcastLayer;
 use crate::state::AppState;
 
 #[tokio::main]
 async fn main() {
-    // Initialize tracing
-    tracing_subscriber::registry()
-        .with(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "rustatio_server=info,tower_http=info".into()),
-        )
-        .with(tracing_subscriber::fmt::layer())
-        .init();
+    // Bridge log crate to tracing FIRST (before any subscriber)
+    tracing_log::LogTracer::init().expect("Failed to set logger");
+
+    // Create shared application state (we need the log sender for the tracing layer)
+    let state = AppState::new();
+
+    // Initialize tracing subscriber with EnvFilter and broadcast layer
+    // Default: show info for server, trace for rustatio_core/log (for UI filtering)
+    // The "log" target captures all log crate events bridged via tracing-log
+    let default_filter = "rustatio_server=info,rustatio_core=trace,log=trace,tower_http=info,hyper=info,reqwest=info";
+    let subscriber = tracing_subscriber::registry()
+        .with(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| default_filter.into()))
+        .with(BroadcastLayer::new(state.log_sender.clone()))
+        .with(tracing_subscriber::fmt::layer());
+
+    // Set as global default
+    tracing::subscriber::set_global_default(subscriber).expect("Failed to set subscriber");
 
     // Get port from environment or use default
     let port: u16 = std::env::var("PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(8080);
-
-    // Create shared application state
-    let state = AppState::new();
 
     // Build CORS layer
     let cors = CorsLayer::new().allow_origin(Any).allow_methods(Any).allow_headers(Any);

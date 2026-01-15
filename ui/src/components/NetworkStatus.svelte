@@ -132,7 +132,8 @@
           </svg>
           <div class={cn('flex-1 min-w-0', isCollapsed && 'lg:hidden')}>
             <div class="text-xs font-medium text-green-500 truncate">
-              {status.vpn_provider || 'VPN Active'} <span class="text-muted-foreground font-normal">(Experimental)</span>
+              {status.vpn_provider || 'VPN Active'}
+              <span class="text-muted-foreground font-normal">(Experimental)</span>
             </div>
           </div>
         {:else}
@@ -151,7 +152,9 @@
             <path d="M7 11V7a5 5 0 0 1 9.9-1"></path>
           </svg>
           <div class={cn('flex-1 min-w-0', isCollapsed && 'lg:hidden')}>
-            <div class="text-xs font-medium text-amber-500">No VPN <span class="text-muted-foreground font-normal">(Experimental)</span></div>
+            <div class="text-xs font-medium text-amber-500">
+              No VPN <span class="text-muted-foreground font-normal">(Experimental)</span>
+            </div>
           </div>
         {/if}
 

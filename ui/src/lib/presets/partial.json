@@ -1,0 +1,29 @@
+{
+  "id": "partial",
+  "name": "Partial Download",
+  "description": "Simulates downloading while also uploading",
+  "icon": "📥",
+  "recommended": false,
+  "settings": {
+    "uploadRate": 300,
+    "downloadRate": 100,
+    "randomizeRates": true,
+    "randomRangePercent": 20,
+    "progressiveRatesEnabled": false,
+    "updateIntervalSeconds": 5,
+    "completionPercent": 85,
+    "selectedClient": "deluge",
+    "stopAtRatioEnabled": false,
+    "stopAtUploadedEnabled": false,
+    "stopAtDownloadedEnabled": true,
+    "stopAtDownloadedGB": 5,
+    "stopAtSeedTimeEnabled": false,
+    "stopWhenNoLeechers": false
+  },
+  "tips": [
+    "3:1 upload to download ratio builds ratio while \"downloading\"",
+    "Set completion to 85% to simulate partial download",
+    "Stops after 5 GB downloaded - simulates completing a download",
+    "Upload should always exceed download to gain ratio"
+  ]
+}

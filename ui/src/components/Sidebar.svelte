@@ -3,6 +3,7 @@
   import { cn } from '$lib/utils.js';
   import Button from '$lib/components/ui/button.svelte';
   import AboutDialog from './AboutDialog.svelte';
+  import SettingsDialog from './SettingsDialog.svelte';
   import NetworkStatus from './NetworkStatus.svelte';
 
   let {
@@ -13,6 +14,7 @@
   } = $props();
 
   let showAbout = $state(false);
+  let showSettings = $state(false);
 
   // Derived state
   let hasMultipleInstancesWithTorrents = $derived(
@@ -453,6 +455,40 @@
     <!-- Network Status -->
     <NetworkStatus {isCollapsed} />
 
+    <!-- Settings Button -->
+    <button
+      onclick={() => (showSettings = true)}
+      class={cn(
+        'w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-muted transition-colors text-sm font-medium text-muted-foreground hover:text-foreground',
+        isCollapsed && 'lg:justify-center lg:px-2'
+      )}
+      title="Settings"
+    >
+      <svg
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        class="flex-shrink-0"
+      >
+        <circle cx="12" cy="12" r="3"></circle>
+        <path
+          d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"
+        ></path>
+      </svg>
+      <span
+        class={cn(
+          'transition-opacity duration-200',
+          isCollapsed && 'lg:hidden lg:w-0 lg:opacity-0'
+        )}
+      >
+        Settings
+      </span>
+    </button>
+
     <!-- About Button -->
     <button
       onclick={() => (showAbout = true)}
@@ -490,6 +526,9 @@
 
 <!-- About Dialog -->
 <AboutDialog bind:isOpen={showAbout} />
+
+<!-- Settings Dialog -->
+<SettingsDialog bind:isOpen={showSettings} />
 
 <style>
   @keyframes pulse-slow {

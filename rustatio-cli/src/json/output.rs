@@ -224,6 +224,7 @@ pub enum StopReason {
     TargetUploaded,
     TargetDownloaded,
     TargetSeedTime,
+    NoLeechers,
     Error,
 }
 

@@ -180,6 +180,9 @@ services:
       - rustatio_data:/data
     restart: unless-stopped
     network_mode: service:gluetun
+    depends_on:
+      gluetun:
+        condition: service_healthy
 
 volumes:
   rustatio_data:

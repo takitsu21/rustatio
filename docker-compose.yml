@@ -17,7 +17,7 @@ services:
     restart: unless-stopped
 
   rustatio:
-    image: ghcr.io/rustatio/rustatio:latest
+    image: ghcr.io/takitsu21/rustatio:latest
     container_name: rustatio
     # Run as non-root user (UID/GID 1000 by default, matches Dockerfile)
     user: "${PUID:-1000}:${PGID:-1000}"
@@ -28,6 +28,9 @@ services:
       - rustatio_data:/data
     restart: unless-stopped
     network_mode: service:gluetun
+    depends_on:
+      gluetun:
+        condition: service_healthy
 
 volumes:
   rustatio_data:

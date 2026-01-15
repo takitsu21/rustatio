@@ -56,6 +56,8 @@ function createDefaultInstance(id, defaults = {}) {
       defaults.stopAtSeedTimeEnabled !== undefined ? defaults.stopAtSeedTimeEnabled : false,
     stopAtSeedTimeHours:
       defaults.stopAtSeedTimeHours !== undefined ? defaults.stopAtSeedTimeHours : 24,
+    stopWhenNoLeechers:
+      defaults.stopWhenNoLeechers !== undefined ? defaults.stopWhenNoLeechers : false,
 
     // Progressive rates
     progressiveRatesEnabled:
@@ -112,6 +114,7 @@ async function saveSession(instances, activeId) {
         stop_at_downloaded_gb: parseFloat(inst.stopAtDownloadedGB),
         stop_at_seed_time_enabled: inst.stopAtSeedTimeEnabled,
         stop_at_seed_time_hours: parseFloat(inst.stopAtSeedTimeHours),
+        stop_when_no_leechers: inst.stopWhenNoLeechers,
         progressive_rates_enabled: inst.progressiveRatesEnabled,
         target_upload_rate: parseFloat(inst.targetUploadRate),
         target_download_rate: parseFloat(inst.targetDownloadRate),
@@ -147,6 +150,7 @@ async function saveSession(instances, activeId) {
           stop_at_downloaded_gb: parseFloat(inst.stopAtDownloadedGB),
           stop_at_seed_time_enabled: inst.stopAtSeedTimeEnabled,
           stop_at_seed_time_hours: parseFloat(inst.stopAtSeedTimeHours),
+          stop_when_no_leechers: inst.stopWhenNoLeechers,
           progressive_rates_enabled: inst.progressiveRatesEnabled,
           target_upload_rate: parseFloat(inst.targetUploadRate),
           target_download_rate: parseFloat(inst.targetDownloadRate),
@@ -209,6 +213,7 @@ function loadSessionFromStorage(config = null) {
         stopAtDownloadedGB: inst.stop_at_downloaded_gb,
         stopAtSeedTimeEnabled: inst.stop_at_seed_time_enabled,
         stopAtSeedTimeHours: inst.stop_at_seed_time_hours,
+        stopWhenNoLeechers: inst.stop_when_no_leechers || false,
         progressiveRatesEnabled: inst.progressive_rates_enabled,
         targetUploadRate: inst.target_upload_rate,
         targetDownloadRate: inst.target_download_rate,
@@ -363,7 +368,15 @@ export const instanceActions = {
 
     try {
       // Delete the instance on the backend
-      await api.deleteInstance(id);
+      // Ignore "not found" errors - the instance may have been lost on server restart
+      try {
+        await api.deleteInstance(id);
+      } catch (deleteError) {
+        // Only log, don't throw - we still want to clean up the frontend
+        console.warn(
+          `Backend delete failed (may be expected after restart): ${deleteError.message}`
+        );
+      }
 
       let newActiveId = null;
 

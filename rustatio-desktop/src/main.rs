@@ -495,6 +495,14 @@ async fn get_client_types() -> Vec<String> {
     ]
 }
 
+// Tauri command: Write file to disk (for export functionality)
+#[tauri::command]
+async fn write_file(path: String, contents: String) -> Result<(), String> {
+    std::fs::write(&path, contents).map_err(|e| format!("Failed to write file: {}", e))?;
+    log::info!("File written to: {}", path);
+    Ok(())
+}
+
 fn main() {
     // Initialize logging
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
@@ -534,6 +542,7 @@ fn main() {
             pause_faker,
             resume_faker,
             get_client_types,
+            write_file,
         ])
         .setup(|app| {
             // Initialize the logger with app handle

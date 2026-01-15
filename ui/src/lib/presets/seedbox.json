@@ -1,0 +1,29 @@
+{
+  "id": "seedbox",
+  "name": "Seedbox Mode",
+  "description": "Emulates a dedicated seedbox - very high speeds",
+  "icon": "🖥️",
+  "recommended": false,
+  "settings": {
+    "uploadRate": 5000,
+    "downloadRate": 0,
+    "randomizeRates": true,
+    "randomRangePercent": 10,
+    "progressiveRatesEnabled": false,
+    "updateIntervalSeconds": 5,
+    "completionPercent": 100,
+    "port": 51413,
+    "selectedClient": "transmission",
+    "stopAtRatioEnabled": false,
+    "stopAtUploadedEnabled": false,
+    "stopAtDownloadedEnabled": false,
+    "stopAtSeedTimeEnabled": false,
+    "stopWhenNoLeechers": true
+  },
+  "tips": [
+    "5 MB/s upload typical for budget seedboxes",
+    "Low randomization - seedboxes have stable connections",
+    "Stops when no leechers - seedboxes seed until demand ends",
+    "Only use if your account history shows seedbox usage"
+  ]
+}

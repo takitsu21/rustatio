@@ -1,6 +1,6 @@
 use crate::protocol::bencode;
 use crate::torrent::ClientConfig;
-use crate::{log_debug, log_info};
+use crate::{log_debug, log_error, log_info, log_trace, log_warn};
 use reqwest;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -96,6 +96,8 @@ pub struct TrackerClient {
 
 impl TrackerClient {
     pub fn new(client_config: ClientConfig) -> Result<Self> {
+        log_debug!("Creating TrackerClient with User-Agent: {}", client_config.user_agent);
+
         #[cfg(not(target_arch = "wasm32"))]
         let client = reqwest::Client::builder()
             .user_agent(&client_config.user_agent)
@@ -150,12 +152,17 @@ impl TrackerClient {
 
         let response = self.client.get(&final_url).send().await?;
 
-        if !response.status().is_success() {
+        let status = response.status();
+        log_trace!("Tracker response status: {}", status);
+
+        if !status.is_success() {
+            log_error!("Tracker request failed with status: {}", status);
             return Err(TrackerError::HttpError(response.error_for_status().unwrap_err()));
         }
 
         let body = response.bytes().await?;
         log_debug!("Tracker response: {} bytes", body.len());
+        log_trace!("Response body (hex): {:02X?}", &body[..body.len().min(100)]);
 
         self.parse_announce_response(&body)
     }
@@ -241,22 +248,41 @@ impl TrackerClient {
 
     /// Parse announce response from bencoded data
     fn parse_announce_response(&self, data: &[u8]) -> Result<AnnounceResponse> {
+        log_trace!("Parsing announce response ({} bytes)", data.len());
+
         let value = bencode::parse(data)?;
         let dict = match &value {
             serde_bencode::value::Value::Dict(d) => d,
-            _ => return Err(TrackerError::InvalidResponse("Response is not a dictionary".into())),
+            _ => {
+                log_error!("Invalid response: not a dictionary");
+                return Err(TrackerError::InvalidResponse("Response is not a dictionary".into()));
+            }
         };
 
         // Check for failure
         if let Some(serde_bencode::value::Value::Bytes(bytes)) = dict.get(b"failure reason".as_ref()) {
             let reason = String::from_utf8_lossy(bytes).to_string();
+            log_error!("Tracker returned failure: {}", reason);
             return Err(TrackerError::TrackerFailure(reason));
+        }
+
+        // Check for warning
+        if let Some(serde_bencode::value::Value::Bytes(bytes)) = dict.get(b"warning message".as_ref()) {
+            let warning = String::from_utf8_lossy(bytes).to_string();
+            log_warn!("Tracker warning: {}", warning);
         }
 
         // Extract required fields
         let interval = bencode::get_int(dict, "interval")?;
         let complete = bencode::get_int(dict, "complete").unwrap_or(0);
         let incomplete = bencode::get_int(dict, "incomplete").unwrap_or(0);
+
+        log_debug!(
+            "Parsed response: interval={}s, seeders={}, leechers={}",
+            interval,
+            complete,
+            incomplete
+        );
 
         // Extract optional fields
         let min_interval = dict.get(b"min interval".as_ref()).and_then(|v| match v {

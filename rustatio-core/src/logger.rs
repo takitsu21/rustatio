@@ -101,6 +101,13 @@ pub mod native {
         log::debug!("{}", prefixed);
         emit_log("debug", prefixed);
     }
+
+    /// Log at trace level (both to console and UI)
+    pub fn trace(message: String) {
+        let prefixed = format!("{}{}", super::get_instance_prefix(), message);
+        log::trace!("{}", prefixed);
+        emit_log("trace", prefixed);
+    }
 }
 
 // CLI logger - native without desktop (no Tauri)
@@ -133,6 +140,12 @@ pub mod native {
     pub fn debug(message: String) {
         let prefixed = format!("{}{}", super::get_instance_prefix(), message);
         log::debug!("{}", prefixed);
+    }
+
+    /// Log at trace level
+    pub fn trace(message: String) {
+        let prefixed = format!("{}{}", super::get_instance_prefix(), message);
+        log::trace!("{}", prefixed);
     }
 }
 
@@ -171,7 +184,7 @@ pub mod wasm {
         match level {
             "error" => console_error(message),
             "warn" => console_warn(message),
-            "debug" => console_debug(message),
+            "debug" | "trace" => console_debug(message),
             _ => console_log(message),
         }
 
@@ -208,6 +221,12 @@ pub mod wasm {
     pub fn debug(message: String) {
         let prefixed = format!("{}{}", super::get_instance_prefix(), message);
         emit_log("debug", &prefixed);
+    }
+
+    /// Log at trace level to browser console and UI
+    pub fn trace(message: String) {
+        let prefixed = format!("{}{}", super::get_instance_prefix(), message);
+        emit_log("trace", &prefixed);
     }
 
     /// No-op for WASM (no app handle needed)
@@ -249,5 +268,12 @@ macro_rules! log_error {
 macro_rules! log_debug {
     ($($arg:tt)*) => {
         $crate::logger::debug(format!($($arg)*))
+    };
+}
+
+#[macro_export]
+macro_rules! log_trace {
+    ($($arg:tt)*) => {
+        $crate::logger::trace(format!($($arg)*))
     };
 }

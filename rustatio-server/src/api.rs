@@ -1,12 +1,19 @@
 use axum::{
     extract::{Multipart, Path, State},
     http::StatusCode,
-    response::{IntoResponse, Response},
+    response::{
+        sse::{Event, KeepAlive, Sse},
+        IntoResponse, Response,
+    },
     routing::{delete, get, post},
     Json, Router,
 };
+use futures::stream::Stream;
 use rustatio_core::{FakerConfig, TorrentInfo};
 use serde::{Deserialize, Serialize};
+use std::convert::Infallible;
+use tokio_stream::wrappers::BroadcastStream;
+use tokio_stream::StreamExt;
 
 use crate::state::AppState;
 
@@ -70,6 +77,8 @@ pub fn router() -> Router<AppState> {
         .route("/clients", get(get_client_types))
         // Network status (VPN detection)
         .route("/network/status", get(get_network_status))
+        // Log streaming (SSE)
+        .route("/logs", get(logs_sse))
 }
 
 /// Create a new instance ID
@@ -327,4 +336,20 @@ async fn get_network_status() -> Response {
     };
 
     ApiSuccess::response(status)
+}
+
+/// SSE endpoint for streaming logs to the UI
+async fn logs_sse(State(state): State<AppState>) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+    let rx = state.subscribe_logs();
+
+    let stream = BroadcastStream::new(rx).filter_map(|result| {
+        result.ok().map(|log_event| {
+            Ok(Event::default()
+                .event("log")
+                .json_data(&log_event)
+                .unwrap_or_else(|_| Event::default()))
+        })
+    });
+
+    Sse::new(stream).keep_alive(KeepAlive::default())
 }

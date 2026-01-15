@@ -113,6 +113,12 @@ jobs:
       - name: Install wasm32 target
         run: rustup target add wasm32-unknown-unknown
 
+      - name: Update version in package.json
+        working-directory: ui
+        run: |
+          VERSION="${{ needs.prepare-release.outputs.version }}"
+          sed -i "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" package.json
+
       - name: Build Web Version for GitHub Pages
         env:
           GITHUB_PAGES: true
@@ -128,7 +134,8 @@ jobs:
       - name: Build Web Version for Docker (no base path)
         run: |
           rm -rf ui/dist
-          mise run build:web
+          rm -rf ui/node_modules/.vite
+          cd ui && npm run build
 
       - name: Upload Docker artifact
         uses: actions/upload-artifact@v4

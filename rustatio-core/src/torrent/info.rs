@@ -1,5 +1,6 @@
 use crate::protocol::bencode;
 use crate::protocol::BencodeError;
+use crate::{log_debug, log_error, log_trace};
 use serde::{Deserialize, Serialize};
 use sha1::{Digest, Sha1};
 use std::path::Path;
@@ -69,17 +70,23 @@ pub struct TorrentFile {
 impl TorrentInfo {
     /// Parse a torrent file from a path
     pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self> {
+        log_debug!("Loading torrent from file: {:?}", path.as_ref());
         let data = std::fs::read(path)?;
         Self::from_bytes(&data)
     }
 
     /// Parse a torrent from raw bytes
     pub fn from_bytes(data: &[u8]) -> Result<Self> {
+        log_trace!("Parsing torrent data ({} bytes)", data.len());
+
         let value = bencode::parse(data)?;
 
         let dict = match &value {
             serde_bencode::value::Value::Dict(d) => d,
-            _ => return Err(TorrentError::InvalidStructure("Root is not a dictionary".into())),
+            _ => {
+                log_error!("Invalid torrent: root is not a dictionary");
+                return Err(TorrentError::InvalidStructure("Root is not a dictionary".into()));
+            }
         };
 
         // Extract announce URL
@@ -196,6 +203,18 @@ impl TorrentInfo {
             serde_bencode::value::Value::Bytes(b) => Some(String::from_utf8_lossy(b).to_string()),
             _ => None,
         });
+
+        log_debug!(
+            "Parsed torrent: name='{}', size={} bytes, pieces={}, tracker={}",
+            name,
+            total_size,
+            num_pieces,
+            announce
+        );
+        log_trace!(
+            "Info hash: {}",
+            info_hash.iter().map(|b| format!("{:02x}", b)).collect::<String>()
+        );
 
         Ok(TorrentInfo {
             info_hash,

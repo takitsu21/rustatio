@@ -1,24 +1,7 @@
 @import 'tailwindcss';
 @import url('https://cdn.jsdelivr.net/npm/@fontsource/jetbrains-mono@5.0.0/index.css');
-
-/* Maple Mono font via CDN - fallback to JetBrains Mono if unavailable */
-@font-face {
-  font-family: 'Maple Mono';
-  src: url('https://cdn.jsdelivr.net/gh/subframe7536/maple-font@main/dist/MapleMono-Regular.woff2')
-    format('woff2');
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: 'Maple Mono';
-  src: url('https://cdn.jsdelivr.net/gh/subframe7536/maple-font@main/dist/MapleMono-Bold.woff2')
-    format('woff2');
-  font-weight: 700;
-  font-style: normal;
-  font-display: swap;
-}
+@import url('https://cdn.jsdelivr.net/npm/@fontsource/maple-mono@latest/index.css');
+@import url('https://cdn.jsdelivr.net/npm/@fontsource/maple-mono@latest/700.css');
 
 html,
 body {

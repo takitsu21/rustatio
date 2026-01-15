@@ -13,6 +13,7 @@
     stopAtDownloadedGB,
     stopAtSeedTimeEnabled,
     stopAtSeedTimeHours,
+    stopWhenNoLeechers,
     isRunning,
     onUpdate,
   } = $props();
@@ -26,6 +27,7 @@
   let localStopAtDownloadedGB = $state();
   let localStopAtSeedTimeEnabled = $state();
   let localStopAtSeedTimeHours = $state();
+  let localStopWhenNoLeechers = $state();
 
   // Track if we're currently editing to prevent external updates from interfering
   let isEditing = $state(false);
@@ -42,6 +44,7 @@
       localStopAtDownloadedGB = stopAtDownloadedGB;
       localStopAtSeedTimeEnabled = stopAtSeedTimeEnabled;
       localStopAtSeedTimeHours = stopAtSeedTimeHours;
+      localStopWhenNoLeechers = stopWhenNoLeechers;
     }
   });
 
@@ -162,7 +165,7 @@
       />
       <Label
         for="stop-seedtime"
-        class="flex-1 cursor-pointer text-sm text-muted-foreground font-medium">⏱️ Seed Time</Label
+        class="flex-1 cursor-pointer text-sm text-muted-foreground font-medium">Seed Time</Label
       >
       {#if localStopAtSeedTimeEnabled}
         <Input
@@ -177,6 +180,22 @@
         />
         <span class="text-xs text-muted-foreground font-semibold min-w-[40px]">hrs</span>
       {/if}
+    </div>
+
+    <div class="flex items-center gap-2 p-2 bg-muted rounded-md">
+      <Checkbox
+        id="stop-no-leechers"
+        checked={localStopWhenNoLeechers}
+        disabled={isRunning}
+        onchange={checked => {
+          localStopWhenNoLeechers = checked;
+          updateValue('stopWhenNoLeechers', checked);
+        }}
+      />
+      <Label
+        for="stop-no-leechers"
+        class="flex-1 cursor-pointer text-sm text-muted-foreground font-medium">No Leechers</Label
+      >
     </div>
   </div>
 </Card>

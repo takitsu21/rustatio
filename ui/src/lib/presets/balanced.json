@@ -1,0 +1,29 @@
+{
+  "id": "balanced",
+  "name": "Balanced Seeder",
+  "description": "Good ratio building speed with reasonable safety",
+  "icon": "⚖️",
+  "recommended": true,
+  "settings": {
+    "uploadRate": 500,
+    "downloadRate": 0,
+    "randomizeRates": true,
+    "randomRangePercent": 20,
+    "progressiveRatesEnabled": false,
+    "updateIntervalSeconds": 5,
+    "completionPercent": 100,
+    "selectedClient": "qbittorrent",
+    "stopAtRatioEnabled": true,
+    "stopAtRatio": 2.0,
+    "stopAtUploadedEnabled": false,
+    "stopAtDownloadedEnabled": false,
+    "stopAtSeedTimeEnabled": false,
+    "stopWhenNoLeechers": false
+  },
+  "tips": [
+    "500 KB/s upload is realistic for modern connections",
+    "No download since you are seeding a complete torrent",
+    "20% randomization provides natural variance",
+    "Stops at ratio 2.0 - safe target for most trackers"
+  ]
+}

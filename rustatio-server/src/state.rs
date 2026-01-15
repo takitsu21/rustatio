@@ -1,7 +1,31 @@
+use rustatio_core::logger::set_instance_context;
 use rustatio_core::{FakerConfig, FakerStats, RatioFaker, TorrentInfo};
+use serde::Serialize;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::RwLock;
+use tokio::sync::{broadcast, RwLock};
+
+/// Log event sent to UI via SSE
+#[derive(Clone, Debug, Serialize)]
+pub struct LogEvent {
+    pub timestamp: u64,
+    pub level: String,
+    pub message: String,
+}
+
+impl LogEvent {
+    pub fn new(level: &str, message: String) -> Self {
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
+        Self {
+            timestamp,
+            level: level.to_string(),
+            message,
+        }
+    }
+}
 
 /// Instance data with cumulative stats tracking
 pub struct FakerInstance {
@@ -20,15 +44,29 @@ pub struct AppState {
     pub torrents: Arc<RwLock<HashMap<String, TorrentInfo>>>,
     /// Counter for generating instance IDs
     next_id: Arc<RwLock<u32>>,
+    /// Broadcast channel for log events (SSE)
+    pub log_sender: broadcast::Sender<LogEvent>,
 }
 
 impl AppState {
     pub fn new() -> Self {
+        let (log_sender, _) = broadcast::channel(256);
         Self {
             instances: Arc::new(RwLock::new(HashMap::new())),
             torrents: Arc::new(RwLock::new(HashMap::new())),
             next_id: Arc::new(RwLock::new(1)),
+            log_sender,
         }
+    }
+
+    /// Send a log event to all connected SSE clients
+    pub fn emit_log(&self, level: &str, message: String) {
+        let _ = self.log_sender.send(LogEvent::new(level, message));
+    }
+
+    /// Subscribe to log events
+    pub fn subscribe_logs(&self) -> broadcast::Receiver<LogEvent> {
+        self.log_sender.subscribe()
     }
 
     /// Generate a new unique instance ID
@@ -41,6 +79,9 @@ impl AppState {
 
     /// Create a new faker instance
     pub async fn create_instance(&self, id: &str, torrent: TorrentInfo, config: FakerConfig) -> Result<(), String> {
+        // Set instance context for logging
+        set_instance_context(id.parse().ok());
+
         let torrent_info_hash = torrent.info_hash;
 
         // Check if instance exists and has same torrent - preserve cumulative stats
@@ -77,6 +118,9 @@ impl AppState {
 
     /// Start a faker instance
     pub async fn start_instance(&self, id: &str) -> Result<(), String> {
+        // Set instance context for logging
+        set_instance_context(id.parse().ok());
+
         let mut instances = self.instances.write().await;
         let instance = instances.get_mut(id).ok_or("Instance not found")?;
         instance.faker.start().await.map_err(|e| e.to_string())
@@ -84,6 +128,9 @@ impl AppState {
 
     /// Stop a faker instance
     pub async fn stop_instance(&self, id: &str) -> Result<FakerStats, String> {
+        // Set instance context for logging
+        set_instance_context(id.parse().ok());
+
         let mut instances = self.instances.write().await;
         let instance = instances.get_mut(id).ok_or("Instance not found")?;
 
@@ -100,6 +147,9 @@ impl AppState {
 
     /// Pause a faker instance
     pub async fn pause_instance(&self, id: &str) -> Result<(), String> {
+        // Set instance context for logging
+        set_instance_context(id.parse().ok());
+
         let mut instances = self.instances.write().await;
         let instance = instances.get_mut(id).ok_or("Instance not found")?;
         instance.faker.pause().await.map_err(|e| e.to_string())
@@ -107,6 +157,9 @@ impl AppState {
 
     /// Resume a faker instance
     pub async fn resume_instance(&self, id: &str) -> Result<(), String> {
+        // Set instance context for logging
+        set_instance_context(id.parse().ok());
+
         let mut instances = self.instances.write().await;
         let instance = instances.get_mut(id).ok_or("Instance not found")?;
         instance.faker.resume().await.map_err(|e| e.to_string())
@@ -114,6 +167,9 @@ impl AppState {
 
     /// Update faker (send tracker announce)
     pub async fn update_instance(&self, id: &str) -> Result<FakerStats, String> {
+        // Set instance context for logging
+        set_instance_context(id.parse().ok());
+
         let mut instances = self.instances.write().await;
         let instance = instances.get_mut(id).ok_or("Instance not found")?;
         instance.faker.update().await.map_err(|e| e.to_string())?;
@@ -122,6 +178,9 @@ impl AppState {
 
     /// Update stats only (no tracker announce)
     pub async fn update_stats_only(&self, id: &str) -> Result<FakerStats, String> {
+        // Set instance context for logging
+        set_instance_context(id.parse().ok());
+
         let mut instances = self.instances.write().await;
         let instance = instances.get_mut(id).ok_or("Instance not found")?;
         instance.faker.update_stats_only().await.map_err(|e| e.to_string())?;
@@ -135,14 +194,11 @@ impl AppState {
         Ok(instance.faker.get_stats().await)
     }
 
-    /// Delete an instance
+    /// Delete an instance (idempotent - returns Ok even if not found)
     pub async fn delete_instance(&self, id: &str) -> Result<(), String> {
         let mut instances = self.instances.write().await;
-        if instances.remove(id).is_some() {
-            Ok(())
-        } else {
-            Err("Instance not found".to_string())
-        }
+        instances.remove(id);
+        Ok(())
     }
 
     /// Store a loaded torrent

@@ -1,6 +1,6 @@
-use crate::log_info;
 use crate::protocol::{AnnounceRequest, AnnounceResponse, TrackerClient, TrackerError, TrackerEvent};
 use crate::torrent::{ClientConfig, ClientType, TorrentInfo};
+use crate::{log_debug, log_info, log_trace};
 use instant::Instant;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
@@ -107,6 +107,10 @@ pub struct FakerConfig {
     /// Stop after seeding for this many seconds (optional)
     pub stop_at_seed_time: Option<u64>,
 
+    /// Stop when there are no leechers (optional, default false)
+    #[serde(default)]
+    pub stop_when_no_leechers: bool,
+
     // Progressive rate adjustment
     /// Enable progressive rate adjustment
     #[serde(default)]
@@ -153,6 +157,7 @@ impl Default for FakerConfig {
             stop_at_uploaded: None,
             stop_at_downloaded: None,
             stop_at_seed_time: None,
+            stop_when_no_leechers: false,
             progressive_rates: false,
             target_upload_rate: None,
             target_download_rate: None,
@@ -263,12 +268,26 @@ pub struct RatioFaker {
 
 impl RatioFaker {
     pub fn new(torrent: TorrentInfo, config: FakerConfig) -> Result<Self> {
+        log_debug!(
+            "Creating RatioFaker for '{}' (size: {} bytes)",
+            torrent.name,
+            torrent.total_size
+        );
+        log_trace!(
+            "Config: upload_rate={} KB/s, download_rate={} KB/s, client={:?}",
+            config.upload_rate,
+            config.download_rate,
+            config.client_type
+        );
+
         // Create client configuration
         let client_config = ClientConfig::get(config.client_type.clone(), config.client_version.clone());
 
         // Generate session identifiers
         let peer_id = client_config.generate_peer_id();
         let key = ClientConfig::generate_key();
+
+        log_trace!("Generated peer_id: {}, key: {}", peer_id, key);
 
         // Create tracker client
         let tracker_client =
@@ -435,6 +454,14 @@ impl RatioFaker {
         let upload_delta = (upload_rate * 1024.0 * elapsed.as_secs_f64()) as u64;
         let download_delta = (download_rate * 1024.0 * elapsed.as_secs_f64()) as u64;
 
+        log_trace!(
+            "Update: elapsed={:.2}s, upload_rate={:.2} KB/s, download_rate={:.2} KB/s, upload_delta={} bytes",
+            elapsed.as_secs_f64(),
+            upload_rate,
+            download_rate,
+            upload_delta
+        );
+
         let completed = self.update_transfer_stats(&mut stats, upload_delta, download_delta);
 
         if completed {
@@ -518,6 +545,14 @@ impl RatioFaker {
     /// Send an announce to the tracker
     async fn announce(&mut self, event: TrackerEvent) -> Result<AnnounceResponse> {
         let stats = read_lock!(self.stats);
+
+        log_debug!(
+            "Preparing announce: event={:?}, uploaded={}, downloaded={}, left={}",
+            event,
+            stats.uploaded,
+            stats.downloaded,
+            stats.left
+        );
 
         let request = AnnounceRequest {
             info_hash: self.torrent.info_hash,
@@ -651,8 +686,14 @@ impl RatioFaker {
             self.config.download_rate
         };
 
+        // Apply randomization
         let upload_rate = self.apply_randomization(base_upload_rate);
-        let download_rate = self.apply_randomization(base_download_rate);
+        let mut download_rate = self.apply_randomization(base_download_rate);
+
+        // Can't download if there are no seeders (and we still have data left to download)
+        if stats.seeders <= 0 && stats.left > 0 {
+            download_rate = 0.0;
+        }
 
         (upload_rate, download_rate)
     }
@@ -779,6 +820,12 @@ impl RatioFaker {
                 );
                 return true;
             }
+        }
+
+        // Check no leechers condition (only after at least one announce)
+        if self.config.stop_when_no_leechers && stats.leechers == 0 && stats.announce_count > 0 {
+            log_info!("No leechers remaining, stopping");
+            return true;
         }
 
         false

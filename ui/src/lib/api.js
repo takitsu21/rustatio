@@ -96,8 +96,35 @@ export async function listenToLogs(callback) {
     } catch (error) {
       console.error('Failed to set up log listener:', error);
     }
+  } else if (isServerMode) {
+    // For server mode, use both:
+    // 1. SSE for backend logs from rustatio-core
+    // 2. logListeners for frontend-generated logs
+    logListeners.push(callback);
+
+    try {
+      const eventSource = new EventSource(`${serverBaseUrl}/api/logs`);
+
+      eventSource.addEventListener('log', event => {
+        try {
+          const logEvent = JSON.parse(event.data);
+          callback(logEvent);
+        } catch (e) {
+          console.error('Failed to parse log event:', e);
+        }
+      });
+
+      eventSource.onerror = error => {
+        console.warn('SSE connection error, will retry:', error);
+      };
+
+      // Return cleanup function
+      return () => eventSource.close();
+    } catch (error) {
+      console.error('Failed to set up SSE log listener:', error);
+    }
   } else {
-    // For web/server, register callback to receive web console logs
+    // For WASM, register callback to receive web console logs
     logListeners.push(callback);
   }
 }

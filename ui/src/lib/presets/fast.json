@@ -1,0 +1,33 @@
+{
+  "id": "fast",
+  "name": "Fast Seeder",
+  "description": "Rapid ratio building - use on lenient trackers",
+  "icon": "🚀",
+  "recommended": false,
+  "settings": {
+    "uploadRate": 1000,
+    "downloadRate": 0,
+    "randomizeRates": true,
+    "randomRangePercent": 15,
+    "progressiveRatesEnabled": true,
+    "targetUploadRate": 2000,
+    "targetDownloadRate": 0,
+    "progressiveDurationHours": 2,
+    "updateIntervalSeconds": 5,
+    "completionPercent": 100,
+    "selectedClient": "utorrent",
+    "stopAtRatioEnabled": true,
+    "stopAtRatio": 3.0,
+    "stopAtUploadedEnabled": true,
+    "stopAtUploadedGB": 50,
+    "stopAtDownloadedEnabled": false,
+    "stopAtSeedTimeEnabled": false,
+    "stopWhenNoLeechers": false
+  },
+  "tips": [
+    "Ramps from 1 to 2 MB/s for quick ratio building",
+    "Progressive ramp-up helps avoid sudden spikes",
+    "Stops at ratio 3.0 or 50 GB uploaded (whichever first)",
+    "Use only on trackers with lenient monitoring"
+  ]
+}

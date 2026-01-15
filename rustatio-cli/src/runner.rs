@@ -30,6 +30,7 @@ pub struct RunnerConfig {
     pub stop_uploaded: Option<f64>,
     pub stop_downloaded: Option<f64>,
     pub stop_time: Option<f64>,
+    pub stop_when_no_leechers: bool,
     pub no_randomize: bool,
     pub random_range: f64,
     pub progressive: bool,
@@ -290,6 +291,7 @@ pub fn create_faker_config(config: &RunnerConfig) -> FakerConfig {
         stop_at_uploaded: config.stop_uploaded.map(|gb| (gb * 1024.0 * 1024.0 * 1024.0) as u64),
         stop_at_downloaded: config.stop_downloaded.map(|gb| (gb * 1024.0 * 1024.0 * 1024.0) as u64),
         stop_at_seed_time: config.stop_time.map(|hours| (hours * 3600.0) as u64),
+        stop_when_no_leechers: config.stop_when_no_leechers,
         progressive_rates: config.progressive,
         target_upload_rate: config.target_upload,
         target_download_rate: config.target_download,
@@ -324,6 +326,10 @@ fn determine_stop_reason(config: &RunnerConfig, stats: &rustatio_core::FakerStat
         if stats.elapsed_time.as_secs() >= target_secs {
             return StopReason::TargetSeedTime;
         }
+    }
+
+    if config.stop_when_no_leechers && stats.leechers == 0 && stats.announce_count > 0 {
+        return StopReason::NoLeechers;
     }
 
     StopReason::UserInterrupt

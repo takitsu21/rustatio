@@ -112,8 +112,21 @@
       const storedShowLogs = localStorage.getItem('rustatio-show-logs');
       showLogs = storedShowLogs ? JSON.parse(storedShowLogs) : false;
 
+      // Log level priority for filtering
+      const LOG_LEVELS = { error: 0, warn: 1, info: 2, debug: 3, trace: 4 };
+
       // Set up log listener (works for both Tauri and web)
       await listenToLogs(logEvent => {
+        // Filter logs based on configured log level
+        const configuredLevel = localStorage.getItem('rustatio-log-level') || 'info';
+        const eventPriority = LOG_LEVELS[logEvent.level] ?? 2;
+        const configuredPriority = LOG_LEVELS[configuredLevel] ?? 2;
+
+        // Only show logs at or below the configured level
+        if (eventPriority > configuredPriority) {
+          return;
+        }
+
         logs = [...logs, logEvent];
 
         // Limit logs to prevent memory issues (keep last 500)
@@ -510,6 +523,7 @@
         stop_at_seed_time: $activeInstance.stopAtSeedTimeEnabled
           ? parseFloat($activeInstance.stopAtSeedTimeHours ?? 24) * 3600
           : null,
+        stop_when_no_leechers: $activeInstance.stopWhenNoLeechers ?? false,
         progressive_rates: $activeInstance.progressiveRatesEnabled ?? false,
         target_upload_rate: $activeInstance.progressiveRatesEnabled
           ? parseFloat($activeInstance.targetUploadRate ?? 100)
@@ -1142,6 +1156,7 @@
                 stopAtDownloadedGB={$activeInstance.stopAtDownloadedGB}
                 stopAtSeedTimeEnabled={$activeInstance.stopAtSeedTimeEnabled}
                 stopAtSeedTimeHours={$activeInstance.stopAtSeedTimeHours}
+                stopWhenNoLeechers={$activeInstance.stopWhenNoLeechers}
                 isRunning={$activeInstance.isRunning || false}
                 onUpdate={updates => {
                   instanceActions.updateInstance($activeInstance.id, updates);

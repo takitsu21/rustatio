@@ -56,6 +56,7 @@ pub struct InstanceConfig {
     pub stop_at_downloaded_gb: f64,
     pub stop_at_seed_time_enabled: bool,
     pub stop_at_seed_time_hours: f64,
+    pub stop_when_no_leechers: bool,
     pub progressive_rates_enabled: bool,
     pub target_upload_rate: f64,
     pub target_download_rate: f64,

@@ -1,0 +1,33 @@
+{
+  "id": "stealth",
+  "name": "Stealth Seeder",
+  "description": "Slow and steady ratio building - maximum safety",
+  "icon": "🥷",
+  "recommended": false,
+  "settings": {
+    "uploadRate": 100,
+    "downloadRate": 0,
+    "randomizeRates": true,
+    "randomRangePercent": 25,
+    "progressiveRatesEnabled": true,
+    "targetUploadRate": 300,
+    "targetDownloadRate": 0,
+    "progressiveDurationHours": 4,
+    "updateIntervalSeconds": 10,
+    "completionPercent": 100,
+    "selectedClient": "qbittorrent",
+    "stopAtRatioEnabled": true,
+    "stopAtRatio": 1.5,
+    "stopAtUploadedEnabled": false,
+    "stopAtDownloadedEnabled": false,
+    "stopAtSeedTimeEnabled": true,
+    "stopAtSeedTimeHours": 48,
+    "stopWhenNoLeechers": true
+  },
+  "tips": [
+    "Gradual ramp-up from 100 to 300 KB/s looks natural",
+    "High randomization (25%) mimics real network variance",
+    "Conservative ratio limit (1.5) avoids suspicion",
+    "Stops when no leechers or after 48 hours - mimics real behavior"
+  ]
+}
