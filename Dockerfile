@@ -46,6 +46,7 @@ RUN mkdir -p /data && chown -R rustatio:rustatio /app /data
 # Set environment variables (can be overridden at runtime)
 ENV PORT=8080
 ENV RUST_LOG=info
+ENV DATA_DIR=/data
 
 # Switch to non-root user
 USER rustatio

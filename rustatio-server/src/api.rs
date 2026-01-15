@@ -15,7 +15,7 @@ use std::convert::Infallible;
 use tokio_stream::wrappers::BroadcastStream;
 use tokio_stream::StreamExt;
 
-use crate::state::AppState;
+use crate::state::{AppState, InstanceInfo};
 
 /// API error response
 #[derive(Serialize)]
@@ -61,7 +61,7 @@ impl<T: Serialize> ApiSuccess<T> {
 pub fn router() -> Router<AppState> {
     Router::new()
         // Instance management
-        .route("/instances", post(create_instance))
+        .route("/instances", get(list_instances).post(create_instance))
         .route("/instances/{id}", delete(delete_instance))
         // Torrent loading
         .route("/torrent/load", post(load_torrent))
@@ -90,6 +90,12 @@ struct CreateInstanceResponse {
 async fn create_instance(State(state): State<AppState>) -> Response {
     let id = state.next_instance_id().await;
     ApiSuccess::response(CreateInstanceResponse { id })
+}
+
+/// List all instances with their current stats
+async fn list_instances(State(state): State<AppState>) -> Response {
+    let instances: Vec<InstanceInfo> = state.list_instances().await;
+    ApiSuccess::response(instances)
 }
 
 /// Delete an instance

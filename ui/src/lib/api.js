@@ -185,6 +185,9 @@ const serverApi = {
   deleteInstance: async id => {
     await serverFetch(`/instances/${id}`, { method: 'DELETE' }, `Deleted instance ${id}`);
   },
+  listInstances: async () => {
+    return serverFetch('/instances', { method: 'GET' });
+  },
   loadTorrent: async file => {
     const formData = new FormData();
     formData.append('file', file);
@@ -325,6 +328,10 @@ const tauriApi = {
     const { invoke } = await import('@tauri-apps/api/core');
     return invoke('delete_instance', { instanceId: id });
   },
+  listInstances: async () => {
+    // Tauri doesn't persist state across restarts yet
+    return [];
+  },
   loadTorrent: async file => {
     const { invoke } = await import('@tauri-apps/api/core');
     // For Tauri, we need file path not file object
@@ -406,6 +413,10 @@ const tauriApi = {
 const wasmApi = {
   createInstance: () => wasm.create_instance(),
   deleteInstance: id => wasm.delete_instance(id),
+  listInstances: async () => {
+    // WASM doesn't persist state
+    return [];
+  },
   loadTorrent: async file => {
     const bytes = new Uint8Array(await file.arrayBuffer());
     return wasm.load_torrent(bytes);

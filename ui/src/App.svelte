@@ -1,7 +1,7 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
   import { get } from 'svelte/store';
-  import { initWasm, api, listenToLogs } from './lib/api.js';
+  import { initWasm, api, listenToLogs, getRunMode } from './lib/api.js';
 
   // Import instance stores
   import {
@@ -86,6 +86,9 @@
   let unsubActiveInstance = null;
   let unsubSessionSave = null;
 
+  // Beforeunload handler reference for cleanup
+  let beforeUnloadHandler = null;
+
   // Track previous client to detect changes
   let previousClient = null;
 
@@ -137,6 +140,16 @@
 
       // Initialize instance store (will restore session from localStorage)
       await instanceActions.initialize();
+
+      // Start polling for any instances that were restored in a running state (server mode)
+      // This ensures UI updates after page refresh when instances are still running on server
+      const restoredInstances = get(instances);
+      for (const inst of restoredInstances) {
+        if (inst.isRunning && !inst.isPaused) {
+          devLog('log', `Starting polling for restored running instance ${inst.id}`);
+          startPollingForInstance(inst.id, inst.updateIntervalSeconds ?? 5);
+        }
+      }
 
       // Wait a tick for stores to update before showing UI
       await new Promise(resolve => setTimeout(resolve, 0));
@@ -219,6 +232,26 @@
         }, 500);
       }
     });
+
+    // Set up beforeunload warning for WASM mode only
+    // In WASM mode, refreshing the page stops all running torrents
+    // Server mode persists state, so no warning needed there
+    const runMode = getRunMode();
+    if (runMode === 'wasm') {
+      beforeUnloadHandler = event => {
+        const currentInstances = get(instances);
+        const hasRunning = currentInstances.some(inst => inst.isRunning);
+
+        if (hasRunning) {
+          // Standard way to show beforeunload dialog
+          event.preventDefault();
+          // Chrome requires returnValue to be set
+          event.returnValue = '';
+          return '';
+        }
+      };
+      window.addEventListener('beforeunload', beforeUnloadHandler);
+    }
 
     // Wait for stores to settle before allowing saves
     // This prevents initial subscription fires from triggering saves during app load
@@ -332,6 +365,11 @@
 
     // Clean up event listeners
     document.removeEventListener('click', handleClickOutside);
+
+    // Clean up beforeunload handler
+    if (beforeUnloadHandler) {
+      window.removeEventListener('beforeunload', beforeUnloadHandler);
+    }
   });
 
   // Select torrent file (called from TorrentSelector with File object)
@@ -397,6 +435,159 @@
       });
       alert('Failed to load torrent: ' + error);
     }
+  }
+
+  // Start polling intervals for an instance (used by startFaking and after page refresh restore)
+  // This sets up the UI update loops to fetch stats from the server
+  function startPollingForInstance(instanceId, intervalSeconds = 5) {
+    const intervalMs = intervalSeconds * 1000;
+
+    // Update interval - periodic tracker announces
+    const updateIntervalId = setInterval(async () => {
+      const currentInstance = $instances.find(i => i.id === instanceId);
+      if (!currentInstance || !currentInstance.isRunning) {
+        devLog('log', 'Update skipped - not running');
+        return;
+      }
+
+      if (currentInstance.isPaused) {
+        devLog('log', 'Update skipped - paused');
+        instanceActions.updateInstance(instanceId, {
+          nextUpdateIn: currentInstance.updateIntervalSeconds ?? 5,
+        });
+        return;
+      }
+
+      try {
+        await api.updateFaker(instanceId);
+        const stats = await api.getStats(instanceId);
+
+        instanceActions.updateInstance(instanceId, {
+          stats,
+          nextUpdateIn: currentInstance.updateIntervalSeconds ?? 5,
+        });
+
+        if (stats.state === 'Stopped' || stats.state === 'Completed') {
+          // Stop the backend faker (same as manual stop)
+          try {
+            await api.stopFaker(instanceId);
+          } catch (error) {
+            console.warn('Failed to stop faker on backend:', error);
+          }
+
+          const instance = $instances.find(i => i.id === instanceId);
+          if (instance) {
+            if (instance.updateInterval) clearInterval(instance.updateInterval);
+            if (instance.countdownInterval) clearInterval(instance.countdownInterval);
+            if (instance.liveStatsInterval) clearInterval(instance.liveStatsInterval);
+          }
+
+          // Save cumulative stats (convert bytes to MB)
+          const cumulativeUploaded = Math.round(stats.uploaded / (1024 * 1024));
+          const cumulativeDownloaded = Math.round(stats.downloaded / (1024 * 1024));
+
+          instanceActions.updateInstance(instanceId, {
+            isRunning: false,
+            nextUpdateIn: 0,
+            updateInterval: null,
+            countdownInterval: null,
+            liveStatsInterval: null,
+            statusMessage: 'Stopped automatically - condition met',
+            statusType: 'success',
+            cumulativeUploaded,
+            cumulativeDownloaded,
+          });
+        }
+      } catch (error) {
+        devLog('error', 'Update error:', error);
+
+        const instance = $instances.find(i => i.id === instanceId);
+        if (instance) {
+          if (instance.updateInterval) clearInterval(instance.updateInterval);
+          if (instance.countdownInterval) clearInterval(instance.countdownInterval);
+          if (instance.liveStatsInterval) clearInterval(instance.liveStatsInterval);
+        }
+
+        instanceActions.updateInstance(instanceId, {
+          isRunning: false,
+          updateInterval: null,
+          countdownInterval: null,
+          liveStatsInterval: null,
+          statusMessage: 'Error: ' + error,
+          statusType: 'error',
+        });
+      }
+    }, intervalMs);
+
+    // Live stats interval - UI refresh every 1 second
+    const liveStatsIntervalId = setInterval(async () => {
+      const currentInstance = $instances.find(i => i.id === instanceId);
+      if (!currentInstance || !currentInstance.isRunning || currentInstance.isPaused) {
+        return;
+      }
+
+      try {
+        const latestStats = await api.updateStatsOnly(instanceId);
+
+        if (latestStats && currentInstance.isRunning) {
+          instanceActions.updateInstance(instanceId, { stats: latestStats });
+
+          if (latestStats.state === 'Stopped' || latestStats.state === 'Completed') {
+            // Stop the backend faker (same as manual stop)
+            try {
+              await api.stopFaker(instanceId);
+            } catch (error) {
+              console.warn('Failed to stop faker on backend:', error);
+            }
+
+            const instance = $instances.find(i => i.id === instanceId);
+            if (instance) {
+              if (instance.updateInterval) clearInterval(instance.updateInterval);
+              if (instance.countdownInterval) clearInterval(instance.countdownInterval);
+              if (instance.liveStatsInterval) clearInterval(instance.liveStatsInterval);
+            }
+
+            // Save cumulative stats (convert bytes to MB)
+            const cumulativeUploaded = Math.round(latestStats.uploaded / (1024 * 1024));
+            const cumulativeDownloaded = Math.round(latestStats.downloaded / (1024 * 1024));
+
+            instanceActions.updateInstance(instanceId, {
+              isRunning: false,
+              nextUpdateIn: 0,
+              updateInterval: null,
+              countdownInterval: null,
+              liveStatsInterval: null,
+              statusMessage: 'Stopped automatically - condition met',
+              statusType: 'success',
+              cumulativeUploaded,
+              cumulativeDownloaded,
+            });
+          }
+        }
+      } catch (error) {
+        console.debug('Live stats fetch error:', error);
+      }
+    }, 1000);
+
+    // Countdown timer
+    const countdownIntervalId = setInterval(() => {
+      const currentInstance = $instances.find(i => i.id === instanceId);
+      if (currentInstance && !currentInstance.isPaused && currentInstance.nextUpdateIn > 0) {
+        instanceActions.updateInstance(instanceId, {
+          nextUpdateIn: currentInstance.nextUpdateIn - 1,
+        });
+      }
+    }, 1000);
+
+    // Store interval IDs in instance
+    instanceActions.updateInstance(instanceId, {
+      updateInterval: updateIntervalId,
+      liveStatsInterval: liveStatsIntervalId,
+      countdownInterval: countdownIntervalId,
+      nextUpdateIn: intervalSeconds,
+    });
+
+    return { updateIntervalId, liveStatsIntervalId, countdownIntervalId };
   }
 
   // Start faking
@@ -540,156 +731,13 @@
       instanceActions.updateInstance($activeInstance.id, {
         isRunning: true,
         isPaused: false,
-        nextUpdateIn: $activeInstance.updateIntervalSeconds ?? 5,
         statusMessage: '🚀 Actively faking ratio...',
         statusType: 'running',
       });
 
-      const intervalMs = ($activeInstance.updateIntervalSeconds ?? 5) * 1000;
-      const instanceId = $activeInstance.id;
-
-      const updateIntervalId = setInterval(async () => {
-        const currentInstance = $instances.find(i => i.id === instanceId);
-        if (!currentInstance || !currentInstance.isRunning) {
-          devLog('log', 'Update skipped - not running');
-          return;
-        }
-
-        if (currentInstance.isPaused) {
-          devLog('log', 'Update skipped - paused');
-          instanceActions.updateInstance(instanceId, {
-            nextUpdateIn: currentInstance.updateIntervalSeconds ?? 5,
-          });
-          return;
-        }
-
-        try {
-          await api.updateFaker(instanceId);
-          const stats = await api.getStats(instanceId);
-
-          instanceActions.updateInstance(instanceId, {
-            stats,
-            nextUpdateIn: currentInstance.updateIntervalSeconds ?? 5,
-          });
-
-          if (stats.state === 'Stopped' || stats.state === 'Completed') {
-            // Stop the backend faker (same as manual stop)
-            try {
-              await api.stopFaker(instanceId);
-            } catch (error) {
-              console.warn('Failed to stop faker on backend:', error);
-            }
-
-            const instance = $instances.find(i => i.id === instanceId);
-            if (instance) {
-              if (instance.updateInterval) clearInterval(instance.updateInterval);
-              if (instance.countdownInterval) clearInterval(instance.countdownInterval);
-              if (instance.liveStatsInterval) clearInterval(instance.liveStatsInterval);
-            }
-
-            // Save cumulative stats (convert bytes to MB)
-            const cumulativeUploaded = Math.round(stats.uploaded / (1024 * 1024));
-            const cumulativeDownloaded = Math.round(stats.downloaded / (1024 * 1024));
-
-            instanceActions.updateInstance(instanceId, {
-              isRunning: false,
-              nextUpdateIn: 0,
-              updateInterval: null,
-              countdownInterval: null,
-              liveStatsInterval: null,
-              statusMessage: 'Stopped automatically - condition met',
-              statusType: 'success',
-              cumulativeUploaded,
-              cumulativeDownloaded,
-            });
-          }
-        } catch (error) {
-          devLog('error', 'Update error:', error);
-
-          const instance = $instances.find(i => i.id === instanceId);
-          if (instance) {
-            if (instance.updateInterval) clearInterval(instance.updateInterval);
-            if (instance.countdownInterval) clearInterval(instance.countdownInterval);
-            if (instance.liveStatsInterval) clearInterval(instance.liveStatsInterval);
-          }
-
-          instanceActions.updateInstance(instanceId, {
-            isRunning: false,
-            updateInterval: null,
-            countdownInterval: null,
-            liveStatsInterval: null,
-            statusMessage: 'Error: ' + error,
-            statusType: 'error',
-          });
-        }
-      }, intervalMs);
-
-      // Start live stats update every 1 second
-      const liveStatsIntervalId = setInterval(async () => {
-        const currentInstance = $instances.find(i => i.id === instanceId);
-        if (!currentInstance || !currentInstance.isRunning || currentInstance.isPaused) {
-          return;
-        }
-
-        try {
-          const latestStats = await api.updateStatsOnly(instanceId);
-
-          if (latestStats && currentInstance.isRunning) {
-            instanceActions.updateInstance(instanceId, { stats: latestStats });
-
-            if (latestStats.state === 'Stopped' || latestStats.state === 'Completed') {
-              // Stop the backend faker (same as manual stop)
-              try {
-                await api.stopFaker(instanceId);
-              } catch (error) {
-                console.warn('Failed to stop faker on backend:', error);
-              }
-
-              const instance = $instances.find(i => i.id === instanceId);
-              if (instance) {
-                if (instance.updateInterval) clearInterval(instance.updateInterval);
-                if (instance.countdownInterval) clearInterval(instance.countdownInterval);
-                if (instance.liveStatsInterval) clearInterval(instance.liveStatsInterval);
-              }
-
-              // Save cumulative stats (convert bytes to MB)
-              const cumulativeUploaded = Math.round(latestStats.uploaded / (1024 * 1024));
-              const cumulativeDownloaded = Math.round(latestStats.downloaded / (1024 * 1024));
-
-              instanceActions.updateInstance(instanceId, {
-                isRunning: false,
-                nextUpdateIn: 0,
-                updateInterval: null,
-                countdownInterval: null,
-                liveStatsInterval: null,
-                statusMessage: 'Stopped automatically - condition met',
-                statusType: 'success',
-                cumulativeUploaded,
-                cumulativeDownloaded,
-              });
-            }
-          }
-        } catch (error) {
-          console.debug('Live stats fetch error:', error);
-        }
-      }, 1000);
-
-      // Start countdown timer
-      const countdownIntervalId = setInterval(() => {
-        const currentInstance = $instances.find(i => i.id === instanceId);
-        if (currentInstance && !currentInstance.isPaused && currentInstance.nextUpdateIn > 0) {
-          instanceActions.updateInstance(instanceId, {
-            nextUpdateIn: currentInstance.nextUpdateIn - 1,
-          });
-        }
-      }, 1000);
-
-      // Store interval IDs in instance
-      instanceActions.updateInstance($activeInstance.id, {
-        updateInterval: updateIntervalId,
-        liveStatsInterval: liveStatsIntervalId,
-        countdownInterval: countdownIntervalId,
-      });
+      // Start polling intervals for UI updates
+      const intervalSeconds = $activeInstance.updateIntervalSeconds ?? 5;
+      startPollingForInstance($activeInstance.id, intervalSeconds);
 
       // Get initial stats
       const initialStats = await api.getStats($activeInstance.id);

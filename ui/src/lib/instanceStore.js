@@ -252,7 +252,7 @@ function updateActiveInstanceStore() {
 
 // Actions
 export const instanceActions = {
-  // Initialize - create first instance or restore from storage
+  // Initialize - create first instance or restore from storage/server
   initialize: async () => {
     try {
       // Load config if in Tauri mode
@@ -262,6 +262,82 @@ export const instanceActions = {
         globalConfig.set(config);
       }
 
+      // For server mode, try to fetch existing instances from backend first
+      // This handles the case where instances are running and user refreshes or opens new tab
+      const isServerMode = !isTauri && typeof api.listInstances === 'function';
+      if (isServerMode) {
+        try {
+          const serverInstances = await api.listInstances();
+          if (serverInstances && serverInstances.length > 0) {
+            console.log(`Restoring ${serverInstances.length} instance(s) from server`);
+            
+            const restoredInstances = serverInstances.map(serverInst => {
+              // Create frontend instance from server state
+              const instance = createDefaultInstance(parseInt(serverInst.id, 10), {
+                selectedClient: serverInst.config.client_type,
+                selectedClientVersion: serverInst.config.client_version,
+                uploadRate: serverInst.config.upload_rate,
+                downloadRate: serverInst.config.download_rate,
+                port: serverInst.config.port,
+                completionPercent: serverInst.config.completion_percent,
+                initialUploaded: serverInst.config.initial_uploaded / (1024 * 1024),
+                initialDownloaded: serverInst.config.initial_downloaded / (1024 * 1024),
+                cumulativeUploaded: serverInst.stats.uploaded / (1024 * 1024),
+                cumulativeDownloaded: serverInst.stats.downloaded / (1024 * 1024),
+                randomizeRates: serverInst.config.randomize_rates,
+                randomRangePercent: serverInst.config.random_range_percent,
+                stopAtRatioEnabled: serverInst.config.stop_at_ratio !== null,
+                stopAtRatio: serverInst.config.stop_at_ratio || 2.0,
+                stopAtUploadedEnabled: serverInst.config.stop_at_uploaded !== null,
+                stopAtUploadedGB: (serverInst.config.stop_at_uploaded || 0) / (1024 * 1024 * 1024),
+                stopAtDownloadedEnabled: serverInst.config.stop_at_downloaded !== null,
+                stopAtDownloadedGB: (serverInst.config.stop_at_downloaded || 0) / (1024 * 1024 * 1024),
+                stopAtSeedTimeEnabled: serverInst.config.stop_at_seed_time !== null,
+                stopAtSeedTimeHours: (serverInst.config.stop_at_seed_time || 0) / 3600,
+                stopWhenNoLeechers: serverInst.config.stop_when_no_leechers || false,
+                progressiveRatesEnabled: serverInst.config.progressive_rates || false,
+                targetUploadRate: serverInst.config.target_upload_rate || 100,
+                targetDownloadRate: serverInst.config.target_download_rate || 200,
+                progressiveDurationHours: (serverInst.config.progressive_duration || 3600) / 3600,
+              });
+
+              // Set torrent info
+              instance.torrent = serverInst.torrent;
+              instance.torrentPath = serverInst.torrent.name;
+              instance.stats = serverInst.stats;
+              
+              // Set running state based on server state
+              const state = serverInst.stats.state;
+              instance.isRunning = state === 'Running';
+              instance.isPaused = state === 'Paused';
+              
+              if (instance.isRunning) {
+                instance.statusMessage = 'Running - restored from server';
+                instance.statusType = 'running';
+              } else if (instance.isPaused) {
+                instance.statusMessage = 'Paused - restored from server';
+                instance.statusType = 'idle';
+              } else {
+                instance.statusMessage = 'Ready to start faking';
+                instance.statusType = 'idle';
+              }
+
+              return instance;
+            });
+
+            instances.set(restoredInstances);
+            activeInstanceId.set(restoredInstances[0].id);
+            updateActiveInstanceStore();
+            
+            console.log('Successfully restored instances from server');
+            return restoredInstances[0].id;
+          }
+        } catch (error) {
+          console.warn('Failed to fetch instances from server, falling back to localStorage:', error);
+        }
+      }
+
+      // Fall back to localStorage/config restoration
       const savedSession = loadSessionFromStorage(config);
 
       if (savedSession && savedSession.instances && savedSession.instances.length > 0) {
