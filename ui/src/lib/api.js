@@ -129,6 +129,38 @@ export async function listenToLogs(callback) {
   }
 }
 
+// Instance events subscription (for real-time sync with watch folder)
+// Only available in server mode
+export function listenToInstanceEvents(callback) {
+  if (!isServerMode) {
+    // Not available in WASM or Tauri mode
+    return () => {};
+  }
+
+  try {
+    const eventSource = new EventSource(`${serverBaseUrl}/api/events`);
+
+    eventSource.addEventListener('instance', event => {
+      try {
+        const instanceEvent = JSON.parse(event.data);
+        callback(instanceEvent);
+      } catch (e) {
+        console.error('Failed to parse instance event:', e);
+      }
+    });
+
+    eventSource.onerror = error => {
+      console.warn('Instance SSE connection error, will retry:', error);
+    };
+
+    // Return cleanup function
+    return () => eventSource.close();
+  } catch (error) {
+    console.error('Failed to set up instance event listener:', error);
+    return () => {};
+  }
+}
+
 // Web-version logging wrapper (called when WASM logs to console)
 export function emitLog(level, message) {
   if (!isTauri) {
@@ -180,10 +212,18 @@ async function serverFetch(endpoint, options = {}, logMessage = null) {
 const serverApi = {
   createInstance: async () => {
     const result = await serverFetch('/instances', { method: 'POST' }, 'Created new instance');
-    return parseInt(result.id, 10);
+    return result.id; // Return string ID (nanoid)
   },
-  deleteInstance: async id => {
-    await serverFetch(`/instances/${id}`, { method: 'DELETE' }, `Deleted instance ${id}`);
+  deleteInstance: async (id, force = false) => {
+    const query = force ? '?force=true' : '';
+    await serverFetch(
+      `/instances/${id}${query}`,
+      { method: 'DELETE' },
+      `[Instance ${id}] Instance deleted`
+    );
+  },
+  listInstances: async () => {
+    return serverFetch('/instances', { method: 'GET' });
   },
   loadTorrent: async file => {
     const formData = new FormData();
@@ -208,34 +248,59 @@ const serverApi = {
     );
     return data.data.torrent;
   },
+  // Load torrent for a specific instance (creates idle instance on server)
+  // This allows the instance to persist across page refreshes
+  loadInstanceTorrent: async (id, file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    emitLog('info', `[Instance ${id}] Loading torrent: ${file.name}`);
+
+    const response = await fetch(`${serverBaseUrl}/api/instances/${id}/torrent`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    const data = await response.json();
+    if (!data.success) {
+      emitLog('error', `[Instance ${id}] Failed to load torrent: ${data.error}`);
+      throw new Error(data.error || 'Failed to load torrent');
+    }
+
+    emitLog(
+      'info',
+      `[Instance ${id}] Torrent loaded: ${data.data.torrent.name} (${formatBytes(data.data.torrent.total_size)})`
+    );
+    return data.data.torrent;
+  },
   startFaker: async (id, torrent, config) => {
-    emitLog('info', `Starting faker for ${torrent.name}`);
+    emitLog('info', `[Instance ${id}] Starting faker for ${torrent.name}`);
     await serverFetch(`/faker/${id}/start`, {
       method: 'POST',
       body: JSON.stringify({ torrent, config }),
     });
-    emitLog('info', `Faker started - emulating ${config.client_type} v${config.client_version}`);
+    emitLog('info', `[Instance ${id}] Faker started - emulating ${config.client_type} v${config.client_version}`);
   },
   updateFaker: async id => {
-    emitLog('debug', 'Sending tracker announce...');
+    emitLog('debug', `[Instance ${id}] Sending tracker announce...`);
     const result = await serverFetch(`/faker/${id}/update`, { method: 'POST' });
     emitLog(
       'info',
-      `Tracker announce complete - Seeders: ${result.seeders}, Leechers: ${result.leechers}`
+      `[Instance ${id}] Tracker announce complete - Seeders: ${result.seeders}, Leechers: ${result.leechers}`
     );
     return result;
   },
   stopFaker: async id => {
-    emitLog('info', 'Stopping faker...');
+    emitLog('info', `[Instance ${id}] Stopping faker...`);
     const result = await serverFetch(`/faker/${id}/stop`, { method: 'POST' });
-    emitLog('info', 'Faker stopped');
+    emitLog('info', `[Instance ${id}] Faker stopped`);
     return result;
   },
   pauseFaker: async id => {
-    await serverFetch(`/faker/${id}/pause`, { method: 'POST' }, 'Faker paused');
+    await serverFetch(`/faker/${id}/pause`, { method: 'POST' }, `[Instance ${id}] Faker paused`);
   },
   resumeFaker: async id => {
-    await serverFetch(`/faker/${id}/resume`, { method: 'POST' }, 'Faker resumed');
+    await serverFetch(`/faker/${id}/resume`, { method: 'POST' }, `[Instance ${id}] Faker resumed`);
   },
   updateStatsOnly: async id => {
     return serverFetch(`/faker/${id}/stats-only`, { method: 'POST' });
@@ -259,6 +324,24 @@ const serverApi = {
   },
   updateConfig: config => {
     localStorage.setItem('rustatio-config', JSON.stringify(config));
+  },
+  // Watch folder endpoints (server mode only)
+  getWatchStatus: async () => {
+    return serverFetch('/watch/status', { method: 'GET' });
+  },
+  listWatchFiles: async () => {
+    return serverFetch('/watch/files', { method: 'GET' });
+  },
+  deleteWatchFile: async filename => {
+    await serverFetch(`/watch/files/${encodeURIComponent(filename)}`, { method: 'DELETE' });
+  },
+  // Update instance config (without starting the faker)
+  // Used to persist form changes before the user clicks Start
+  updateInstanceConfig: async (id, config) => {
+    await serverFetch(`/instances/${id}/config`, {
+      method: 'PATCH',
+      body: JSON.stringify(config),
+    });
   },
 };
 
@@ -321,9 +404,13 @@ const tauriApi = {
     const { invoke } = await import('@tauri-apps/api/core');
     return invoke('create_instance');
   },
-  deleteInstance: async id => {
+  deleteInstance: async (id, force = false) => {
     const { invoke } = await import('@tauri-apps/api/core');
-    return invoke('delete_instance', { instanceId: id });
+    return invoke('delete_instance', { instanceId: id, force });
+  },
+  listInstances: async () => {
+    // Tauri doesn't persist state across restarts yet
+    return [];
   },
   loadTorrent: async file => {
     const { invoke } = await import('@tauri-apps/api/core');
@@ -400,12 +487,22 @@ const tauriApi = {
     const { invoke } = await import('@tauri-apps/api/core');
     return invoke('update_config', { config });
   },
+  // Watch folder not available in Tauri
+  getWatchStatus: async () => null,
+  listWatchFiles: async () => [],
+  deleteWatchFile: async () => {},
+  // Config sync not needed in Tauri (state is in-memory)
+  updateInstanceConfig: async () => {},
 };
 
 // WASM API implementation
 const wasmApi = {
   createInstance: () => wasm.create_instance(),
-  deleteInstance: id => wasm.delete_instance(id),
+  deleteInstance: (id, force = false) => wasm.delete_instance(id, force),
+  listInstances: async () => {
+    // WASM doesn't persist state
+    return [];
+  },
   loadTorrent: async file => {
     const bytes = new Uint8Array(await file.arrayBuffer());
     return wasm.load_torrent(bytes);
@@ -469,6 +566,12 @@ const wasmApi = {
   updateConfig: config => {
     localStorage.setItem('rustatio-config', JSON.stringify(config));
   },
+  // Watch folder not available in WASM
+  getWatchStatus: async () => null,
+  listWatchFiles: async () => [],
+  deleteWatchFile: async () => {},
+  // Config sync not needed in WASM (state is in-memory)
+  updateInstanceConfig: async () => {},
 };
 
 // Dynamic API getter that returns the appropriate implementation

@@ -4,6 +4,9 @@ import { api } from '$lib/api';
 // Check if running in Tauri
 const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
+// Helper to convert bytes to MB (rounded to integer)
+const bytesToMB = bytes => Math.round((bytes || 0) / (1024 * 1024));
+
 // Create default instance state
 function createDefaultInstance(id, defaults = {}) {
   return {
@@ -15,6 +18,9 @@ function createDefaultInstance(id, defaults = {}) {
     stats: null,
     isRunning: false,
     isPaused: false,
+
+    // Instance source (manual or watch_folder)
+    source: defaults.source || 'manual',
 
     // Intervals
     updateInterval: null,
@@ -198,10 +204,10 @@ function loadSessionFromStorage(config = null) {
         downloadRate: inst.download_rate,
         port: inst.port,
         completionPercent: inst.completion_percent,
-        initialUploaded: inst.initial_uploaded / (1024 * 1024), // Convert bytes to MB
-        initialDownloaded: inst.initial_downloaded / (1024 * 1024),
-        cumulativeUploaded: (inst.cumulative_uploaded || 0) / (1024 * 1024),
-        cumulativeDownloaded: (inst.cumulative_downloaded || 0) / (1024 * 1024),
+        initialUploaded: bytesToMB(inst.initial_uploaded),
+        initialDownloaded: bytesToMB(inst.initial_downloaded),
+        cumulativeUploaded: bytesToMB(inst.cumulative_uploaded),
+        cumulativeDownloaded: bytesToMB(inst.cumulative_downloaded),
         randomizeRates: inst.randomize_rates,
         randomRangePercent: inst.random_range_percent,
         updateIntervalSeconds: inst.update_interval_seconds,
@@ -252,7 +258,7 @@ function updateActiveInstanceStore() {
 
 // Actions
 export const instanceActions = {
-  // Initialize - create first instance or restore from storage
+  // Initialize - create first instance or restore from storage/server
   initialize: async () => {
     try {
       // Load config if in Tauri mode
@@ -262,6 +268,83 @@ export const instanceActions = {
         globalConfig.set(config);
       }
 
+      // For server mode, try to fetch existing instances from backend first
+      // This handles the case where instances are running and user refreshes or opens new tab
+      const isServerMode = !isTauri && typeof api.listInstances === 'function';
+      if (isServerMode) {
+        try {
+          const serverInstances = await api.listInstances();
+          if (serverInstances && serverInstances.length > 0) {
+            console.log(`Restoring ${serverInstances.length} instance(s) from server`);
+            
+            const restoredInstances = serverInstances.map(serverInst => {
+              // Create frontend instance from server state
+              const instance = createDefaultInstance(serverInst.id, {
+                source: serverInst.source || 'manual',
+                selectedClient: serverInst.config.client_type,
+                selectedClientVersion: serverInst.config.client_version,
+                uploadRate: serverInst.config.upload_rate,
+                downloadRate: serverInst.config.download_rate,
+                port: serverInst.config.port,
+                completionPercent: serverInst.config.completion_percent,
+                initialUploaded: bytesToMB(serverInst.config.initial_uploaded),
+                initialDownloaded: bytesToMB(serverInst.config.initial_downloaded),
+                cumulativeUploaded: bytesToMB(serverInst.stats.uploaded),
+                cumulativeDownloaded: bytesToMB(serverInst.stats.downloaded),
+                randomizeRates: serverInst.config.randomize_rates,
+                randomRangePercent: serverInst.config.random_range_percent,
+                stopAtRatioEnabled: serverInst.config.stop_at_ratio !== null,
+                stopAtRatio: serverInst.config.stop_at_ratio || 2.0,
+                stopAtUploadedEnabled: serverInst.config.stop_at_uploaded !== null,
+                stopAtUploadedGB: (serverInst.config.stop_at_uploaded || 0) / (1024 * 1024 * 1024),
+                stopAtDownloadedEnabled: serverInst.config.stop_at_downloaded !== null,
+                stopAtDownloadedGB: (serverInst.config.stop_at_downloaded || 0) / (1024 * 1024 * 1024),
+                stopAtSeedTimeEnabled: serverInst.config.stop_at_seed_time !== null,
+                stopAtSeedTimeHours: (serverInst.config.stop_at_seed_time || 0) / 3600,
+                stopWhenNoLeechers: serverInst.config.stop_when_no_leechers || false,
+                progressiveRatesEnabled: serverInst.config.progressive_rates || false,
+                targetUploadRate: serverInst.config.target_upload_rate || 100,
+                targetDownloadRate: serverInst.config.target_download_rate || 200,
+                progressiveDurationHours: (serverInst.config.progressive_duration || 3600) / 3600,
+              });
+
+              // Set torrent info
+              instance.torrent = serverInst.torrent;
+              instance.torrentPath = serverInst.torrent.name;
+              instance.stats = serverInst.stats;
+              
+              // Set running state based on server state
+              const state = serverInst.stats.state;
+              instance.isRunning = state === 'Running';
+              instance.isPaused = state === 'Paused';
+              
+              if (instance.isRunning) {
+                instance.statusMessage = 'Running - restored from server';
+                instance.statusType = 'running';
+              } else if (instance.isPaused) {
+                instance.statusMessage = 'Paused - restored from server';
+                instance.statusType = 'idle';
+              } else {
+                instance.statusMessage = 'Ready to start faking';
+                instance.statusType = 'idle';
+              }
+
+              return instance;
+            });
+
+            instances.set(restoredInstances);
+            activeInstanceId.set(restoredInstances[0].id);
+            updateActiveInstanceStore();
+            
+            console.log('Successfully restored instances from server');
+            return restoredInstances[0].id;
+          }
+        } catch (error) {
+          console.warn('Failed to fetch instances from server, falling back to localStorage:', error);
+        }
+      }
+
+      // Fall back to localStorage/config restoration
       const savedSession = loadSessionFromStorage(config);
 
       if (savedSession && savedSession.instances && savedSession.instances.length > 0) {
@@ -357,7 +440,8 @@ export const instanceActions = {
   },
 
   // Remove an instance
-  removeInstance: async id => {
+  // Set force=true to delete watch folder instances (when the file is missing)
+  removeInstance: async (id, force = false) => {
     const currentInstances = get(instances);
 
     // Don't remove if it's the last instance
@@ -366,11 +450,19 @@ export const instanceActions = {
       return;
     }
 
+    // Find the instance to check its source
+    const instanceToRemove = currentInstances.find(inst => inst.id === id);
+    if (!force && instanceToRemove && instanceToRemove.source === 'watch_folder') {
+      throw new Error(
+        'Cannot delete watch folder instance. Delete the torrent file from the watch folder instead.'
+      );
+    }
+
     try {
       // Delete the instance on the backend
       // Ignore "not found" errors - the instance may have been lost on server restart
       try {
-        await api.deleteInstance(id);
+        await api.deleteInstance(id, force);
       } catch (deleteError) {
         // Only log, don't throw - we still want to clean up the frontend
         console.warn(
@@ -456,5 +548,111 @@ export const instanceActions = {
   // Get current active instance
   getActiveInstance: () => {
     return get(activeInstance);
+  },
+
+  // Merge a new instance from server (used for real-time sync with watch folder)
+  // Returns true if a new instance was added, false if it already existed
+  mergeServerInstance: serverInst => {
+    const currentInstances = get(instances);
+    const existingInstance = currentInstances.find(
+      inst => inst.id === serverInst.id
+    );
+
+    if (existingInstance) {
+      // Instance already exists, no need to merge
+      console.log(`Instance ${serverInst.id} already exists, skipping merge`);
+      return false;
+    }
+
+    // Create frontend instance from server state
+    const instance = createDefaultInstance(serverInst.id, {
+      source: serverInst.source || 'manual',
+      selectedClient: serverInst.config.client_type,
+      selectedClientVersion: serverInst.config.client_version,
+      uploadRate: serverInst.config.upload_rate,
+      downloadRate: serverInst.config.download_rate,
+      port: serverInst.config.port,
+      completionPercent: serverInst.config.completion_percent,
+      initialUploaded: bytesToMB(serverInst.config.initial_uploaded),
+      initialDownloaded: bytesToMB(serverInst.config.initial_downloaded),
+      cumulativeUploaded: bytesToMB(serverInst.stats.uploaded),
+      cumulativeDownloaded: bytesToMB(serverInst.stats.downloaded),
+      randomizeRates: serverInst.config.randomize_rates,
+      randomRangePercent: serverInst.config.random_range_percent,
+      stopAtRatioEnabled: serverInst.config.stop_at_ratio !== null,
+      stopAtRatio: serverInst.config.stop_at_ratio || 2.0,
+      stopAtUploadedEnabled: serverInst.config.stop_at_uploaded !== null,
+      stopAtUploadedGB: (serverInst.config.stop_at_uploaded || 0) / (1024 * 1024 * 1024),
+      stopAtDownloadedEnabled: serverInst.config.stop_at_downloaded !== null,
+      stopAtDownloadedGB: (serverInst.config.stop_at_downloaded || 0) / (1024 * 1024 * 1024),
+      stopAtSeedTimeEnabled: serverInst.config.stop_at_seed_time !== null,
+      stopAtSeedTimeHours: (serverInst.config.stop_at_seed_time || 0) / 3600,
+      stopWhenNoLeechers: serverInst.config.stop_when_no_leechers || false,
+      progressiveRatesEnabled: serverInst.config.progressive_rates || false,
+      targetUploadRate: serverInst.config.target_upload_rate || 100,
+      targetDownloadRate: serverInst.config.target_download_rate || 200,
+      progressiveDurationHours: (serverInst.config.progressive_duration || 3600) / 3600,
+    });
+
+    // Set torrent info
+    instance.torrent = serverInst.torrent;
+    instance.torrentPath = serverInst.torrent.name;
+    instance.stats = serverInst.stats;
+
+    // Set running state based on server state
+    const state = serverInst.stats.state;
+    instance.isRunning = state === 'Running';
+    instance.isPaused = state === 'Paused';
+
+    if (instance.isRunning) {
+      instance.statusMessage = 'Running - added from watch folder';
+      instance.statusType = 'running';
+    } else if (instance.isPaused) {
+      instance.statusMessage = 'Paused - added from watch folder';
+      instance.statusType = 'idle';
+    } else {
+      instance.statusMessage = 'Ready to start - added from watch folder';
+      instance.statusType = 'idle';
+    }
+
+    // Add to instances store
+    instances.update(insts => [...insts, instance]);
+    updateActiveInstanceStore();
+
+    console.log(`Merged new instance ${serverInst.id} from server (${serverInst.torrent.name})`);
+    return true;
+  },
+
+  // Remove instance from frontend (used when server sends delete event)
+  removeInstanceFromStore: id => {
+    const currentInstances = get(instances);
+    const stringId = String(id); // Ensure string comparison
+
+    // Don't remove if it's the last instance
+    if (currentInstances.length <= 1) {
+      console.warn('Cannot remove the last instance');
+      return false;
+    }
+
+    const exists = currentInstances.some(inst => inst.id === stringId);
+    if (!exists) {
+      return false;
+    }
+
+    instances.update(insts => {
+      const filtered = insts.filter(inst => inst.id !== stringId);
+
+      // If we're removing the active instance, switch to the first one
+      const currentActiveId = get(activeInstanceId);
+      if (currentActiveId === stringId) {
+        activeInstanceId.set(filtered[0]?.id || null);
+      }
+
+      return filtered;
+    });
+
+    updateActiveInstanceStore();
+    console.log(`Removed instance ${id} from store`);
+    return true;
   },
 };

@@ -19,13 +19,17 @@ services:
   rustatio:
     image: ghcr.io/takitsu21/rustatio:latest
     container_name: rustatio
-    # Run as non-root user (UID/GID 1000 by default, matches Dockerfile)
-    user: "${PUID:-1000}:${PGID:-1000}"
     environment:
       - PORT=8080
       - RUST_LOG=${RUST_LOG:-info}
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      # Optional: Watch folder configuration (auto-detected if volume is mounted)
+      # - WATCH_AUTO_START=false  # Set to true to auto-start faking new torrents
     volumes:
       - rustatio_data:/data
+      # Optional: Uncomment to enable watch folder feature
+      - ${TORRENTS_DIR:-./torrents}:/torrents
     restart: unless-stopped
     network_mode: service:gluetun
     depends_on:

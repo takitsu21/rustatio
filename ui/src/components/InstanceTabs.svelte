@@ -52,6 +52,25 @@
     }
   }
 
+  async function handleForceRemoveInstance(event, id, name) {
+    event.stopPropagation();
+    event.preventDefault();
+
+    const confirmed = confirm(
+      `Force delete "${name || 'this instance'}"?\n\n` +
+        'This instance was created from the watch folder but the torrent file may no longer exist. ' +
+        'Click OK to permanently remove it.'
+    );
+
+    if (!confirmed) return;
+
+    try {
+      await instanceActions.removeInstance(id, true); // force=true
+    } catch (error) {
+      console.error('Failed to force remove instance:', error);
+    }
+  }
+
   function handleSelectInstance(id) {
     try {
       instanceActions.selectInstance(id);
@@ -115,7 +134,54 @@
               {/if}
             </span>
             <span class="select-none flex-shrink-0">{getInstanceLabel(instance)}</span>
-            {#if $instances.length > 1}
+            {#if instance.source === 'watch_folder'}
+              <!-- Watch folder instance: show folder icon + force delete button -->
+              <div class="flex items-center gap-1 ml-1">
+                <span class="flex-shrink-0 text-muted-foreground" title="From watch folder">
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <path
+                      d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"
+                    ></path>
+                  </svg>
+                </span>
+                {#if $instances.length > 1}
+                  <button
+                    class="flex items-center justify-center w-5 h-5 flex-shrink-0 p-0.5 bg-transparent border-none rounded cursor-pointer transition-all outline-none relative z-10 group opacity-50 hover:opacity-100"
+                    onclick={e =>
+                      handleForceRemoveInstance(
+                        e,
+                        instance.id,
+                        instance.torrent ? instance.torrent.name : null
+                      )}
+                    title="Force delete (file may be missing)"
+                    aria-label="Force delete instance"
+                  >
+                    <svg
+                      width="12"
+                      height="12"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2.5"
+                      stroke-linecap="round"
+                      class="text-muted-foreground group-hover:text-destructive transition-colors"
+                    >
+                      <line x1="18" y1="6" x2="6" y2="18"></line>
+                      <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                  </button>
+                {/if}
+              </div>
+            {:else if $instances.length > 1}
               <button
                 class="flex items-center justify-center w-5 h-5 flex-shrink-0 p-0.5 ml-1 bg-transparent border-none rounded cursor-pointer transition-all outline-none relative z-10 group"
                 onclick={e => handleRemoveInstance(e, instance.id)}
