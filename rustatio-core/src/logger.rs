@@ -3,22 +3,29 @@
 
 use std::cell::RefCell;
 
-// Thread-local storage for instance context
+// Thread-local storage for instance context (string-based for server compatibility)
 thread_local! {
-    static INSTANCE_CONTEXT: RefCell<Option<u32>> = const { RefCell::new(None) };
+    static INSTANCE_CONTEXT: RefCell<Option<String>> = const { RefCell::new(None) };
 }
 
-/// Set the instance context for the current thread
+/// Set the instance context for the current thread (string version for server/wasm)
+pub fn set_instance_context_str(instance_id: Option<&str>) {
+    INSTANCE_CONTEXT.with(|ctx| {
+        *ctx.borrow_mut() = instance_id.map(|s| s.to_string());
+    });
+}
+
+/// Set the instance context for the current thread (u32 version for desktop/cli compatibility)
 pub fn set_instance_context(instance_id: Option<u32>) {
     INSTANCE_CONTEXT.with(|ctx| {
-        *ctx.borrow_mut() = instance_id;
+        *ctx.borrow_mut() = instance_id.map(|id| id.to_string());
     });
 }
 
 /// Get the current instance context
 fn get_instance_prefix() -> String {
     INSTANCE_CONTEXT.with(|ctx| {
-        if let Some(id) = *ctx.borrow() {
+        if let Some(ref id) = *ctx.borrow() {
             format!("[Instance {}] ", id)
         } else {
             String::new()

@@ -33,9 +33,14 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-log = "0.2"
 uuid = { version = "1.0", features = ["v4"] }
+nanoid = "0.4"
 
 # HTTP client for network status
 reqwest = { version = "0.12", features = ["json"] }
+
+# File system watcher for watch folder feature
+notify = "6.1"
+hex = "0.4"
 
 # Include static files at compile time (optional, for single binary)
 rust-embed = { version = "8", features = ["interpolate-folder-path"] }

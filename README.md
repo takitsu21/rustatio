@@ -110,13 +110,19 @@ services:
   rustatio:
     image: ghcr.io/takitsu21/rustatio:latest
     container_name: rustatio
+    ports:
+      - "${WEBUI_PORT:-8080}:8080"  # Rustatio Web UI
     environment:
       - PORT=8080
       - RUST_LOG=${RUST_LOG:-info}
-    ports:
-      - "${WEBUI_PORT:-8080}:8080"  # Web UI port
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      # Optional: Watch folder configuration (auto-detected if volume is mounted)
+      # - WATCH_AUTO_START=false  # Set to true to auto-start faking new torrents
     volumes:
       - rustatio_data:/data
+      # Optional: Uncomment to enable watch folder feature
+      # - ${TORRENTS_DIR:-./path/to/your/torrents}:/torrents
     restart: unless-stopped
 
 volumes:
@@ -131,18 +137,47 @@ docker compose up -d
 
 3. Access the web UI at `http://localhost:8080` (or your server's IP)
 
-**Custom Port Configuration**
+**User/Group Permissions (PUID/PGID)**
 
-To change the web UI port, use the `WEBUI_PORT` environment variable or change the default port.
+The container supports LinuxServer.io-style PUID/PGID environment variables to ensure correct file permissions on mounted volumes:
 
-**Using Docker Run**
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `PUID` | User ID the container runs as | `1000` |
+| `PGID` | Group ID the container runs as | `1000` |
+
+Find your IDs: `id -u && id -g`
+
+**Watch Folder Feature**
+
+Automatically detect and load torrent files from a folder:
+
+> **Important**: Create the directory on your host **before** starting the container. If Docker creates it, it will be owned by root and the container won't be able to access it.
 
 ```bash
-# Default port 8080
-docker run -d -p 8080:8080 --name rustatio ghcr.io/takitsu21/rustatio:latest
+# 1. Create the directory first (with your user permissions)
+mkdir -p /path/to/your/torrents
 
-# Custom port 3000
+# 2. Then start the container with the volume mounted
+```
+
+
+If you see a permission warning in the logs, fix it with:
+```bash
+sudo chown -R $(id -u):$(id -g) ./torrents
+```
+
+**Custom Port Configuration**
+
+To change the web UI port:
+
+```bash
+# Using docker run
 docker run -d -p 3000:8080 --name rustatio ghcr.io/takitsu21/rustatio:latest
+
+# Using docker compose - change the ports mapping
+ports:
+  - "3000:8080"
 ```
 
 **Running Behind a VPN (Recommended)**
@@ -171,13 +206,17 @@ services:
   rustatio:
     image: ghcr.io/takitsu21/rustatio:latest
     container_name: rustatio
-    # Run as non-root user (UID/GID 1000 by default, matches Dockerfile)
-    user: "${PUID:-1000}:${PGID:-1000}"
     environment:
       - PORT=8080
       - RUST_LOG=${RUST_LOG:-info}
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      # Optional: Watch folder configuration (auto-detected if volume is mounted)
+      # - WATCH_AUTO_START=false  # Set to true to auto-start faking new torrents
     volumes:
       - rustatio_data:/data
+      # Optional: Uncomment to enable watch folder feature
+      # - ${TORRENTS_DIR:-./path/to/your/torrents}:/torrents
     restart: unless-stopped
     network_mode: service:gluetun
     depends_on:
@@ -188,18 +227,14 @@ volumes:
   rustatio_data:
 ```
 
-To customize the web UI port with VPN:
-
-```bash
-WEBUI_PORT=3000 docker compose up -d
-```
-
 > **Note**: The `ports` are defined on the `gluetun` container since Rustatio uses its network stack. See the [gluetun wiki](https://github.com/qdm12/gluetun-wiki) for VPN provider-specific configuration.
 
 **Docker Features**:
 - ✅ No CORS limitations (server handles tracker requests)
 - ✅ Runs on any Docker-enabled system (Linux, Windows, macOS, NAS)
 - ✅ Multi-architecture support (amd64, arm64)
+- ✅ PUID/PGID support for correct volume permissions
+- ✅ Optional watch folder for automatic torrent loading
 
 ### Web App Usage
 

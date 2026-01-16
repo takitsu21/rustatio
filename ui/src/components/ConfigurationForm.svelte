@@ -277,9 +277,10 @@
           bind:value={localInitialUploaded}
           disabled={isRunning}
           min="0"
+          step="1"
           onfocus={handleFocus}
           onblur={handleBlur}
-          oninput={() => updateValue('initialUploaded', localInitialUploaded)}
+          oninput={() => updateValue('initialUploaded', Math.round(localInitialUploaded || 0))}
         />
       </div>
 

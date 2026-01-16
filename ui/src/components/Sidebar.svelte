@@ -5,6 +5,7 @@
   import AboutDialog from './AboutDialog.svelte';
   import SettingsDialog from './SettingsDialog.svelte';
   import NetworkStatus from './NetworkStatus.svelte';
+  import WatchFolder from './WatchFolder.svelte';
 
   let {
     onStartAll = () => {},
@@ -152,6 +153,25 @@
       await instanceActions.removeInstance(id);
     } catch (error) {
       console.error('Failed to remove instance:', error);
+    }
+  }
+
+  async function handleForceRemoveInstance(event, id, name) {
+    event.stopPropagation();
+    event.preventDefault();
+
+    const confirmed = confirm(
+      `Force delete "${name || 'this instance'}"?\n\n` +
+        'This instance was created from the watch folder but the torrent file may no longer exist. ' +
+        'Click OK to permanently remove it.'
+    );
+
+    if (!confirmed) return;
+
+    try {
+      await instanceActions.removeInstance(id, true); // force=true
+    } catch (error) {
+      console.error('Failed to force remove instance:', error);
     }
   }
 
@@ -383,8 +403,8 @@
             </span>
           {/if}
 
-          <!-- Close Button -->
-          {#if $instances.length > 1 && !isCollapsed}
+          <!-- Close Button (not shown for watch folder instances) -->
+          {#if $instances.length > 1 && !isCollapsed && instance.source !== 'watch_folder'}
             <button
               class="flex-shrink-0 p-1 rounded hover:bg-destructive/20 group bg-transparent border-0 cursor-pointer"
               onclick={e => handleRemoveInstance(e, instance.id)}
@@ -405,6 +425,61 @@
                 <line x1="6" y1="6" x2="18" y2="18"></line>
               </svg>
             </button>
+          {:else if instance.source === 'watch_folder' && !isCollapsed && $instances.length > 1}
+            <!-- Watch folder instance: show folder icon + force delete button -->
+            <div class="flex items-center gap-1">
+              <span class="flex-shrink-0 text-muted-foreground" title="From watch folder">
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"
+                  ></path>
+                </svg>
+              </span>
+              <button
+                class="flex-shrink-0 p-1 rounded hover:bg-destructive/20 group bg-transparent border-0 cursor-pointer opacity-50 hover:opacity-100"
+                onclick={e => handleForceRemoveInstance(e, instance.id, instance.name)}
+                title="Force delete (file may be missing)"
+                aria-label="Force delete instance"
+              >
+                <svg
+                  width="10"
+                  height="10"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.5"
+                  stroke-linecap="round"
+                  class="text-muted-foreground group-hover:text-destructive transition-colors"
+                >
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+              </button>
+            </div>
+          {:else if instance.source === 'watch_folder' && !isCollapsed}
+            <!-- Watch folder indicator (when only 1 instance) -->
+            <span class="flex-shrink-0 text-muted-foreground" title="From watch folder">
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+              </svg>
+            </span>
           {/if}
         </div>
 
@@ -454,6 +529,9 @@
   <div class="border-t border-border p-3 space-y-2">
     <!-- Network Status -->
     <NetworkStatus {isCollapsed} />
+
+    <!-- Watch Folder (server mode only) -->
+    <WatchFolder {isCollapsed} />
 
     <!-- Settings Button -->
     <button

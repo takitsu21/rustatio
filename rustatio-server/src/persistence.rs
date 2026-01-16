@@ -5,6 +5,17 @@ use std::path::Path;
 use tokio::fs;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
+/// Source of an instance - where it was created from
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum InstanceSource {
+    /// Created manually via UI/API
+    #[default]
+    Manual,
+    /// Created automatically from watch folder
+    WatchFolder,
+}
+
 /// Persisted state for a single faker instance
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PersistedInstance {
@@ -18,13 +29,15 @@ pub struct PersistedInstance {
     pub created_at: u64,
     /// Timestamp of last update
     pub updated_at: u64,
+    /// Source of this instance (manual or watch folder)
+    #[serde(default)]
+    pub source: InstanceSource,
 }
 
 /// Full application state that gets persisted to disk
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct PersistedState {
     pub instances: HashMap<String, PersistedInstance>,
-    pub next_id: u32,
     /// Version for future migrations
     pub version: u32,
 }
@@ -33,7 +46,6 @@ impl PersistedState {
     pub fn new() -> Self {
         Self {
             instances: HashMap::new(),
-            next_id: 1,
             version: 1,
         }
     }

@@ -1,5 +1,5 @@
-use crate::persistence::{now_timestamp, PersistedInstance, PersistedState, Persistence};
-use rustatio_core::logger::set_instance_context;
+use crate::persistence::{now_timestamp, InstanceSource, PersistedInstance, PersistedState, Persistence};
+use rustatio_core::logger::set_instance_context_str;
 use rustatio_core::{FakerConfig, FakerState, FakerStats, RatioFaker, TorrentInfo};
 use serde::Serialize;
 use std::collections::HashMap;
@@ -30,6 +30,21 @@ impl LogEvent {
     }
 }
 
+/// Instance event sent to UI via SSE for real-time sync
+#[derive(Clone, Debug, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum InstanceEvent {
+    /// A new instance was created (e.g., from watch folder)
+    Created {
+        id: String,
+        torrent_name: String,
+        info_hash: String,
+        auto_started: bool,
+    },
+    /// An instance was deleted
+    Deleted { id: String },
+}
+
 /// Instance data with cumulative stats tracking
 pub struct FakerInstance {
     pub faker: Arc<RwLock<RatioFaker>>,
@@ -39,6 +54,8 @@ pub struct FakerInstance {
     pub cumulative_uploaded: u64,
     pub cumulative_downloaded: u64,
     pub created_at: u64,
+    /// Source of this instance (manual or watch folder)
+    pub source: InstanceSource,
     /// Background task handle (if running)
     task_handle: Option<JoinHandle<()>>,
     /// Shutdown signal sender for background task
@@ -52,10 +69,10 @@ pub struct AppState {
     pub instances: Arc<RwLock<HashMap<String, FakerInstance>>>,
     /// Loaded torrents (not yet started)
     pub torrents: Arc<RwLock<HashMap<String, TorrentInfo>>>,
-    /// Counter for generating instance IDs
-    next_id: Arc<RwLock<u32>>,
     /// Broadcast channel for log events (SSE)
     pub log_sender: broadcast::Sender<LogEvent>,
+    /// Broadcast channel for instance events (SSE)
+    pub instance_sender: broadcast::Sender<InstanceEvent>,
     /// Persistence manager
     persistence: Arc<Persistence>,
 }
@@ -63,11 +80,12 @@ pub struct AppState {
 impl AppState {
     pub fn new(data_dir: &str) -> Self {
         let (log_sender, _) = broadcast::channel(256);
+        let (instance_sender, _) = broadcast::channel(64);
         Self {
             instances: Arc::new(RwLock::new(HashMap::new())),
             torrents: Arc::new(RwLock::new(HashMap::new())),
-            next_id: Arc::new(RwLock::new(1)),
             log_sender,
+            instance_sender,
             persistence: Arc::new(Persistence::new(data_dir)),
         }
     }
@@ -76,55 +94,51 @@ impl AppState {
     pub async fn load_saved_state(&self) -> Result<usize, String> {
         let saved = self.persistence.load().await;
 
-        // Update next_id
-        *self.next_id.write().await = saved.next_id;
-
         let mut restored_count = 0;
 
-        // Restore instances that were running
+        // Restore all instances (including Idle ones so they persist across refreshes)
         for (id, persisted) in saved.instances {
-            // Only restore instances that were running or paused
-            match persisted.state {
-                FakerState::Running | FakerState::Paused => {
-                    tracing::info!("Restoring instance {} ({})", id, persisted.torrent.name);
+            tracing::info!(
+                "Restoring instance {} ({}) - state: {:?}",
+                id,
+                persisted.torrent.name,
+                persisted.state
+            );
 
-                    // Create config with saved cumulative stats
-                    let mut config = persisted.config.clone();
-                    config.initial_uploaded = persisted.cumulative_uploaded;
-                    config.initial_downloaded = persisted.cumulative_downloaded;
+            // Create config with saved cumulative stats for RatioFaker
+            // But store the original persisted.config in FakerInstance
+            let mut faker_config = persisted.config.clone();
+            faker_config.initial_uploaded = persisted.cumulative_uploaded;
+            faker_config.initial_downloaded = persisted.cumulative_downloaded;
 
-                    match RatioFaker::new(persisted.torrent.clone(), config.clone()) {
-                        Ok(faker) => {
-                            let instance = FakerInstance {
-                                faker: Arc::new(RwLock::new(faker)),
-                                torrent: persisted.torrent.clone(),
-                                config: persisted.config,
-                                torrent_info_hash: persisted.torrent.info_hash,
-                                cumulative_uploaded: persisted.cumulative_uploaded,
-                                cumulative_downloaded: persisted.cumulative_downloaded,
-                                created_at: persisted.created_at,
-                                task_handle: None,
-                                shutdown_tx: None,
-                            };
+            match RatioFaker::new(persisted.torrent.clone(), faker_config) {
+                Ok(faker) => {
+                    let instance = FakerInstance {
+                        faker: Arc::new(RwLock::new(faker)),
+                        torrent: persisted.torrent.clone(),
+                        config: persisted.config,
+                        torrent_info_hash: persisted.torrent.info_hash,
+                        cumulative_uploaded: persisted.cumulative_uploaded,
+                        cumulative_downloaded: persisted.cumulative_downloaded,
+                        created_at: persisted.created_at,
+                        source: persisted.source,
+                        task_handle: None,
+                        shutdown_tx: None,
+                    };
 
-                            self.instances.write().await.insert(id.clone(), instance);
+                    self.instances.write().await.insert(id.clone(), instance);
 
-                            // Auto-start if it was running
-                            if matches!(persisted.state, FakerState::Running) {
-                                if let Err(e) = self.start_instance(&id).await {
-                                    tracing::warn!("Failed to auto-start instance {}: {}", id, e);
-                                }
-                            }
-
-                            restored_count += 1;
-                        }
-                        Err(e) => {
-                            tracing::error!("Failed to restore instance {}: {}", id, e);
+                    // Auto-start if it was running
+                    if matches!(persisted.state, FakerState::Running) {
+                        if let Err(e) = self.start_instance(&id).await {
+                            tracing::warn!("Failed to auto-start instance {}: {}", id, e);
                         }
                     }
+
+                    restored_count += 1;
                 }
-                _ => {
-                    tracing::debug!("Skipping instance {} with state {:?}", id, persisted.state);
+                Err(e) => {
+                    tracing::error!("Failed to restore instance {}: {}", id, e);
                 }
             }
         }
@@ -139,11 +153,9 @@ impl AppState {
     /// Save current state to disk
     pub async fn save_state(&self) -> Result<(), String> {
         let instances = self.instances.read().await;
-        let next_id = *self.next_id.read().await;
 
         let mut persisted = PersistedState {
             instances: HashMap::new(),
-            next_id,
             version: 1,
         };
 
@@ -161,6 +173,7 @@ impl AppState {
                     state: stats.state,
                     created_at: instance.created_at,
                     updated_at: now_timestamp(),
+                    source: instance.source,
                 },
             );
         }
@@ -173,23 +186,126 @@ impl AppState {
         self.log_sender.subscribe()
     }
 
-    /// Generate a new unique instance ID
-    pub async fn next_instance_id(&self) -> String {
-        let mut id = self.next_id.write().await;
-        let current = *id;
-        *id += 1;
-        current.to_string()
+    /// Subscribe to instance events (for real-time sync with frontend)
+    pub fn subscribe_instance_events(&self) -> broadcast::Receiver<InstanceEvent> {
+        self.instance_sender.subscribe()
     }
 
-    /// Create a new faker instance
+    /// Emit an instance event to all subscribers
+    pub fn emit_instance_event(&self, event: InstanceEvent) {
+        // Ignore send errors (no subscribers is fine)
+        let _ = self.instance_sender.send(event);
+    }
+
+    /// Generate a new unique instance ID using nanoid
+    pub async fn next_instance_id(&self) -> String {
+        nanoid::nanoid!(10) // 10 chars is short but collision-resistant enough
+    }
+
+    /// Check if an instance exists
+    pub async fn instance_exists(&self, id: &str) -> bool {
+        self.instances.read().await.contains_key(id)
+    }
+
+    /// Update an existing instance's config (used when starting an existing instance with new config)
+    pub async fn update_instance_config(&self, id: &str, config: FakerConfig) -> Result<(), String> {
+        let mut instances = self.instances.write().await;
+        let instance = instances.get_mut(id).ok_or("Instance not found")?;
+
+        // Create a separate config for RatioFaker with cumulative stats as initial values
+        let mut faker_config = config.clone();
+        faker_config.initial_uploaded = instance.cumulative_uploaded;
+        faker_config.initial_downloaded = instance.cumulative_downloaded;
+
+        let faker = RatioFaker::new(instance.torrent.clone(), faker_config).map_err(|e| e.to_string())?;
+
+        instance.faker = Arc::new(RwLock::new(faker));
+        instance.config = config.clone(); // Store original user config (not modified)
+
+        Ok(())
+    }
+
+    /// Update only the config for an instance (without recreating the faker)
+    /// Used to persist form changes before the faker is started
+    pub async fn update_instance_config_only(&self, id: &str, config: FakerConfig) -> Result<(), String> {
+        let mut instances = self.instances.write().await;
+        let instance = instances.get_mut(id).ok_or("Instance not found")?;
+
+        // Just update the stored config, don't recreate the faker
+        instance.config = config;
+
+        // Save state to persist the config change
+        drop(instances); // Release lock before calling save_state
+        if let Err(e) = self.save_state().await {
+            tracing::warn!("Failed to save state after config update: {}", e);
+        }
+
+        Ok(())
+    }
+
+    /// Create a new faker instance (manual creation via API)
     pub async fn create_instance(&self, id: &str, torrent: TorrentInfo, config: FakerConfig) -> Result<(), String> {
+        self.create_instance_internal(id, torrent, config, InstanceSource::Manual)
+            .await
+    }
+
+    /// Create a new idle faker instance (torrent loaded but not started)
+    /// Used when user loads a torrent via UI - creates server-side instance so it persists on refresh
+    pub async fn create_idle_instance(&self, id: &str, torrent: TorrentInfo) -> Result<(), String> {
+        // Use default config for idle instance
+        let config = FakerConfig::default();
+        self.create_instance_internal(id, torrent.clone(), config, InstanceSource::Manual)
+            .await?;
+
+        // Emit event for real-time sync
+        self.emit_instance_event(InstanceEvent::Created {
+            id: id.to_string(),
+            torrent_name: torrent.name,
+            info_hash: hex::encode(torrent.info_hash),
+            auto_started: false,
+        });
+
+        Ok(())
+    }
+
+    /// Create a new faker instance and emit an event for real-time sync
+    /// Used by watch folder to notify connected frontends
+    pub async fn create_instance_with_event(
+        &self,
+        id: &str,
+        torrent: TorrentInfo,
+        config: FakerConfig,
+        auto_started: bool,
+    ) -> Result<(), String> {
+        self.create_instance_internal(id, torrent.clone(), config, InstanceSource::WatchFolder)
+            .await?;
+
+        // Emit event for real-time sync
+        self.emit_instance_event(InstanceEvent::Created {
+            id: id.to_string(),
+            torrent_name: torrent.name,
+            info_hash: hex::encode(torrent.info_hash),
+            auto_started,
+        });
+
+        Ok(())
+    }
+
+    /// Internal implementation for creating instances
+    async fn create_instance_internal(
+        &self,
+        id: &str,
+        torrent: TorrentInfo,
+        config: FakerConfig,
+        source: InstanceSource,
+    ) -> Result<(), String> {
         // Set instance context for logging
-        set_instance_context(id.parse().ok());
+        set_instance_context_str(Some(id));
 
         let torrent_info_hash = torrent.info_hash;
 
-        // Check if instance exists and has same torrent - preserve cumulative stats
-        let (cumulative_uploaded, cumulative_downloaded, created_at) = {
+        // Check if instance exists and has same torrent - preserve cumulative stats and source
+        let (cumulative_uploaded, cumulative_downloaded, created_at, existing_source) = {
             let instances = self.instances.read().await;
             if let Some(existing) = instances.get(id) {
                 if existing.torrent_info_hash == torrent_info_hash {
@@ -197,30 +313,37 @@ impl AppState {
                         existing.cumulative_uploaded,
                         existing.cumulative_downloaded,
                         existing.created_at,
+                        Some(existing.source),
                     )
                 } else {
-                    (0, 0, now_timestamp())
+                    (0, 0, now_timestamp(), None)
                 }
             } else {
-                (0, 0, now_timestamp())
+                (0, 0, now_timestamp(), None)
             }
         };
 
-        // Apply cumulative stats to config
-        let mut config = config;
-        config.initial_uploaded = cumulative_uploaded;
-        config.initial_downloaded = cumulative_downloaded;
+        // Preserve existing source if instance already exists, otherwise use provided source
+        let final_source = existing_source.unwrap_or(source);
 
-        let faker = RatioFaker::new(torrent.clone(), config.clone()).map_err(|e| e.to_string())?;
+        // Create a separate config for RatioFaker with cumulative stats as initial values
+        // This ensures the faker starts from cumulative totals, but we preserve the
+        // original user config for display in the frontend
+        let mut faker_config = config.clone();
+        faker_config.initial_uploaded = cumulative_uploaded;
+        faker_config.initial_downloaded = cumulative_downloaded;
+
+        let faker = RatioFaker::new(torrent.clone(), faker_config).map_err(|e| e.to_string())?;
 
         let instance = FakerInstance {
             faker: Arc::new(RwLock::new(faker)),
             torrent: torrent.clone(),
-            config,
+            config: config.clone(), // Store original user config (not modified)
             torrent_info_hash,
             cumulative_uploaded,
             cumulative_downloaded,
             created_at,
+            source: final_source,
             task_handle: None,
             shutdown_tx: None,
         };
@@ -238,7 +361,7 @@ impl AppState {
     /// Start a faker instance
     pub async fn start_instance(&self, id: &str) -> Result<(), String> {
         // Set instance context for logging
-        set_instance_context(id.parse().ok());
+        set_instance_context_str(Some(id));
 
         let faker_arc = {
             let mut instances = self.instances.write().await;
@@ -324,7 +447,7 @@ impl AppState {
                     }
 
                     // Update the faker (calculates stats, may trigger tracker announce)
-                    set_instance_context(id.parse().ok());
+                    set_instance_context_str(Some(&id));
                     if let Err(e) = faker.write().await.update().await {
                         tracing::warn!("Background update failed for instance {}: {}", id, e);
                     }
@@ -346,7 +469,7 @@ impl AppState {
     /// Stop a faker instance
     pub async fn stop_instance(&self, id: &str) -> Result<FakerStats, String> {
         // Set instance context for logging
-        set_instance_context(id.parse().ok());
+        set_instance_context_str(Some(id));
 
         let (faker_arc, shutdown_tx, task_handle) = {
             let mut instances = self.instances.write().await;
@@ -393,7 +516,7 @@ impl AppState {
     /// Pause a faker instance
     pub async fn pause_instance(&self, id: &str) -> Result<(), String> {
         // Set instance context for logging
-        set_instance_context(id.parse().ok());
+        set_instance_context_str(Some(id));
 
         let (faker_arc, shutdown_tx, task_handle) = {
             let mut instances = self.instances.write().await;
@@ -428,7 +551,7 @@ impl AppState {
     /// Resume a faker instance
     pub async fn resume_instance(&self, id: &str) -> Result<(), String> {
         // Set instance context for logging
-        set_instance_context(id.parse().ok());
+        set_instance_context_str(Some(id));
 
         let faker_arc = {
             let mut instances = self.instances.write().await;
@@ -479,7 +602,7 @@ impl AppState {
     /// Update faker (send tracker announce)
     pub async fn update_instance(&self, id: &str) -> Result<FakerStats, String> {
         // Set instance context for logging
-        set_instance_context(id.parse().ok());
+        set_instance_context_str(Some(id));
 
         let faker_arc = {
             let instances = self.instances.read().await;
@@ -495,7 +618,7 @@ impl AppState {
     /// Update stats only (no tracker announce)
     pub async fn update_stats_only(&self, id: &str) -> Result<FakerStats, String> {
         // Set instance context for logging
-        set_instance_context(id.parse().ok());
+        set_instance_context_str(Some(id));
 
         let faker_arc = {
             let instances = self.instances.read().await;
@@ -525,7 +648,22 @@ impl AppState {
     }
 
     /// Delete an instance (idempotent - returns Ok even if not found)
-    pub async fn delete_instance(&self, id: &str) -> Result<(), String> {
+    /// Note: Watch folder instances cannot be deleted via API unless force=true
+    /// Use force=true for orphaned watch folder instances (file no longer exists)
+    pub async fn delete_instance(&self, id: &str, force: bool) -> Result<(), String> {
+        // Check if instance exists and if it's from watch folder (unless force=true)
+        if !force {
+            let instances = self.instances.read().await;
+            if let Some(instance) = instances.get(id) {
+                if instance.source == InstanceSource::WatchFolder {
+                    return Err(
+                        "Cannot delete watch folder instance. Delete the torrent file from the watch folder instead, or use force delete."
+                            .to_string(),
+                    );
+                }
+            }
+        }
+
         // Stop background task if running
         let (shutdown_tx, task_handle) = {
             let mut instances = self.instances.write().await;
@@ -546,7 +684,12 @@ impl AppState {
         }
 
         // Remove instance
-        self.instances.write().await.remove(id);
+        let removed = self.instances.write().await.remove(id);
+
+        // Emit event if instance was actually removed
+        if removed.is_some() {
+            self.emit_instance_event(InstanceEvent::Deleted { id: id.to_string() });
+        }
 
         // Save state after deleting
         if let Err(e) = self.save_state().await {
@@ -574,16 +717,102 @@ impl AppState {
 
         for (id, instance) in instances.iter() {
             let stats = instance.faker.read().await.get_stats().await;
+
             result.push(InstanceInfo {
                 id: id.clone(),
                 torrent: instance.torrent.clone(),
                 config: instance.config.clone(),
                 stats,
                 created_at: instance.created_at,
+                source: instance.source,
             });
         }
 
         result
+    }
+
+    /// Find instance ID by info_hash
+    pub async fn find_instance_by_info_hash(&self, info_hash: &[u8; 20]) -> Option<String> {
+        let instances = self.instances.read().await;
+        for (id, instance) in instances.iter() {
+            if &instance.torrent_info_hash == info_hash {
+                return Some(id.clone());
+            }
+        }
+        None
+    }
+
+    /// Update an instance's source
+    pub async fn update_instance_source(&self, id: &str, source: InstanceSource) -> Result<(), String> {
+        let mut instances = self.instances.write().await;
+        let instance = instances.get_mut(id).ok_or("Instance not found")?;
+        instance.source = source;
+        drop(instances);
+
+        // Save state after updating source
+        if let Err(e) = self.save_state().await {
+            tracing::warn!("Failed to save state after updating instance source: {}", e);
+        }
+
+        Ok(())
+    }
+
+    /// Update an instance's source by info_hash
+    pub async fn update_instance_source_by_info_hash(
+        &self,
+        info_hash: &[u8; 20],
+        source: InstanceSource,
+    ) -> Result<(), String> {
+        let id = match self.find_instance_by_info_hash(info_hash).await {
+            Some(id) => id,
+            None => return Ok(()), // No instance found, nothing to update
+        };
+        self.update_instance_source(&id, source).await
+    }
+
+    /// Delete an instance by info_hash (internal use - bypasses source check)
+    /// Used when torrent file is removed from watch folder
+    pub async fn delete_instance_by_info_hash(&self, info_hash: &[u8; 20]) -> Result<(), String> {
+        // Find the instance ID
+        let id = match self.find_instance_by_info_hash(info_hash).await {
+            Some(id) => id,
+            None => return Ok(()), // No instance found, nothing to delete
+        };
+
+        // Stop background task if running
+        let (shutdown_tx, task_handle) = {
+            let mut instances = self.instances.write().await;
+            if let Some(instance) = instances.get_mut(&id) {
+                (instance.shutdown_tx.take(), instance.task_handle.take())
+            } else {
+                (None, None)
+            }
+        };
+
+        // Signal background task to stop
+        if let Some(tx) = shutdown_tx {
+            let _ = tx.send(()).await;
+        }
+        // Wait for task to finish (with timeout)
+        if let Some(handle) = task_handle {
+            let _ = tokio::time::timeout(Duration::from_secs(2), handle).await;
+        }
+
+        // Remove instance
+        let removed = self.instances.write().await.remove(&id);
+
+        // Emit event if instance was actually removed
+        if removed.is_some() {
+            tracing::info!("Deleted instance {} (torrent file removed from watch folder)", id);
+            self.emit_instance_event(InstanceEvent::Deleted { id: id.clone() });
+        }
+
+        // Save state after deleting
+        if let Err(e) = self.save_state().await {
+            tracing::warn!("Failed to save state after deleting instance: {}", e);
+        }
+
+        Ok(())
     }
 }
 
@@ -595,6 +824,7 @@ pub struct InstanceInfo {
     pub config: FakerConfig,
     pub stats: FakerStats,
     pub created_at: u64,
+    pub source: InstanceSource,
 }
 
 impl AppState {

@@ -510,108 +510,110 @@
                       ? 'ring-1 ring-primary/30'
                       : ''}"
                   >
-                    <div class="flex items-start justify-between gap-4">
-                      <div class="flex-1">
-                        <div class="flex items-center gap-2 mb-1">
-                          <span class="text-xl">{preset.icon}</span>
-                          <h3 class="font-semibold text-foreground">{preset.name}</h3>
-                          {#if preset.recommended}
-                            <span
-                              class="text-xs px-2 py-0.5 rounded-full bg-primary/20 text-primary font-medium"
-                            >
-                              Recommended
-                            </span>
-                          {/if}
-                        </div>
-                        <p class="text-sm text-muted-foreground mb-3">{preset.description}</p>
-
-                        <!-- Settings preview -->
-                        <div class="flex flex-wrap gap-2 text-xs mb-3">
-                          <span class="px-2 py-1 bg-muted rounded"
-                            >↑ {preset.settings.uploadRate} KB/s</span
+                    <!-- Header row with title and action button -->
+                    <div class="flex items-start justify-between gap-3 mb-2">
+                      <div class="flex items-center gap-2 flex-wrap flex-1 min-w-0">
+                        <span class="text-xl flex-shrink-0">{preset.icon}</span>
+                        <h3 class="font-semibold text-foreground">{preset.name}</h3>
+                        {#if preset.recommended}
+                          <span
+                            class="text-xs px-2 py-0.5 rounded-full bg-primary/20 text-primary font-medium"
                           >
-                          <span class="px-2 py-1 bg-muted rounded"
-                            >↓ {preset.settings.downloadRate} KB/s</span
-                          >
-                          {#if preset.settings.randomizeRates}
-                            <span class="px-2 py-1 bg-muted rounded"
-                              >±{preset.settings.randomRangePercent}%</span
-                            >
-                          {/if}
-                          {#if preset.settings.progressiveRatesEnabled}
-                            <span class="px-2 py-1 bg-green-500/20 text-green-500 rounded"
-                              >Progressive</span
-                            >
-                          {/if}
-                          {#if preset.settings.selectedClient}
-                            <span
-                              class="px-2 py-1 bg-purple-500/20 text-purple-500 rounded capitalize"
-                              >{preset.settings.selectedClient}</span
-                            >
-                          {/if}
-                          <!-- Stop conditions -->
-                          {#if preset.settings.stopAtRatioEnabled}
-                            <span class="px-2 py-1 bg-orange-500/20 text-orange-500 rounded"
-                              >Stop @ {preset.settings.stopAtRatio}x</span
-                            >
-                          {/if}
-                          {#if preset.settings.stopAtUploadedEnabled}
-                            <span class="px-2 py-1 bg-orange-500/20 text-orange-500 rounded"
-                              >Stop @ {preset.settings.stopAtUploadedGB} GB ↑</span
-                            >
-                          {/if}
-                          {#if preset.settings.stopAtDownloadedEnabled}
-                            <span class="px-2 py-1 bg-orange-500/20 text-orange-500 rounded"
-                              >Stop @ {preset.settings.stopAtDownloadedGB} GB ↓</span
-                            >
-                          {/if}
-                          {#if preset.settings.stopAtSeedTimeEnabled}
-                            <span class="px-2 py-1 bg-orange-500/20 text-orange-500 rounded"
-                              >Stop @ {preset.settings.stopAtSeedTimeHours}h</span
-                            >
-                          {/if}
-                          {#if preset.settings.stopWhenNoLeechers}
-                            <span class="px-2 py-1 bg-orange-500/20 text-orange-500 rounded"
-                              >Stop: No Leechers</span
-                            >
-                          {/if}
-                        </div>
-
-                        <!-- Tips -->
-                        <details class="text-xs">
-                          <summary
-                            class="cursor-pointer text-muted-foreground hover:text-foreground transition-colors"
-                          >
-                            Why these settings?
-                          </summary>
-                          <ul class="mt-2 space-y-1 text-muted-foreground pl-4">
-                            {#each preset.tips as tip, tipIndex (tipIndex)}
-                              <li class="list-disc">{tip}</li>
-                            {/each}
-                          </ul>
-                        </details>
+                            Recommended
+                          </span>
+                        {/if}
                       </div>
-
-                      {#if appliedPresetId === preset.id}
-                        <span
-                          class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold rounded-lg bg-green-500/20 text-green-500"
-                        >
-                          <svg
-                            width="14"
-                            height="14"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2.5"
+                      <!-- Action button in header -->
+                      <div class="flex-shrink-0">
+                        {#if appliedPresetId === preset.id}
+                          <span
+                            class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold rounded-lg bg-green-500/20 text-green-500"
                           >
-                            <polyline points="20 6 9 17 4 12"></polyline>
-                          </svg>
-                          Applied
-                        </span>
-                      {:else}
-                        <Button size="sm" onclick={() => applyPreset(preset)}>Apply</Button>
+                            <svg
+                              width="14"
+                              height="14"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              stroke-width="2.5"
+                            >
+                              <polyline points="20 6 9 17 4 12"></polyline>
+                            </svg>
+                            Applied
+                          </span>
+                        {:else}
+                          <Button size="sm" onclick={() => applyPreset(preset)}>Apply</Button>
+                        {/if}
+                      </div>
+                    </div>
+
+                    <p class="text-sm text-muted-foreground mb-3">{preset.description}</p>
+
+                    <!-- Settings preview -->
+                    <div class="flex flex-wrap gap-2 text-xs mb-2">
+                      <span class="px-2 py-1 bg-muted rounded"
+                        >↑ {preset.settings.uploadRate} KB/s</span
+                      >
+                      <span class="px-2 py-1 bg-muted rounded"
+                        >↓ {preset.settings.downloadRate} KB/s</span
+                      >
+                      {#if preset.settings.randomizeRates}
+                        <span class="px-2 py-1 bg-muted rounded"
+                          >±{preset.settings.randomRangePercent}%</span
+                        >
+                      {/if}
+                      {#if preset.settings.progressiveRatesEnabled}
+                        <span class="px-2 py-1 bg-green-500/20 text-green-500 rounded"
+                          >Progressive</span
+                        >
+                      {/if}
+                      {#if preset.settings.selectedClient}
+                        <span
+                          class="px-2 py-1 bg-purple-500/20 text-purple-500 rounded capitalize"
+                          >{preset.settings.selectedClient}</span
+                        >
+                      {/if}
+                      <!-- Stop conditions -->
+                      {#if preset.settings.stopAtRatioEnabled}
+                        <span class="px-2 py-1 bg-orange-500/20 text-orange-500 rounded"
+                          >Stop @ {preset.settings.stopAtRatio}x</span
+                        >
+                      {/if}
+                      {#if preset.settings.stopAtUploadedEnabled}
+                        <span class="px-2 py-1 bg-orange-500/20 text-orange-500 rounded"
+                          >Stop @ {preset.settings.stopAtUploadedGB} GB ↑</span
+                        >
+                      {/if}
+                      {#if preset.settings.stopAtDownloadedEnabled}
+                        <span class="px-2 py-1 bg-orange-500/20 text-orange-500 rounded"
+                          >Stop @ {preset.settings.stopAtDownloadedGB} GB ↓</span
+                        >
+                      {/if}
+                      {#if preset.settings.stopAtSeedTimeEnabled}
+                        <span class="px-2 py-1 bg-orange-500/20 text-orange-500 rounded"
+                          >Stop @ {preset.settings.stopAtSeedTimeHours}h</span
+                        >
+                      {/if}
+                      {#if preset.settings.stopWhenNoLeechers}
+                        <span class="px-2 py-1 bg-orange-500/20 text-orange-500 rounded"
+                          >Stop: No Leechers</span
+                        >
                       {/if}
                     </div>
+
+                    <!-- Tips -->
+                    <details class="text-xs">
+                      <summary
+                        class="cursor-pointer text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        Why these settings?
+                      </summary>
+                      <ul class="mt-2 space-y-1 text-muted-foreground pl-4">
+                        {#each preset.tips as tip, tipIndex (tipIndex)}
+                          <li class="list-disc">{tip}</li>
+                        {/each}
+                      </ul>
+                    </details>
                   </div>
                 {/each}
               </div>
@@ -629,73 +631,19 @@
                     <div
                       class="border border-border rounded-lg p-4 hover:border-primary/50 transition-colors"
                     >
-                      <div class="flex items-start justify-between gap-4">
-                        <div class="flex-1">
-                          <div class="flex items-center gap-2 mb-1">
-                            <span class="text-xl">{preset.icon}</span>
-                            <h3 class="font-semibold text-foreground">{preset.name}</h3>
-                            <span
-                              class="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground"
-                            >
-                              Custom
-                            </span>
-                          </div>
-                          <p class="text-sm text-muted-foreground mb-3">{preset.description}</p>
-
-                          <!-- Settings preview -->
-                          <div class="flex flex-wrap gap-2 text-xs">
-                            <span class="px-2 py-1 bg-muted rounded"
-                              >↑ {preset.settings.uploadRate} KB/s</span
-                            >
-                            <span class="px-2 py-1 bg-muted rounded"
-                              >↓ {preset.settings.downloadRate} KB/s</span
-                            >
-                            {#if preset.settings.randomizeRates}
-                              <span class="px-2 py-1 bg-muted rounded"
-                                >±{preset.settings.randomRangePercent}%</span
-                              >
-                            {/if}
-                            {#if preset.settings.progressiveRatesEnabled}
-                              <span class="px-2 py-1 bg-green-500/20 text-green-500 rounded"
-                                >Progressive</span
-                              >
-                            {/if}
-                            {#if preset.settings.selectedClient}
-                              <span
-                                class="px-2 py-1 bg-purple-500/20 text-purple-500 rounded capitalize"
-                                >{preset.settings.selectedClient}</span
-                              >
-                            {/if}
-                            <!-- Stop conditions -->
-                            {#if preset.settings.stopAtRatioEnabled}
-                              <span class="px-2 py-1 bg-orange-500/20 text-orange-500 rounded"
-                                >Stop @ {preset.settings.stopAtRatio}x</span
-                              >
-                            {/if}
-                            {#if preset.settings.stopAtUploadedEnabled}
-                              <span class="px-2 py-1 bg-orange-500/20 text-orange-500 rounded"
-                                >Stop @ {preset.settings.stopAtUploadedGB} GB ↑</span
-                              >
-                            {/if}
-                            {#if preset.settings.stopAtDownloadedEnabled}
-                              <span class="px-2 py-1 bg-orange-500/20 text-orange-500 rounded"
-                                >Stop @ {preset.settings.stopAtDownloadedGB} GB ↓</span
-                              >
-                            {/if}
-                            {#if preset.settings.stopAtSeedTimeEnabled}
-                              <span class="px-2 py-1 bg-orange-500/20 text-orange-500 rounded"
-                                >Stop @ {preset.settings.stopAtSeedTimeHours}h</span
-                              >
-                            {/if}
-                            {#if preset.settings.stopWhenNoLeechers}
-                              <span class="px-2 py-1 bg-orange-500/20 text-orange-500 rounded"
-                                >Stop: No Leechers</span
-                              >
-                            {/if}
-                          </div>
+                      <!-- Header row with title and action buttons -->
+                      <div class="flex items-start justify-between gap-3 mb-2">
+                        <div class="flex items-center gap-2 flex-wrap flex-1 min-w-0">
+                          <span class="text-xl flex-shrink-0">{preset.icon}</span>
+                          <h3 class="font-semibold text-foreground">{preset.name}</h3>
+                          <span
+                            class="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground"
+                          >
+                            Custom
+                          </span>
                         </div>
-
-                        <div class="flex gap-2">
+                        <!-- Action buttons in header -->
+                        <div class="flex items-center gap-1 flex-shrink-0">
                           {#if appliedPresetId === preset.id}
                             <span
                               class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold rounded-lg bg-green-500/20 text-green-500"
@@ -735,6 +683,60 @@
                             </svg>
                           </button>
                         </div>
+                      </div>
+
+                      <p class="text-sm text-muted-foreground mb-3">{preset.description}</p>
+
+                      <!-- Settings preview -->
+                      <div class="flex flex-wrap gap-2 text-xs">
+                        <span class="px-2 py-1 bg-muted rounded"
+                          >↑ {preset.settings.uploadRate} KB/s</span
+                        >
+                        <span class="px-2 py-1 bg-muted rounded"
+                          >↓ {preset.settings.downloadRate} KB/s</span
+                        >
+                        {#if preset.settings.randomizeRates}
+                          <span class="px-2 py-1 bg-muted rounded"
+                            >±{preset.settings.randomRangePercent}%</span
+                          >
+                        {/if}
+                        {#if preset.settings.progressiveRatesEnabled}
+                          <span class="px-2 py-1 bg-green-500/20 text-green-500 rounded"
+                            >Progressive</span
+                          >
+                        {/if}
+                        {#if preset.settings.selectedClient}
+                          <span
+                            class="px-2 py-1 bg-purple-500/20 text-purple-500 rounded capitalize"
+                            >{preset.settings.selectedClient}</span
+                          >
+                        {/if}
+                        <!-- Stop conditions -->
+                        {#if preset.settings.stopAtRatioEnabled}
+                          <span class="px-2 py-1 bg-orange-500/20 text-orange-500 rounded"
+                            >Stop @ {preset.settings.stopAtRatio}x</span
+                          >
+                        {/if}
+                        {#if preset.settings.stopAtUploadedEnabled}
+                          <span class="px-2 py-1 bg-orange-500/20 text-orange-500 rounded"
+                            >Stop @ {preset.settings.stopAtUploadedGB} GB ↑</span
+                          >
+                        {/if}
+                        {#if preset.settings.stopAtDownloadedEnabled}
+                          <span class="px-2 py-1 bg-orange-500/20 text-orange-500 rounded"
+                            >Stop @ {preset.settings.stopAtDownloadedGB} GB ↓</span
+                          >
+                        {/if}
+                        {#if preset.settings.stopAtSeedTimeEnabled}
+                          <span class="px-2 py-1 bg-orange-500/20 text-orange-500 rounded"
+                            >Stop @ {preset.settings.stopAtSeedTimeHours}h</span
+                          >
+                        {/if}
+                        {#if preset.settings.stopWhenNoLeechers}
+                          <span class="px-2 py-1 bg-orange-500/20 text-orange-500 rounded"
+                            >Stop: No Leechers</span
+                          >
+                        {/if}
                       </div>
                     </div>
                   {/each}
@@ -825,18 +827,18 @@
 
             {#each detectionTips as tip, index (index)}
               <div class="border border-border rounded-lg p-4">
-                <div class="flex items-start gap-3">
-                  <span
-                    class="flex-shrink-0 text-xs font-semibold px-2 py-1 rounded {getImportanceColor(
-                      tip.importance
-                    )}"
-                  >
-                    {getImportanceLabel(tip.importance)}
-                  </span>
-                  <div>
-                    <h3 class="font-semibold text-foreground mb-1">{tip.title}</h3>
-                    <p class="text-sm text-muted-foreground">{tip.description}</p>
+                <div class="flex flex-col gap-2">
+                  <div class="flex items-center justify-between gap-3">
+                    <h3 class="font-semibold text-foreground">{tip.title}</h3>
+                    <span
+                      class="flex-shrink-0 text-xs font-semibold px-2 py-1 rounded {getImportanceColor(
+                        tip.importance
+                      )}"
+                    >
+                      {getImportanceLabel(tip.importance)}
+                    </span>
                   </div>
+                  <p class="text-sm text-muted-foreground">{tip.description}</p>
                 </div>
               </div>
             {/each}

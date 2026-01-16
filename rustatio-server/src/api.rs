@@ -1,11 +1,11 @@
 use axum::{
-    extract::{Multipart, Path, State},
+    extract::{Multipart, Path, Query, State},
     http::StatusCode,
     response::{
         sse::{Event, KeepAlive, Sse},
         IntoResponse, Response,
     },
-    routing::{delete, get, post},
+    routing::{delete, get, patch, post},
     Json, Router,
 };
 use futures::stream::Stream;
@@ -15,7 +15,9 @@ use std::convert::Infallible;
 use tokio_stream::wrappers::BroadcastStream;
 use tokio_stream::StreamExt;
 
-use crate::state::{AppState, InstanceInfo};
+use crate::state::InstanceInfo;
+use crate::watch::{WatchStatus, WatchedFile};
+use crate::ServerState;
 
 /// API error response
 #[derive(Serialize)]
@@ -58,11 +60,13 @@ impl<T: Serialize> ApiSuccess<T> {
 }
 
 /// Build the API router
-pub fn router() -> Router<AppState> {
+pub fn router() -> Router<ServerState> {
     Router::new()
         // Instance management
         .route("/instances", get(list_instances).post(create_instance))
         .route("/instances/{id}", delete(delete_instance))
+        .route("/instances/{id}/torrent", post(load_instance_torrent))
+        .route("/instances/{id}/config", patch(update_instance_config))
         // Torrent loading
         .route("/torrent/load", post(load_torrent))
         // Faker operations
@@ -77,8 +81,13 @@ pub fn router() -> Router<AppState> {
         .route("/clients", get(get_client_types))
         // Network status (VPN detection)
         .route("/network/status", get(get_network_status))
-        // Log streaming (SSE)
+        // SSE streaming
         .route("/logs", get(logs_sse))
+        .route("/events", get(instances_sse))
+        // Watch folder
+        .route("/watch/status", get(get_watch_status))
+        .route("/watch/files", get(list_watch_files))
+        .route("/watch/files/{filename}", delete(delete_watch_file))
 }
 
 /// Create a new instance ID
@@ -87,22 +96,33 @@ struct CreateInstanceResponse {
     id: String,
 }
 
-async fn create_instance(State(state): State<AppState>) -> Response {
-    let id = state.next_instance_id().await;
+async fn create_instance(State(state): State<ServerState>) -> Response {
+    let id = state.app.next_instance_id().await;
     ApiSuccess::response(CreateInstanceResponse { id })
 }
 
 /// List all instances with their current stats
-async fn list_instances(State(state): State<AppState>) -> Response {
-    let instances: Vec<InstanceInfo> = state.list_instances().await;
+async fn list_instances(State(state): State<ServerState>) -> Response {
+    let instances: Vec<InstanceInfo> = state.app.list_instances().await;
     ApiSuccess::response(instances)
 }
 
+/// Query parameters for delete instance
+#[derive(Deserialize)]
+struct DeleteInstanceQuery {
+    #[serde(default)]
+    force: bool,
+}
+
 /// Delete an instance
-async fn delete_instance(State(state): State<AppState>, Path(id): Path<String>) -> Response {
-    match state.delete_instance(&id).await {
+async fn delete_instance(
+    State(state): State<ServerState>,
+    Path(id): Path<String>,
+    Query(query): Query<DeleteInstanceQuery>,
+) -> Response {
+    match state.app.delete_instance(&id, query.force).await {
         Ok(()) => ApiSuccess::response(()),
-        Err(e) => ApiError::response(StatusCode::NOT_FOUND, e),
+        Err(e) => ApiError::response(StatusCode::BAD_REQUEST, e),
     }
 }
 
@@ -114,7 +134,7 @@ struct LoadTorrentResponse {
 }
 
 /// Load a torrent file
-async fn load_torrent(State(state): State<AppState>, mut multipart: Multipart) -> Response {
+async fn load_torrent(State(state): State<ServerState>, mut multipart: Multipart) -> Response {
     // Extract the torrent file from multipart form data
     while let Ok(Some(field)) = multipart.next_field().await {
         if field.name() == Some("file") {
@@ -124,7 +144,7 @@ async fn load_torrent(State(state): State<AppState>, mut multipart: Multipart) -
                         // Generate a temporary ID and store the torrent
                         let torrent_id = uuid::Uuid::new_v4().to_string();
                         let torrent_data = torrent.clone();
-                        state.store_torrent(&torrent_id, torrent).await;
+                        state.app.store_torrent(&torrent_id, torrent).await;
 
                         return ApiSuccess::response(LoadTorrentResponse {
                             torrent_id,
@@ -145,6 +165,70 @@ async fn load_torrent(State(state): State<AppState>, mut multipart: Multipart) -
     ApiError::response(StatusCode::BAD_REQUEST, "No torrent file provided")
 }
 
+/// Load a torrent file for a specific instance (creates idle instance on server)
+/// This allows the instance to persist across page refreshes
+async fn load_instance_torrent(
+    State(state): State<ServerState>,
+    Path(id): Path<String>,
+    mut multipart: Multipart,
+) -> Response {
+    // Extract the torrent file from multipart form data
+    while let Ok(Some(field)) = multipart.next_field().await {
+        if field.name() == Some("file") {
+            match field.bytes().await {
+                Ok(bytes) => match TorrentInfo::from_bytes(&bytes) {
+                    Ok(torrent) => {
+                        // Check if instance already exists
+                        if state.app.instance_exists(&id).await {
+                            // Update existing instance with new torrent
+                            // For now, we just return success - the torrent is already parsed
+                            // The frontend will handle updating its state
+                            return ApiSuccess::response(LoadTorrentResponse {
+                                torrent_id: id,
+                                torrent,
+                            });
+                        }
+
+                        // Create idle instance on server (will persist across refreshes)
+                        if let Err(e) = state.app.create_idle_instance(&id, torrent.clone()).await {
+                            return ApiError::response(
+                                StatusCode::INTERNAL_SERVER_ERROR,
+                                format!("Failed to create instance: {}", e),
+                            );
+                        }
+
+                        return ApiSuccess::response(LoadTorrentResponse {
+                            torrent_id: id,
+                            torrent,
+                        });
+                    }
+                    Err(e) => {
+                        return ApiError::response(StatusCode::BAD_REQUEST, format!("Failed to parse torrent: {}", e));
+                    }
+                },
+                Err(e) => {
+                    return ApiError::response(StatusCode::BAD_REQUEST, format!("Failed to read file: {}", e));
+                }
+            }
+        }
+    }
+
+    ApiError::response(StatusCode::BAD_REQUEST, "No torrent file provided")
+}
+
+/// Update instance config (without starting the faker)
+/// Used to persist form changes before the faker is started
+async fn update_instance_config(
+    State(state): State<ServerState>,
+    Path(id): Path<String>,
+    Json(config): Json<FakerConfig>,
+) -> Response {
+    match state.app.update_instance_config_only(&id, config).await {
+        Ok(()) => ApiSuccess::response(()),
+        Err(e) => ApiError::response(StatusCode::NOT_FOUND, e),
+    }
+}
+
 /// Request body for starting a faker
 #[derive(Deserialize)]
 struct StartFakerRequest {
@@ -153,66 +237,77 @@ struct StartFakerRequest {
 }
 
 /// Start a faker instance
+///
+/// If the instance already exists (e.g., from watch folder), it will update the config
+/// and start it. Otherwise, it creates a new instance with the provided torrent and config.
 async fn start_faker(
-    State(state): State<AppState>,
+    State(state): State<ServerState>,
     Path(id): Path<String>,
     Json(request): Json<StartFakerRequest>,
 ) -> Response {
-    // Create the instance with the provided torrent and config
-    if let Err(e) = state.create_instance(&id, request.torrent, request.config).await {
-        return ApiError::response(StatusCode::INTERNAL_SERVER_ERROR, e);
+    // Check if instance already exists (e.g., from watch folder)
+    if state.app.instance_exists(&id).await {
+        // Update config for existing instance
+        if let Err(e) = state.app.update_instance_config(&id, request.config).await {
+            return ApiError::response(StatusCode::INTERNAL_SERVER_ERROR, e);
+        }
+    } else {
+        // Create new instance with provided torrent and config
+        if let Err(e) = state.app.create_instance(&id, request.torrent, request.config).await {
+            return ApiError::response(StatusCode::INTERNAL_SERVER_ERROR, e);
+        }
     }
 
     // Start the faker
-    match state.start_instance(&id).await {
+    match state.app.start_instance(&id).await {
         Ok(()) => ApiSuccess::response(()),
         Err(e) => ApiError::response(StatusCode::INTERNAL_SERVER_ERROR, e),
     }
 }
 
 /// Stop a faker instance
-async fn stop_faker(State(state): State<AppState>, Path(id): Path<String>) -> Response {
-    match state.stop_instance(&id).await {
+async fn stop_faker(State(state): State<ServerState>, Path(id): Path<String>) -> Response {
+    match state.app.stop_instance(&id).await {
         Ok(stats) => ApiSuccess::response(stats),
         Err(e) => ApiError::response(StatusCode::NOT_FOUND, e),
     }
 }
 
 /// Pause a faker instance
-async fn pause_faker(State(state): State<AppState>, Path(id): Path<String>) -> Response {
-    match state.pause_instance(&id).await {
+async fn pause_faker(State(state): State<ServerState>, Path(id): Path<String>) -> Response {
+    match state.app.pause_instance(&id).await {
         Ok(()) => ApiSuccess::response(()),
         Err(e) => ApiError::response(StatusCode::NOT_FOUND, e),
     }
 }
 
 /// Resume a faker instance
-async fn resume_faker(State(state): State<AppState>, Path(id): Path<String>) -> Response {
-    match state.resume_instance(&id).await {
+async fn resume_faker(State(state): State<ServerState>, Path(id): Path<String>) -> Response {
+    match state.app.resume_instance(&id).await {
         Ok(()) => ApiSuccess::response(()),
         Err(e) => ApiError::response(StatusCode::NOT_FOUND, e),
     }
 }
 
 /// Update a faker instance (send tracker announce)
-async fn update_faker(State(state): State<AppState>, Path(id): Path<String>) -> Response {
-    match state.update_instance(&id).await {
+async fn update_faker(State(state): State<ServerState>, Path(id): Path<String>) -> Response {
+    match state.app.update_instance(&id).await {
         Ok(stats) => ApiSuccess::response(stats),
         Err(e) => ApiError::response(StatusCode::NOT_FOUND, e),
     }
 }
 
 /// Update stats only (no tracker announce)
-async fn update_stats_only(State(state): State<AppState>, Path(id): Path<String>) -> Response {
-    match state.update_stats_only(&id).await {
+async fn update_stats_only(State(state): State<ServerState>, Path(id): Path<String>) -> Response {
+    match state.app.update_stats_only(&id).await {
         Ok(stats) => ApiSuccess::response(stats),
         Err(e) => ApiError::response(StatusCode::NOT_FOUND, e),
     }
 }
 
 /// Get stats for a faker instance
-async fn get_stats(State(state): State<AppState>, Path(id): Path<String>) -> Response {
-    match state.get_stats(&id).await {
+async fn get_stats(State(state): State<ServerState>, Path(id): Path<String>) -> Response {
+    match state.app.get_stats(&id).await {
         Ok(stats) => ApiSuccess::response(stats),
         Err(e) => ApiError::response(StatusCode::NOT_FOUND, e),
     }
@@ -345,8 +440,8 @@ async fn get_network_status() -> Response {
 }
 
 /// SSE endpoint for streaming logs to the UI
-async fn logs_sse(State(state): State<AppState>) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
-    let rx = state.subscribe_logs();
+async fn logs_sse(State(state): State<ServerState>) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+    let rx = state.app.subscribe_logs();
 
     let stream = BroadcastStream::new(rx).filter_map(|result| {
         result.ok().map(|log_event| {
@@ -358,4 +453,47 @@ async fn logs_sse(State(state): State<AppState>) -> Sse<impl Stream<Item = Resul
     });
 
     Sse::new(stream).keep_alive(KeepAlive::default())
+}
+
+/// SSE endpoint for streaming instance events to the UI (for real-time sync)
+async fn instances_sse(State(state): State<ServerState>) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+    let rx = state.app.subscribe_instance_events();
+
+    let stream = BroadcastStream::new(rx).filter_map(|result| {
+        result.ok().map(|instance_event| {
+            Ok(Event::default()
+                .event("instance")
+                .json_data(&instance_event)
+                .unwrap_or_else(|_| Event::default()))
+        })
+    });
+
+    Sse::new(stream).keep_alive(KeepAlive::default())
+}
+
+// =============================================================================
+// Watch Folder Endpoints
+// =============================================================================
+
+/// Get watch folder status
+async fn get_watch_status(State(state): State<ServerState>) -> Response {
+    let watch = state.watch.read().await;
+    let status: WatchStatus = watch.get_status().await;
+    ApiSuccess::response(status)
+}
+
+/// List all torrent files in watch folder
+async fn list_watch_files(State(state): State<ServerState>) -> Response {
+    let watch = state.watch.read().await;
+    let files: Vec<WatchedFile> = watch.list_files().await;
+    ApiSuccess::response(files)
+}
+
+/// Delete a torrent file from watch folder
+async fn delete_watch_file(State(state): State<ServerState>, Path(filename): Path<String>) -> Response {
+    let watch = state.watch.read().await;
+    match watch.delete_file(&filename).await {
+        Ok(()) => ApiSuccess::response(()),
+        Err(e) => ApiError::response(StatusCode::NOT_FOUND, e),
+    }
 }

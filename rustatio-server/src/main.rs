@@ -3,17 +3,27 @@ mod log_layer;
 mod persistence;
 mod state;
 mod static_files;
+mod watch;
 
 use axum::{routing::get, Router};
 use std::net::SocketAddr;
+use std::sync::Arc;
 use tokio::signal;
-use tokio::sync::oneshot;
+use tokio::sync::{oneshot, RwLock};
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::layer::SubscriberExt;
 
 use crate::log_layer::BroadcastLayer;
 use crate::state::AppState;
+use crate::watch::{WatchConfig, WatchDisabledReason, WatchService};
+
+/// Combined application state for routing
+#[derive(Clone)]
+pub struct ServerState {
+    pub app: AppState,
+    pub watch: Arc<RwLock<WatchService>>,
+}
 
 #[tokio::main]
 async fn main() {
@@ -50,6 +60,38 @@ async fn main() {
         }
     }
 
+    // Initialize and start watch folder service
+    let (watch_config, disabled_reason) = WatchConfig::from_env();
+
+    // Log appropriate message based on watch folder status
+    if let Some(reason) = &disabled_reason {
+        match reason {
+            WatchDisabledReason::ExplicitlyDisabled => {
+                tracing::info!("Watch folder service disabled via WATCH_ENABLED=false");
+            }
+            WatchDisabledReason::DirectoryNotFound => {
+                tracing::info!(
+                    "Watch folder service disabled: directory '{}' not found. \
+                    To enable, mount a volume to {} or set WATCH_ENABLED=true to auto-create it.",
+                    watch_config.watch_dir.display(),
+                    watch_config.watch_dir.display()
+                );
+            }
+        }
+    }
+
+    let mut watch_service = WatchService::new(watch_config.clone(), state.clone());
+    if let Err(e) = watch_service.start().await {
+        tracing::error!("Failed to start watch folder service: {}", e);
+    }
+    let watch_service = Arc::new(RwLock::new(watch_service));
+
+    // Create combined server state
+    let server_state = ServerState {
+        app: state.clone(),
+        watch: watch_service.clone(),
+    };
+
     // Get port from environment or use default
     let port: u16 = std::env::var("PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(8080);
 
@@ -66,7 +108,7 @@ async fn main() {
         .fallback(static_files::static_handler)
         .layer(cors)
         .layer(TraceLayer::new_for_http())
-        .with_state(state.clone());
+        .with_state(server_state);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
     tracing::info!("Rustatio server starting on http://{}", addr);
@@ -76,12 +118,17 @@ async fn main() {
     // Create shutdown signal channel
     let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
     let state_for_shutdown = state.clone();
+    let watch_for_shutdown = watch_service.clone();
 
     // Spawn shutdown handler
     tokio::spawn(async move {
         shutdown_signal().await;
 
-        // Stop all background tasks first
+        // Stop watch service first
+        tracing::info!("Stopping watch folder service...");
+        watch_for_shutdown.write().await.stop().await;
+
+        // Stop all background tasks
         tracing::info!("Stopping background tasks...");
         state_for_shutdown.shutdown_all().await;
 
