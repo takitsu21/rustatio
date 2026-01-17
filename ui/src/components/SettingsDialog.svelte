@@ -346,9 +346,9 @@
   function getImportanceColor(importance) {
     switch (importance) {
       case 'critical':
-        return 'text-red-500 bg-red-500/10';
+        return 'text-stat-leecher bg-stat-leecher/10';
       case 'high':
-        return 'text-amber-500 bg-amber-500/10';
+        return 'text-stat-ratio bg-stat-ratio/10';
       case 'medium':
         return 'text-blue-500 bg-blue-500/10';
       default:
@@ -538,7 +538,7 @@
                       <div class="flex-shrink-0">
                         {#if appliedPresetId === preset.id}
                           <span
-                            class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold rounded-lg bg-green-500/20 text-green-500"
+                            class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold rounded-lg bg-stat-upload/20 text-stat-upload"
                           >
                             <Check size={14} strokeWidth={2.5} />
                             Applied
@@ -565,7 +565,7 @@
                         >
                       {/if}
                       {#if preset.settings.progressiveRatesEnabled}
-                        <span class="px-2 py-1 bg-green-500/20 text-green-500 rounded"
+                        <span class="px-2 py-1 bg-stat-upload/20 text-stat-upload rounded"
                           >Progressive</span
                         >
                       {/if}
@@ -651,7 +651,7 @@
                         <div class="flex items-center gap-1 flex-shrink-0">
                           {#if appliedPresetId === preset.id}
                             <span
-                              class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold rounded-lg bg-green-500/20 text-green-500"
+                              class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold rounded-lg bg-stat-upload/20 text-stat-upload"
                             >
                               <Check size={14} strokeWidth={2.5} />
                               Applied
@@ -661,7 +661,7 @@
                           {/if}
                           <button
                             onclick={() => deleteCustomPreset(preset.id)}
-                            class="p-2 rounded hover:bg-red-500/10 text-muted-foreground hover:text-red-500 transition-colors"
+                            class="p-2 rounded hover:bg-stat-leecher/10 text-muted-foreground hover:text-stat-leecher transition-colors"
                             aria-label="Delete preset"
                           >
                             <Trash2 size={16} />
@@ -685,7 +685,7 @@
                           >
                         {/if}
                         {#if preset.settings.progressiveRatesEnabled}
-                          <span class="px-2 py-1 bg-green-500/20 text-green-500 rounded"
+                          <span class="px-2 py-1 bg-stat-upload/20 text-stat-upload rounded"
                             >Progressive</span
                           >
                         {/if}
@@ -748,7 +748,7 @@
                     Export Config
                   </button>
                   {#if exportSuccess}
-                    <p class="mt-2 text-sm text-green-500">{exportSuccess}</p>
+                    <p class="mt-2 text-sm text-stat-upload">{exportSuccess}</p>
                   {/if}
                 </div>
 
@@ -771,10 +771,10 @@
                     Import Preset
                   </button>
                   {#if importError}
-                    <p class="mt-2 text-sm text-red-500">{importError}</p>
+                    <p class="mt-2 text-sm text-stat-leecher">{importError}</p>
                   {/if}
                   {#if importSuccess}
-                    <p class="mt-2 text-sm text-green-500">{importSuccess}</p>
+                    <p class="mt-2 text-sm text-stat-upload">{importSuccess}</p>
                   {/if}
                 </div>
               </div>
@@ -843,7 +843,7 @@
       <div class="p-4 space-y-4">
         <div>
           <label for="preset-name" class="block text-sm font-medium text-foreground mb-1">
-            Preset Name <span class="text-red-500">*</span>
+            Preset Name <span class="text-stat-leecher">*</span>
           </label>
           <input
             id="preset-name"
@@ -868,7 +868,7 @@
         </div>
 
         {#if exportError}
-          <p class="text-sm text-red-500">{exportError}</p>
+          <p class="text-sm text-stat-leecher">{exportError}</p>
         {/if}
       </div>
 

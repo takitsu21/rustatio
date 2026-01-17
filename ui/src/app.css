@@ -34,11 +34,18 @@ body {
   --color-muted-foreground: light-dark(hsl(220 9% 46%), hsl(215 10% 65%));
   --color-accent: light-dark(hsl(235 86% 95%), hsl(235 86% 25%));
   --color-accent-foreground: light-dark(hsl(235 86% 35%), hsl(235 86% 85%));
-  --color-destructive: light-dark(hsl(0 85% 60%), hsl(0 73% 57%));
+  --color-destructive: light-dark(#dc171e, #e8393f);
   --color-destructive-foreground: hsl(0 0% 100%);
   --color-border: light-dark(hsl(220 13% 87%), hsl(220 9% 28%));
   --color-input: light-dark(hsl(220 13% 91%), hsl(223 7% 23%));
   --color-ring: hsl(235 86% 65%);
+
+  /* Semantic stat colors - custom brand colors */
+  --color-stat-upload: light-dark(#297f3d, #34a34d);
+  --color-stat-download: light-dark(hsl(201 75% 38%), hsl(201 75% 62%));
+  --color-stat-ratio: light-dark(hsl(38 80% 42%), hsl(38 80% 62%));
+  --color-stat-leecher: light-dark(#dc171e, #e8393f);
+  --color-stat-danger: light-dark(#ad0a2d, #c41e3a);
 }
 
 @layer base {
@@ -59,7 +66,7 @@ body {
     --muted-foreground: hsl(220 9% 46%);
     --accent: hsl(235 86% 95%);
     --accent-foreground: hsl(235 86% 35%);
-    --destructive: hsl(0 85% 60%);
+    --destructive: #dc171e;
     --destructive-foreground: hsl(0 0% 100%);
     --border: hsl(220 13% 87%);
     --input: hsl(220 13% 91%);
@@ -81,7 +88,7 @@ body {
     --color-muted-foreground: hsl(220 9% 46%);
     --color-accent: hsl(235 86% 95%);
     --color-accent-foreground: hsl(235 86% 35%);
-    --color-destructive: hsl(0 85% 60%);
+    --color-destructive: #dc171e;
     --color-destructive-foreground: hsl(0 0% 100%);
     --color-border: hsl(220 13% 87%);
     --color-input: hsl(220 13% 91%);
@@ -104,7 +111,7 @@ body {
     --muted-foreground: hsl(215 10% 65%);
     --accent: hsl(235 86% 25%);
     --accent-foreground: hsl(235 86% 85%);
-    --destructive: hsl(0 73% 57%);
+    --destructive: #e8393f;
     --destructive-foreground: hsl(0 0% 100%);
     --border: hsl(220 9% 28%);
     --input: hsl(223 7% 23%);
@@ -125,7 +132,7 @@ body {
     --color-muted-foreground: hsl(215 10% 65%);
     --color-accent: hsl(235 86% 25%);
     --color-accent-foreground: hsl(235 86% 85%);
-    --color-destructive: hsl(0 73% 57%);
+    --color-destructive: #e8393f;
     --color-destructive-foreground: hsl(0 0% 100%);
     --color-border: hsl(220 9% 28%);
     --color-input: hsl(223 7% 23%);
@@ -148,7 +155,7 @@ body {
       --muted-foreground: hsl(215 10% 65%);
       --accent: hsl(235 86% 25%);
       --accent-foreground: hsl(235 86% 85%);
-      --destructive: hsl(0 73% 57%);
+      --destructive: #e8393f;
       --destructive-foreground: hsl(0 0% 100%);
       --border: hsl(220 9% 28%);
       --input: hsl(223 7% 23%);

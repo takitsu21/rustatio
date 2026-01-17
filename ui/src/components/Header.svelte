@@ -17,7 +17,10 @@
       </button>
 
       <div class="flex flex-col">
-        <h1 class="text-2xl font-bold text-foreground tracking-tight">Rustatio</h1>
+        <div class="flex items-center gap-2">
+          <img src="/favicon-32x32.png" alt="Rustatio" width="28" height="28" class="rounded" />
+          <h1 class="text-2xl font-bold text-foreground tracking-tight">Rustatio</h1>
+        </div>
         <p class="text-xs text-muted-foreground mt-0.5">Modern BitTorrent Ratio Faker</p>
       </div>
     </div>

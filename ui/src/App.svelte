@@ -1331,7 +1331,7 @@
           {#if $activeInstance?.stats}
             <!-- Session & Total Stats -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
-              <SessionStats stats={$activeInstance.stats} {formatBytes} />
+              <SessionStats stats={$activeInstance.stats} {formatBytes} {formatDuration} />
               <TotalStats
                 stats={$activeInstance.stats}
                 torrent={$activeInstance.torrent}

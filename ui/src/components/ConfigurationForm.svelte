@@ -4,7 +4,17 @@
   import Input from '$lib/components/ui/input.svelte';
   import Select from '$lib/components/ui/select.svelte';
   import Checkbox from '$lib/components/ui/checkbox.svelte';
-  import { Settings } from '@lucide/svelte';
+  import {
+    Settings,
+    Shuffle,
+    TrendingUp,
+    ArrowUpDown,
+    Clock,
+    Upload,
+    Download,
+  } from '@lucide/svelte';
+  import ClientIcon from './ClientIcon.svelte';
+  import ClientSelect from './ClientSelect.svelte';
 
   let {
     clients,
@@ -150,157 +160,185 @@
 </script>
 
 <Card class="p-3">
-  <h2 class="mb-3 text-primary text-lg font-semibold flex items-center gap-2">
+  <h2 class="mb-4 text-primary text-lg font-semibold flex items-center gap-2">
     <Settings size={20} /> Configuration
   </h2>
 
   <!-- Client Settings -->
-  <div class="mb-3">
-    <h3
-      class="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 pb-2 border-b border-border"
-    >
-      Client
-    </h3>
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-      <div class="flex flex-col gap-2">
-        <Label for="client">Type</Label>
-        <Select
-          id="client"
-          bind:value={localSelectedClient}
-          disabled={isRunning}
-          onchange={() => updateValue('selectedClient', localSelectedClient)}
-        >
-          {#each clients as client (client.id)}
-            <option value={client.id}>{client.name}</option>
-          {/each}
-        </Select>
-      </div>
-
-      <div class="flex flex-col gap-2">
-        <Label for="clientVersion">Version</Label>
-        <Select
-          id="clientVersion"
-          bind:value={localSelectedClientVersion}
-          disabled={isRunning}
-          onchange={() => updateValue('selectedClientVersion', localSelectedClientVersion)}
-        >
-          {#each clientVersions[localSelectedClient] || [] as version (version)}
-            <option value={version}>{version}</option>
-          {/each}
-        </Select>
-      </div>
-
-      <div class="flex flex-col gap-2">
-        <Label for="port">Port</Label>
-        <Input
-          id="port"
-          type="number"
-          bind:value={localPort}
-          disabled={isRunning}
-          min="1024"
-          max="65535"
-          onfocus={handleFocus}
-          onblur={handlePortBlur}
-          oninput={handlePortInput}
-        />
-        <span class="text-xs text-muted-foreground">Range: 1024-65535</span>
+  <div class="mb-4">
+    <div class="flex items-center gap-2 mb-3">
+      <ClientIcon clientId={localSelectedClient} size={18} />
+      <span class="text-sm font-medium">Client</span>
+    </div>
+    <div class="bg-muted/50 rounded-lg border border-border p-3">
+      <div class="grid grid-cols-3 gap-3">
+        <div>
+          <Label for="client" class="text-xs text-muted-foreground mb-1.5 block">Type</Label>
+          <ClientSelect
+            {clients}
+            bind:value={localSelectedClient}
+            disabled={isRunning}
+            onchange={() => updateValue('selectedClient', localSelectedClient)}
+          />
+        </div>
+        <div>
+          <Label for="clientVersion" class="text-xs text-muted-foreground mb-1.5 block"
+            >Version</Label
+          >
+          <Select
+            id="clientVersion"
+            bind:value={localSelectedClientVersion}
+            disabled={isRunning}
+            onchange={() => updateValue('selectedClientVersion', localSelectedClientVersion)}
+            class="h-9"
+          >
+            {#each clientVersions[localSelectedClient] || [] as version (version)}
+              <option value={version}>{version}</option>
+            {/each}
+          </Select>
+        </div>
+        <div>
+          <Label for="port" class="text-xs text-muted-foreground mb-1.5 block">Port</Label>
+          <Input
+            id="port"
+            type="number"
+            bind:value={localPort}
+            disabled={isRunning}
+            min="1024"
+            max="65535"
+            class="h-9"
+            onfocus={handleFocus}
+            onblur={handlePortBlur}
+            oninput={handlePortInput}
+          />
+        </div>
       </div>
     </div>
   </div>
 
   <!-- Transfer Rates -->
-  <div class="mb-3">
-    <h3
-      class="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 pb-2 border-b border-border"
-    >
-      Transfer Rates
-    </h3>
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-      <div class="flex flex-col gap-2">
-        <Label for="upload">↑ Upload (KB/s)</Label>
-        <Input
-          id="upload"
-          type="number"
-          bind:value={localUploadRate}
-          disabled={isRunning}
-          min="0"
-          step="0.1"
-          onfocus={handleFocus}
-          onblur={handleBlur}
-          oninput={() => updateValue('uploadRate', localUploadRate)}
-        />
-      </div>
-
-      <div class="flex flex-col gap-2">
-        <Label for="download">↓ Download (KB/s)</Label>
-        <Input
-          id="download"
-          type="number"
-          bind:value={localDownloadRate}
-          disabled={isRunning}
-          min="0"
-          step="0.1"
-          onfocus={handleFocus}
-          onblur={handleBlur}
-          oninput={() => updateValue('downloadRate', localDownloadRate)}
-        />
+  <div class="mb-4">
+    <div class="flex items-center gap-2 mb-3">
+      <ArrowUpDown size={16} class="text-muted-foreground" />
+      <span class="text-sm font-medium">Transfer Rates</span>
+    </div>
+    <div class="bg-muted/50 rounded-lg border border-border overflow-hidden">
+      <div class="grid grid-cols-2">
+        <div class="p-3 border-r border-border">
+          <div class="flex items-center gap-2 mb-2">
+            <Upload size={14} class="text-stat-upload" />
+            <span class="text-xs text-muted-foreground">Upload</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <Input
+              id="upload"
+              type="number"
+              bind:value={localUploadRate}
+              disabled={isRunning}
+              min="0"
+              step="0.1"
+              class="flex-1 h-9 text-center font-medium"
+              onfocus={handleFocus}
+              onblur={handleBlur}
+              oninput={() => updateValue('uploadRate', localUploadRate)}
+            />
+            <span class="text-sm text-muted-foreground">KB/s</span>
+          </div>
+        </div>
+        <div class="p-3">
+          <div class="flex items-center gap-2 mb-2">
+            <Download size={14} class="text-stat-download" />
+            <span class="text-xs text-muted-foreground">Download</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <Input
+              id="download"
+              type="number"
+              bind:value={localDownloadRate}
+              disabled={isRunning}
+              min="0"
+              step="0.1"
+              class="flex-1 h-9 text-center font-medium"
+              onfocus={handleFocus}
+              onblur={handleBlur}
+              oninput={() => updateValue('downloadRate', localDownloadRate)}
+            />
+            <span class="text-sm text-muted-foreground">KB/s</span>
+          </div>
+        </div>
       </div>
     </div>
   </div>
 
   <!-- Initial State -->
-  <div class="mb-3">
-    <h3
-      class="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 pb-2 border-b border-border"
-    >
-      Initial State
-    </h3>
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-      <div class="flex flex-col gap-2">
-        <Label for="completion">Completion %</Label>
-        <Input
-          id="completion"
-          type="number"
-          bind:value={localCompletionPercent}
-          disabled={isRunning}
-          min="0"
-          max="100"
-          onfocus={handleFocus}
-          onblur={handleCompletionPercentBlur}
-          oninput={handleCompletionPercentInput}
-        />
-        <span class="text-xs text-muted-foreground">Range: 0-100</span>
-      </div>
-
-      <div class="flex flex-col gap-2">
-        <Label for="initialUp">Uploaded (MB)</Label>
-        <Input
-          id="initialUp"
-          type="number"
-          bind:value={localInitialUploaded}
-          disabled={isRunning}
-          min="0"
-          step="1"
-          onfocus={handleFocus}
-          onblur={handleBlur}
-          oninput={() => updateValue('initialUploaded', Math.round(localInitialUploaded || 0))}
-        />
-      </div>
-
-      <div class="flex flex-col gap-2">
-        <Label for="updateInterval">Interval (sec)</Label>
-        <Input
-          id="updateInterval"
-          type="number"
-          bind:value={localUpdateIntervalSeconds}
-          disabled={isRunning}
-          min="1"
-          max="300"
-          step="1"
-          onfocus={handleFocus}
-          onblur={handleBlur}
-          oninput={() => updateValue('updateIntervalSeconds', localUpdateIntervalSeconds)}
-        />
+  <div class="mb-4">
+    <div class="flex items-center gap-2 mb-3">
+      <Clock size={16} class="text-muted-foreground" />
+      <span class="text-sm font-medium">Initial State</span>
+    </div>
+    <div class="bg-muted/50 rounded-lg border border-border p-3">
+      <div class="grid grid-cols-3 gap-3">
+        <div>
+          <Label for="completion" class="text-xs text-muted-foreground mb-1.5 block"
+            >Completion</Label
+          >
+          <div class="flex items-center gap-2">
+            <Input
+              id="completion"
+              type="number"
+              bind:value={localCompletionPercent}
+              disabled={isRunning}
+              min="0"
+              max="100"
+              class="flex-1 h-9 text-center"
+              onfocus={handleFocus}
+              onblur={handleCompletionPercentBlur}
+              oninput={handleCompletionPercentInput}
+            />
+            <span class="text-sm text-muted-foreground">%</span>
+          </div>
+        </div>
+        <div>
+          <Label for="initialUp" class="text-xs text-muted-foreground mb-1.5 block"
+            >Already Uploaded</Label
+          >
+          <div class="flex items-center gap-2">
+            <Input
+              id="initialUp"
+              type="number"
+              bind:value={localInitialUploaded}
+              disabled={isRunning}
+              min="0"
+              step="1"
+              class="flex-1 h-9 text-center"
+              onfocus={handleFocus}
+              onblur={handleBlur}
+              oninput={() => updateValue('initialUploaded', Math.round(localInitialUploaded || 0))}
+            />
+            <span class="text-sm text-muted-foreground">MB</span>
+          </div>
+        </div>
+        <div>
+          <Label for="updateInterval" class="text-xs text-muted-foreground mb-1.5 block"
+            >Update Interval</Label
+          >
+          <div class="flex items-center gap-2">
+            <Input
+              id="updateInterval"
+              type="number"
+              bind:value={localUpdateIntervalSeconds}
+              disabled={isRunning}
+              min="1"
+              max="300"
+              step="1"
+              class="flex-1 h-9 text-center"
+              onfocus={handleFocus}
+              onblur={handleBlur}
+              oninput={() => updateValue('updateIntervalSeconds', localUpdateIntervalSeconds)}
+            />
+            <span class="text-sm text-muted-foreground">sec</span>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -317,36 +355,67 @@
           updateValue('randomizeRates', checked);
         }}
       />
-      <Label for="randomize" class="cursor-pointer font-medium"
-        >Randomize rates for realistic behavior</Label
-      >
+      <Label for="randomize" class="cursor-pointer font-medium flex items-center gap-2">
+        <Shuffle size={16} class="text-muted-foreground" />
+        Randomize rates for realistic behavior
+      </Label>
     </div>
 
     {#if localRandomizeRates}
-      <div class="bg-muted p-5 rounded-lg border border-border">
-        <div class="flex justify-between items-center mb-3">
-          <Label for="randomRange">Random Range</Label>
-          <span
-            class="text-lg font-bold text-primary px-3 py-1 bg-background rounded-md border border-primary"
+      <div class="bg-muted/50 rounded-lg border border-border overflow-hidden">
+        <!-- Slider row -->
+        <div class="p-4 flex items-center gap-4">
+          <span class="text-sm text-muted-foreground whitespace-nowrap">Variance</span>
+          <input
+            id="randomRange"
+            type="range"
+            bind:value={localRandomRangePercent}
+            disabled={isRunning}
+            min="1"
+            max="50"
+            step="1"
+            class="flex-1 h-2 rounded-lg cursor-pointer accent-primary"
+            style="background: linear-gradient(to right, hsl(var(--primary)) {((localRandomRangePercent -
+              1) /
+              49) *
+              100}%, hsl(var(--muted)) {((localRandomRangePercent - 1) / 49) * 100}%);"
+            onfocus={handleFocus}
+            onblur={handleBlur}
+            oninput={() => updateValue('randomRangePercent', localRandomRangePercent)}
+          />
+          <span class="text-lg font-bold text-primary min-w-[4ch] text-right"
             >±{localRandomRangePercent}%</span
           >
         </div>
-        <input
-          id="randomRange"
-          type="range"
-          bind:value={localRandomRangePercent}
-          disabled={isRunning}
-          min="1"
-          max="50"
-          step="1"
-          class="w-full h-2 rounded bg-primary appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-6 [&::-webkit-slider-thumb]:h-6 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:border-4 [&::-webkit-slider-thumb]:border-primary [&::-webkit-slider-thumb]:shadow-lg [&::-webkit-slider-thumb]:cursor-pointer [&::-webkit-slider-thumb]:transition-transform [&::-webkit-slider-thumb]:hover:scale-110 [&::-moz-range-thumb]:w-6 [&::-moz-range-thumb]:h-6 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-white [&::-moz-range-thumb]:border-4 [&::-moz-range-thumb]:border-primary [&::-moz-range-thumb]:shadow-lg [&::-moz-range-thumb]:cursor-pointer [&::-moz-range-thumb]:transition-transform [&::-moz-range-thumb]:hover:scale-110 [&::-moz-range-track]:bg-transparent disabled:opacity-50 disabled:cursor-not-allowed"
-          onfocus={handleFocus}
-          onblur={handleBlur}
-          oninput={() => updateValue('randomRangePercent', localRandomRangePercent)}
-        />
-        <div class="flex justify-between mt-2">
-          <span class="text-xs text-muted-foreground">±1%</span>
-          <span class="text-xs text-muted-foreground">±50%</span>
+
+        <!-- Resulting ranges -->
+        <div class="grid grid-cols-2 border-t border-border">
+          <div class="p-3 border-r border-border">
+            <div class="text-xs text-muted-foreground mb-1">↑ Upload Range</div>
+            <div class="font-medium">
+              <span class="text-muted-foreground"
+                >{(localUploadRate * (1 - localRandomRangePercent / 100)).toFixed(1)}</span
+              >
+              <span class="text-muted-foreground mx-1">—</span>
+              <span class="text-primary"
+                >{(localUploadRate * (1 + localRandomRangePercent / 100)).toFixed(1)}</span
+              >
+              <span class="text-xs text-muted-foreground ml-1">KB/s</span>
+            </div>
+          </div>
+          <div class="p-3">
+            <div class="text-xs text-muted-foreground mb-1">↓ Download Range</div>
+            <div class="font-medium">
+              <span class="text-muted-foreground"
+                >{(localDownloadRate * (1 - localRandomRangePercent / 100)).toFixed(1)}</span
+              >
+              <span class="text-muted-foreground mx-1">—</span>
+              <span class="text-primary"
+                >{(localDownloadRate * (1 + localRandomRangePercent / 100)).toFixed(1)}</span
+              >
+              <span class="text-xs text-muted-foreground ml-1">KB/s</span>
+            </div>
+          </div>
         </div>
       </div>
     {/if}
@@ -354,12 +423,7 @@
 
   <!-- Progressive Rates -->
   <div class="mb-0">
-    <h3
-      class="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 pb-2 border-b border-border"
-    >
-      Progressive Rates
-    </h3>
-    <div class="flex items-center gap-3 p-2 bg-muted rounded-md mb-3">
+    <div class="flex items-center gap-3 mb-3">
       <Checkbox
         id="progressive-enabled"
         checked={localProgressiveRatesEnabled}
@@ -369,73 +433,111 @@
           updateValue('progressiveRatesEnabled', checked);
         }}
       />
-      <Label
-        for="progressive-enabled"
-        class="cursor-pointer text-sm text-muted-foreground font-medium"
-        >Enable Progressive Adjustment</Label
-      >
+      <Label for="progressive-enabled" class="cursor-pointer font-medium flex items-center gap-2">
+        <TrendingUp size={16} class="text-muted-foreground" />
+        Progressive rate adjustment
+      </Label>
     </div>
 
     {#if localProgressiveRatesEnabled}
-      <div class="flex flex-col gap-2">
-        <div class="flex items-center gap-2 p-2 bg-muted rounded-md">
-          <Label for="targetUpload" class="min-w-[70px] text-xs text-muted-foreground font-semibold"
-            >↑ Target</Label
-          >
-          <Input
-            id="targetUpload"
-            type="number"
-            bind:value={localTargetUploadRate}
-            disabled={isRunning}
-            min="0"
-            step="0.1"
-            class="flex-1 max-w-[100px] h-9"
-            onfocus={handleFocus}
-            onblur={handleBlur}
-            oninput={() => updateValue('targetUploadRate', localTargetUploadRate)}
-          />
-          <span class="text-xs text-muted-foreground font-semibold min-w-[40px]">KB/s</span>
-        </div>
-
-        <div class="flex items-center gap-2 p-2 bg-muted rounded-md">
-          <Label
-            for="targetDownload"
-            class="min-w-[70px] text-xs text-muted-foreground font-semibold">↓ Target</Label
-          >
-          <Input
-            id="targetDownload"
-            type="number"
-            bind:value={localTargetDownloadRate}
-            disabled={isRunning}
-            min="0"
-            step="0.1"
-            class="flex-1 max-w-[100px] h-9"
-            onfocus={handleFocus}
-            onblur={handleBlur}
-            oninput={() => updateValue('targetDownloadRate', localTargetDownloadRate)}
-          />
-          <span class="text-xs text-muted-foreground font-semibold min-w-[40px]">KB/s</span>
-        </div>
-
-        <div class="flex items-center gap-2 p-2 bg-muted rounded-md">
-          <Label
-            for="progressiveDuration"
-            class="min-w-[70px] text-xs text-muted-foreground font-semibold">Duration</Label
-          >
-          <Input
+      <div class="bg-muted/50 rounded-lg border border-border overflow-hidden">
+        <!-- Duration slider -->
+        <div class="p-4 flex items-center gap-4">
+          <span class="text-sm text-muted-foreground whitespace-nowrap">Duration</span>
+          <input
             id="progressiveDuration"
-            type="number"
+            type="range"
             bind:value={localProgressiveDurationHours}
             disabled={isRunning}
-            min="0.1"
-            max="48"
-            step="0.1"
-            class="flex-1 max-w-[100px] h-9"
+            min="0.5"
+            max="24"
+            step="0.5"
+            class="flex-1 h-2 rounded-lg cursor-pointer accent-primary"
+            style="background: linear-gradient(to right, hsl(var(--primary)) {((localProgressiveDurationHours -
+              0.5) /
+              23.5) *
+              100}%, hsl(var(--muted)) {((localProgressiveDurationHours - 0.5) / 23.5) * 100}%);"
             onfocus={handleFocus}
             onblur={handleBlur}
             oninput={() => updateValue('progressiveDurationHours', localProgressiveDurationHours)}
           />
-          <span class="text-xs text-muted-foreground font-semibold min-w-[40px]">hrs</span>
+          <div class="flex items-center gap-1 min-w-[5ch]">
+            <span class="text-lg font-bold text-primary">{localProgressiveDurationHours}</span>
+            <span class="text-sm text-muted-foreground">hrs</span>
+          </div>
+        </div>
+
+        <!-- Rate progression visualization -->
+        <div class="grid grid-cols-2 border-t border-border">
+          <!-- Upload progression -->
+          <div class="p-3 border-r border-border">
+            <div class="text-xs text-muted-foreground mb-2">↑ Upload</div>
+            <div class="flex items-center gap-2">
+              <div class="text-center">
+                <div class="text-xs text-muted-foreground mb-0.5">Start</div>
+                <div class="font-medium text-muted-foreground">{localUploadRate}</div>
+              </div>
+              <div class="flex-1 flex items-center gap-1 px-2">
+                <div class="h-px flex-1 bg-border"></div>
+                <TrendingUp size={14} class="text-primary" />
+                <div class="h-px flex-1 bg-border"></div>
+              </div>
+              <div class="text-center">
+                <div class="text-xs text-muted-foreground mb-0.5">Target</div>
+                <Input
+                  id="targetUpload"
+                  type="number"
+                  bind:value={localTargetUploadRate}
+                  disabled={isRunning}
+                  min="0"
+                  step="0.1"
+                  class="w-20 h-8 text-center font-medium"
+                  onfocus={handleFocus}
+                  onblur={handleBlur}
+                  oninput={() => updateValue('targetUploadRate', localTargetUploadRate)}
+                />
+              </div>
+            </div>
+          </div>
+
+          <!-- Download progression -->
+          <div class="p-3">
+            <div class="text-xs text-muted-foreground mb-2">↓ Download</div>
+            <div class="flex items-center gap-2">
+              <div class="text-center">
+                <div class="text-xs text-muted-foreground mb-0.5">Start</div>
+                <div class="font-medium text-muted-foreground">{localDownloadRate}</div>
+              </div>
+              <div class="flex-1 flex items-center gap-1 px-2">
+                <div class="h-px flex-1 bg-border"></div>
+                <TrendingUp size={14} class="text-primary" />
+                <div class="h-px flex-1 bg-border"></div>
+              </div>
+              <div class="text-center">
+                <div class="text-xs text-muted-foreground mb-0.5">Target</div>
+                <Input
+                  id="targetDownload"
+                  type="number"
+                  bind:value={localTargetDownloadRate}
+                  disabled={isRunning}
+                  min="0"
+                  step="0.1"
+                  class="w-20 h-8 text-center font-medium"
+                  onfocus={handleFocus}
+                  onblur={handleBlur}
+                  oninput={() => updateValue('targetDownloadRate', localTargetDownloadRate)}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Summary -->
+        <div
+          class="px-4 py-2 bg-muted/50 border-t border-border text-xs text-muted-foreground text-center"
+        >
+          Rates will gradually adjust from starting values to targets over {localProgressiveDurationHours}
+          hour{localProgressiveDurationHours !== 1 ? 's' : ''}
         </div>
       </div>
     {/if}

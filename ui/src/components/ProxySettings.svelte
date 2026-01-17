@@ -72,7 +72,7 @@
             https://rustatio-cors-proxy.yourname.workers.dev
           </code>
         </p>
-        <p class="text-yellow-600 dark:text-yellow-400 flex items-center gap-1.5">
+        <p class="text-stat-danger flex items-center gap-1.5">
           <AlertTriangle size={16} class="flex-shrink-0" /> Without a proxy, only CORS-enabled trackers
           will work.
         </p>
@@ -95,7 +95,10 @@
           {/snippet}
         </Button>
         {#if proxyUrl}
-          <Button onclick={clearProxy} class="flex-1 bg-destructive hover:bg-destructive/90">
+          <Button
+            onclick={clearProxy}
+            class="flex-1 bg-stat-danger hover:bg-stat-danger/90 text-white shadow-sm"
+          >
             {#snippet children()}
               <span class="flex items-center gap-1.5"><Trash2 size={16} /> Clear</span>
             {/snippet}
@@ -103,12 +106,12 @@
         {/if}
       </div>
       {#if proxyUrl}
-        <p class="text-xs text-green-600 dark:text-green-400 flex items-center gap-1.5">
+        <p class="text-xs text-stat-upload flex items-center gap-1.5">
           <CheckCircle size={14} class="flex-shrink-0" /> Proxy configured: All tracker requests will
           be routed through this proxy
         </p>
       {:else}
-        <p class="text-xs text-yellow-600 dark:text-yellow-400 flex items-center gap-1.5">
+        <p class="text-xs text-stat-ratio flex items-center gap-1.5">
           <AlertTriangle size={14} class="flex-shrink-0" /> No proxy configured: Only CORS-enabled trackers
           will work
         </p>

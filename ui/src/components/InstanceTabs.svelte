@@ -115,8 +115,8 @@
               class={cn(
                 'flex items-center justify-center flex-shrink-0',
                 status === 'idle' && 'text-muted-foreground',
-                status === 'running' && 'text-green-500 animate-pulse-slow',
-                status === 'paused' && 'text-amber-500'
+                status === 'running' && 'text-stat-upload animate-pulse-slow',
+                status === 'paused' && 'text-stat-ratio'
               )}
             >
               {#if status === 'running'}
@@ -204,8 +204,7 @@
             onclick={handleStopAll}
             disabled={!hasRunningInstances}
             size="sm"
-            variant="destructive"
-            class="gap-1.5"
+            class="gap-1.5 bg-stat-danger hover:bg-stat-danger/90 text-white shadow-lg shadow-stat-danger/25"
             title="Stop all running instances"
           >
             {#snippet children()}

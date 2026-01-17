@@ -37,13 +37,13 @@
   function getStatusColor(status) {
     switch (status) {
       case 'loaded':
-        return 'text-green-500';
+        return 'text-stat-upload';
       case 'pending':
-        return 'text-amber-500';
+        return 'text-stat-ratio';
       case 'duplicate':
         return 'text-blue-500';
       case 'invalid':
-        return 'text-red-500';
+        return 'text-stat-leecher';
       default:
         return 'text-muted-foreground';
     }
@@ -143,13 +143,13 @@
             </div>
             <div class="flex justify-between mb-1">
               <span>Auto-start:</span>
-              <span class={watchStatus.auto_start ? 'text-green-500' : 'text-muted-foreground'}>
+              <span class={watchStatus.auto_start ? 'text-stat-upload' : 'text-muted-foreground'}>
                 {watchStatus.auto_start ? 'Enabled' : 'Disabled'}
               </span>
             </div>
             <div class="flex justify-between">
               <span>Status:</span>
-              <span class={watchStatus.enabled ? 'text-green-500' : 'text-red-500'}>
+              <span class={watchStatus.enabled ? 'text-stat-upload' : 'text-stat-leecher'}>
                 {watchStatus.enabled ? 'Watching' : 'Disabled'}
               </span>
             </div>
@@ -158,7 +158,7 @@
 
         <!-- Error Message -->
         {#if error}
-          <div class="text-xs text-red-500 bg-red-500/10 rounded p-2">
+          <div class="text-xs text-stat-leecher bg-stat-leecher/10 rounded p-2">
             {error}
           </div>
         {/if}

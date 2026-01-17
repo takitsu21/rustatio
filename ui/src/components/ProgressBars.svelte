@@ -63,7 +63,7 @@
         </div>
         <div class="w-full h-5 bg-muted rounded-full overflow-hidden border border-border">
           <div
-            class="h-full bg-gradient-to-r from-green-600 to-green-500 transition-all duration-300 flex items-center justify-end pr-2"
+            class="h-full bg-stat-upload transition-all duration-300 flex items-center justify-end pr-2"
             style="width: {stats.upload_progress}%"
           >
             <span class="text-[0.7rem] text-white font-semibold pr-1"
@@ -110,7 +110,7 @@
         </div>
         <div class="w-full h-5 bg-muted rounded-full overflow-hidden border border-border">
           <div
-            class="h-full bg-gradient-to-r from-amber-500 to-amber-400 transition-all duration-300 flex items-center justify-end pr-2"
+            class="h-full bg-stat-ratio transition-all duration-300 flex items-center justify-end pr-2"
             style="width: {stats.seed_time_progress}%"
           >
             <span class="text-[0.7rem] text-white font-semibold pr-1"
