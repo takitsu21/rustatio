@@ -117,6 +117,8 @@ services:
       - RUST_LOG=${RUST_LOG:-info}
       - PUID=${PUID:-1000}
       - PGID=${PGID:-1000}
+      # Optional authentication for your server (Recommended if exposing on internet)
+      # - AUTH_TOKEN=${AUTH_TOKEN:-CHANGE_ME}
       # Optional: Watch folder configuration (auto-detected if volume is mounted)
       # - WATCH_AUTO_START=false  # Set to true to auto-start faking new torrents
     volumes:
@@ -147,6 +149,28 @@ The container supports LinuxServer.io-style PUID/PGID environment variables to e
 | `PGID` | Group ID the container runs as | `1000` |
 
 Find your IDs: `id -u && id -g`
+
+**Authentication (AUTH_TOKEN)**
+
+When exposing Rustatio to the internet or untrusted networks, you should enable authentication to protect your instance:
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `AUTH_TOKEN` | Secret token required to access the web UI and API | *(none - auth disabled)* |
+
+To enable authentication:
+
+```yaml
+environment:
+  - AUTH_TOKEN=your-secure-secret-token
+```
+
+When `AUTH_TOKEN` is set:
+- The web UI displays a login page requiring the token
+- All API endpoints require authentication via `Authorization: Bearer <token>` header
+- SSE (Server-Sent Events) endpoints accept the token via `?token=` query parameter
+
+Generate a secure token: `openssl rand -hex 32`
 
 **Watch Folder Feature**
 
@@ -208,15 +232,17 @@ services:
     container_name: rustatio
     environment:
       - PORT=8080
-      - RUST_LOG=${RUST_LOG:-info}
+      - RUST_LOG=${RUST_LOG:-trace}
       - PUID=${PUID:-1000}
       - PGID=${PGID:-1000}
+      # Optional authentication for your server (Recommended if exposing on internet)
+      # - AUTH_TOKEN=${AUTH_TOKEN:-CHANGE_ME}
       # Optional: Watch folder configuration (auto-detected if volume is mounted)
       # - WATCH_AUTO_START=false  # Set to true to auto-start faking new torrents
     volumes:
       - rustatio_data:/data
       # Optional: Uncomment to enable watch folder feature
-      # - ${TORRENTS_DIR:-./path/to/your/torrents}:/torrents
+      # - ${TORRENTS_DIR:-./torrents}:/torrents
     restart: unless-stopped
     network_mode: service:gluetun
     depends_on:

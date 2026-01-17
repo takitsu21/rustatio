@@ -122,14 +122,11 @@
         stroke-linejoin="round"
         class="flex-shrink-0"
       >
-        <path
-          d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"
+        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"
         ></path>
       </svg>
 
-      <span
-        class={cn('flex-1 text-left', isCollapsed && 'lg:hidden lg:w-0 lg:opacity-0')}
-      >
+      <span class={cn('flex-1 text-left', isCollapsed && 'lg:hidden lg:w-0 lg:opacity-0')}>
         Watch Folder
       </span>
 

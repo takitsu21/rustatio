@@ -12,17 +12,105 @@ let wasm = null;
 // Log event listener registry for web version
 let logListeners = [];
 
-// Detect server mode
+// =============================================================================
+// Authentication Token Management
+// =============================================================================
+
+const AUTH_TOKEN_KEY = 'rustatio-auth-token';
+
+/**
+ * Get the stored authentication token
+ * @returns {string|null} The stored token or null if not set
+ */
+export function getAuthToken() {
+  return localStorage.getItem(AUTH_TOKEN_KEY);
+}
+
+/**
+ * Set the authentication token
+ * @param {string} token - The token to store
+ */
+export function setAuthToken(token) {
+  if (token && token.trim()) {
+    localStorage.setItem(AUTH_TOKEN_KEY, token.trim());
+  } else {
+    localStorage.removeItem(AUTH_TOKEN_KEY);
+  }
+}
+
+/**
+ * Clear the stored authentication token
+ */
+export function clearAuthToken() {
+  localStorage.removeItem(AUTH_TOKEN_KEY);
+}
+
+/**
+ * Check if authentication is enabled on the server
+ * @returns {Promise<{authEnabled: boolean}>}
+ */
+export async function checkAuthStatus() {
+  if (!isServerMode) {
+    return { authEnabled: false };
+  }
+
+  try {
+    const response = await fetch(`${serverBaseUrl}/api/auth/status`);
+    const data = await response.json();
+    return { authEnabled: data.data?.auth_enabled || false };
+  } catch (error) {
+    console.warn('Failed to check auth status:', error);
+    return { authEnabled: false };
+  }
+}
+
+/**
+ * Verify the current authentication token
+ * @returns {Promise<{valid: boolean, error?: string}>}
+ */
+export async function verifyAuthToken() {
+  if (!isServerMode) {
+    return { valid: true };
+  }
+
+  const token = getAuthToken();
+  if (!token) {
+    return { valid: false, error: 'No token set' };
+  }
+
+  try {
+    const response = await fetch(`${serverBaseUrl}/api/auth/verify`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (response.ok) {
+      return { valid: true };
+    }
+
+    const data = await response.json();
+    return { valid: false, error: data.error || 'Invalid token' };
+  } catch (error) {
+    return { valid: false, error: error.message };
+  }
+}
+
+// =============================================================================
+// Server Detection
+// =============================================================================
+
+// Detect server mode by checking the public /api/auth/status endpoint
 async function detectServerMode() {
   try {
-    const response = await fetch('/api/clients', { method: 'GET' });
+    const response = await fetch('/api/auth/status', { method: 'GET' });
     if (response.ok) {
       // Verify it's actually JSON (not Vite's HTML fallback)
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         isServerMode = true;
         serverBaseUrl = '';
-        console.log('Running in server mode');
+
         return true;
       }
     }
@@ -38,7 +126,7 @@ if (!isTauri) {
     const wasmModule = await import('$lib/wasm/rustatio_wasm.js');
     wasm = wasmModule;
   } catch {
-    console.log('WASM not available, will try server mode');
+    // WASM not available, will use server mode
   }
 }
 
@@ -103,7 +191,10 @@ export async function listenToLogs(callback) {
     logListeners.push(callback);
 
     try {
-      const eventSource = new EventSource(`${serverBaseUrl}/api/logs`);
+      // Include auth token as query parameter since EventSource doesn't support headers
+      const token = getAuthToken();
+      const authQuery = token ? `?token=${encodeURIComponent(token)}` : '';
+      const eventSource = new EventSource(`${serverBaseUrl}/api/logs${authQuery}`);
 
       eventSource.addEventListener('log', event => {
         try {
@@ -138,7 +229,10 @@ export function listenToInstanceEvents(callback) {
   }
 
   try {
-    const eventSource = new EventSource(`${serverBaseUrl}/api/events`);
+    // Include auth token as query parameter since EventSource doesn't support headers
+    const token = getAuthToken();
+    const authQuery = token ? `?token=${encodeURIComponent(token)}` : '';
+    const eventSource = new EventSource(`${serverBaseUrl}/api/events${authQuery}`);
 
     eventSource.addEventListener('instance', event => {
       try {
@@ -175,20 +269,36 @@ export function emitLog(level, message) {
   }
 }
 
-// Server API helper with logging
+// Server API helper with logging and authentication
 async function serverFetch(endpoint, options = {}, logMessage = null) {
   const url = `${serverBaseUrl}/api${endpoint}`;
+  const token = getAuthToken();
+
+  // Build headers with optional auth
+  const headers = {
+    'Content-Type': 'application/json',
+    ...options.headers,
+  };
+
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
 
   try {
     const response = await fetch(url, {
       ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        ...options.headers,
-      },
+      headers,
     });
 
     const data = await response.json();
+
+    // Handle authentication errors
+    if (response.status === 401 || response.status === 403) {
+      const error = new Error(data.error || 'Authentication required');
+      error.authRequired = true;
+      error.statusCode = response.status;
+      throw error;
+    }
 
     if (!data.success) {
       emitLog('error', `API error: ${data.error || 'Unknown error'}`);
@@ -231,12 +341,28 @@ const serverApi = {
 
     emitLog('info', `Loading torrent: ${file.name}`);
 
+    const token = getAuthToken();
+    const headers = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
     const response = await fetch(`${serverBaseUrl}/api/torrent/load`, {
       method: 'POST',
       body: formData,
+      headers,
     });
 
     const data = await response.json();
+
+    // Handle authentication errors
+    if (response.status === 401 || response.status === 403) {
+      const error = new Error(data.error || 'Authentication required');
+      error.authRequired = true;
+      error.statusCode = response.status;
+      throw error;
+    }
+
     if (!data.success) {
       emitLog('error', `Failed to load torrent: ${data.error}`);
       throw new Error(data.error || 'Failed to load torrent');
@@ -256,12 +382,28 @@ const serverApi = {
 
     emitLog('info', `[Instance ${id}] Loading torrent: ${file.name}`);
 
+    const token = getAuthToken();
+    const headers = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
     const response = await fetch(`${serverBaseUrl}/api/instances/${id}/torrent`, {
       method: 'POST',
       body: formData,
+      headers,
     });
 
     const data = await response.json();
+
+    // Handle authentication errors
+    if (response.status === 401 || response.status === 403) {
+      const error = new Error(data.error || 'Authentication required');
+      error.authRequired = true;
+      error.statusCode = response.status;
+      throw error;
+    }
+
     if (!data.success) {
       emitLog('error', `[Instance ${id}] Failed to load torrent: ${data.error}`);
       throw new Error(data.error || 'Failed to load torrent');
@@ -279,7 +421,10 @@ const serverApi = {
       method: 'POST',
       body: JSON.stringify({ torrent, config }),
     });
-    emitLog('info', `[Instance ${id}] Faker started - emulating ${config.client_type} v${config.client_version}`);
+    emitLog(
+      'info',
+      `[Instance ${id}] Faker started - emulating ${config.client_type} v${config.client_version}`
+    );
   },
   updateFaker: async id => {
     emitLog('debug', `[Instance ${id}] Sending tracker announce...`);
@@ -398,6 +543,77 @@ function detectVpnProvider(org) {
   return null;
 }
 
+// Fetch network status with fallback providers
+async function fetchNetworkStatusWithFallbacks() {
+  // Try ip-api.com first (more reliable, HTTP only but CORS-friendly)
+  try {
+    const response = await fetch('http://ip-api.com/json', {
+      method: 'GET',
+    });
+    if (response.ok) {
+      const data = await response.json();
+      if (data.query) {
+        const org = data.isp || data.org;
+        const vpnProvider = detectVpnProvider(org);
+        return {
+          ip: data.query,
+          country: data.countryCode || data.country,
+          city: data.city,
+          org: org,
+          is_vpn: !!vpnProvider,
+          vpn_provider: vpnProvider,
+        };
+      }
+    }
+  } catch (e) {
+    console.warn('ip-api.com failed, trying fallback:', e.message);
+  }
+
+  // Fallback to ipinfo.io
+  try {
+    const response = await fetch('https://ipinfo.io/json', {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+    });
+    if (response.ok) {
+      const data = await response.json();
+      const vpnProvider = detectVpnProvider(data.org);
+      return {
+        ip: data.ip,
+        country: data.country,
+        city: data.city,
+        org: data.org,
+        is_vpn: !!vpnProvider,
+        vpn_provider: vpnProvider,
+      };
+    }
+  } catch (e) {
+    console.warn('ipinfo.io failed, trying fallback:', e.message);
+  }
+
+  // Last resort: ipify (just IP, no other info)
+  try {
+    const response = await fetch('https://api.ipify.org?format=json', {
+      method: 'GET',
+    });
+    if (response.ok) {
+      const data = await response.json();
+      return {
+        ip: data.ip,
+        country: null,
+        city: null,
+        org: null,
+        is_vpn: false,
+        vpn_provider: null,
+      };
+    }
+  } catch (e) {
+    console.warn('ipify.org failed:', e.message);
+  }
+
+  throw new Error('All IP lookup services failed');
+}
+
 // Tauri API implementation
 const tauriApi = {
   createInstance: async () => {
@@ -458,23 +674,9 @@ const tauriApi = {
     return ['utorrent', 'qbittorrent', 'transmission', 'deluge'];
   },
   getNetworkStatus: async () => {
-    // For desktop, fetch directly from ipinfo.io
+    // Use fallback function for desktop
     try {
-      const response = await fetch('https://ipinfo.io/json', {
-        method: 'GET',
-        headers: { Accept: 'application/json' },
-      });
-      if (!response.ok) throw new Error('Failed to fetch');
-      const data = await response.json();
-      const vpnProvider = detectVpnProvider(data.org);
-      return {
-        ip: data.ip,
-        country: data.country,
-        city: data.city,
-        org: data.org,
-        is_vpn: !!vpnProvider,
-        vpn_provider: vpnProvider,
-      };
+      return await fetchNetworkStatusWithFallbacks();
     } catch (error) {
       throw new Error(`Failed to get network status: ${error.message}`);
     }
@@ -535,24 +737,10 @@ const wasmApi = {
     return wasm.get_client_types();
   },
   getNetworkStatus: async () => {
-    // For WASM, fetch directly from ipinfo.io
-    // Note: May have CORS issues on GitHub Pages
+    // Use fallback function for WASM
+    // Note: Some services may have CORS issues on GitHub Pages
     try {
-      const response = await fetch('https://ipinfo.io/json', {
-        method: 'GET',
-        headers: { Accept: 'application/json' },
-      });
-      if (!response.ok) throw new Error('Failed to fetch');
-      const data = await response.json();
-      const vpnProvider = detectVpnProvider(data.org);
-      return {
-        ip: data.ip,
-        country: data.country,
-        city: data.city,
-        org: data.org,
-        is_vpn: !!vpnProvider,
-        vpn_provider: vpnProvider,
-      };
+      return await fetchNetworkStatusWithFallbacks();
     } catch (error) {
       // CORS may block this on GitHub Pages - return null to indicate unavailable
       console.warn('Network status unavailable:', error.message);

@@ -21,9 +21,11 @@ services:
     container_name: rustatio
     environment:
       - PORT=8080
-      - RUST_LOG=${RUST_LOG:-info}
+      - RUST_LOG=${RUST_LOG:-trace}
       - PUID=${PUID:-1000}
       - PGID=${PGID:-1000}
+      # Optional authentication for your server (Recommended if exposing on internet)
+      # - AUTH_TOKEN=${AUTH_TOKEN:-CHANGE_ME}
       # Optional: Watch folder configuration (auto-detected if volume is mounted)
       # - WATCH_AUTO_START=false  # Set to true to auto-start faking new torrents
     volumes:

@@ -15,6 +15,7 @@ use std::convert::Infallible;
 use tokio_stream::wrappers::BroadcastStream;
 use tokio_stream::StreamExt;
 
+use crate::auth;
 use crate::state::InstanceInfo;
 use crate::watch::{WatchStatus, WatchedFile};
 use crate::ServerState;
@@ -88,6 +89,38 @@ pub fn router() -> Router<ServerState> {
         .route("/watch/status", get(get_watch_status))
         .route("/watch/files", get(list_watch_files))
         .route("/watch/files/{filename}", delete(delete_watch_file))
+        // Auth verification (returns success if token is valid)
+        .route("/auth/verify", get(verify_auth))
+}
+
+/// Auth-free router for endpoints that don't require authentication
+pub fn public_router() -> Router<ServerState> {
+    Router::new()
+        // Auth status check (no auth required - tells UI if auth is enabled)
+        .route("/auth/status", get(auth_status))
+}
+
+// =============================================================================
+// Auth Endpoints
+// =============================================================================
+
+/// Auth status response
+#[derive(Serialize)]
+struct AuthStatusResponse {
+    auth_enabled: bool,
+}
+
+/// Check if authentication is enabled (no auth required for this endpoint)
+async fn auth_status() -> Response {
+    ApiSuccess::response(AuthStatusResponse {
+        auth_enabled: auth::is_auth_enabled(),
+    })
+}
+
+/// Verify authentication token (if this returns success, the token is valid)
+async fn verify_auth() -> Response {
+    // If we reach here, the auth middleware already validated the token
+    ApiSuccess::response(())
 }
 
 /// Create a new instance ID
@@ -345,6 +378,23 @@ struct IpInfoResponse {
     org: Option<String>,
 }
 
+/// Response from ip-api.com (fallback)
+#[derive(Deserialize)]
+struct IpApiResponse {
+    #[serde(default)]
+    query: Option<String>,
+    #[serde(default)]
+    city: Option<String>,
+    #[serde(default)]
+    country: Option<String>,
+    #[serde(default, rename = "countryCode")]
+    country_code: Option<String>,
+    #[serde(default)]
+    isp: Option<String>,
+    #[serde(default)]
+    org: Option<String>,
+}
+
 /// Known VPN provider patterns to detect
 const VPN_PROVIDERS: &[(&str, &str)] = &[
     ("proton", "ProtonVPN"),
@@ -391,10 +441,10 @@ fn detect_vpn_provider(org: &Option<String>) -> Option<String> {
 }
 
 /// Get network status (public IP and VPN detection)
+/// Tries multiple IP lookup services with fallbacks for reliability
 async fn get_network_status() -> Response {
-    // Fetch IP info from ipinfo.io
     let client = match reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
+        .timeout(std::time::Duration::from_secs(5))
         .build()
     {
         Ok(c) => c,
@@ -406,37 +456,73 @@ async fn get_network_status() -> Response {
         }
     };
 
-    let response = match client.get("https://ipinfo.io/json").send().await {
-        Ok(r) => r,
-        Err(e) => {
-            return ApiError::response(StatusCode::BAD_GATEWAY, format!("Failed to fetch IP info: {}", e));
+    // Try ip-api.com first (more reliable, no rate limits for non-commercial use)
+    if let Ok(response) = client.get("http://ip-api.com/json").send().await {
+        if let Ok(ip_info) = response.json::<IpApiResponse>().await {
+            if let Some(ip) = ip_info.query {
+                // Use ISP or org for VPN detection
+                let org = ip_info.isp.or(ip_info.org);
+                let vpn_provider = detect_vpn_provider(&org);
+                let is_vpn = vpn_provider.is_some();
+
+                let status = NetworkStatus {
+                    ip,
+                    country: ip_info.country_code.or(ip_info.country),
+                    city: ip_info.city,
+                    org,
+                    is_vpn,
+                    vpn_provider,
+                };
+
+                return ApiSuccess::response(status);
+            }
         }
-    };
+    }
 
-    let ip_info: IpInfoResponse = match response.json().await {
-        Ok(info) => info,
-        Err(e) => {
-            return ApiError::response(
-                StatusCode::BAD_GATEWAY,
-                format!("Failed to parse IP info response: {}", e),
-            );
+    // Fallback to ipinfo.io
+    if let Ok(response) = client.get("https://ipinfo.io/json").send().await {
+        if let Ok(ip_info) = response.json::<IpInfoResponse>().await {
+            let vpn_provider = detect_vpn_provider(&ip_info.org);
+            let is_vpn = vpn_provider.is_some();
+
+            let status = NetworkStatus {
+                ip: ip_info.ip,
+                country: ip_info.country,
+                city: ip_info.city,
+                org: ip_info.org,
+                is_vpn,
+                vpn_provider,
+            };
+
+            return ApiSuccess::response(status);
         }
-    };
+    }
 
-    // Detect VPN from organization
-    let vpn_provider = detect_vpn_provider(&ip_info.org);
-    let is_vpn = vpn_provider.is_some();
+    // Last resort: just get the IP from ipify
+    if let Ok(response) = client.get("https://api.ipify.org?format=json").send().await {
+        #[derive(Deserialize)]
+        struct IpifyResponse {
+            ip: String,
+        }
 
-    let status = NetworkStatus {
-        ip: ip_info.ip,
-        country: ip_info.country,
-        city: ip_info.city,
-        org: ip_info.org,
-        is_vpn,
-        vpn_provider,
-    };
+        if let Ok(ip_info) = response.json::<IpifyResponse>().await {
+            let status = NetworkStatus {
+                ip: ip_info.ip,
+                country: None,
+                city: None,
+                org: None,
+                is_vpn: false,
+                vpn_provider: None,
+            };
 
-    ApiSuccess::response(status)
+            return ApiSuccess::response(status);
+        }
+    }
+
+    ApiError::response(
+        StatusCode::BAD_GATEWAY,
+        "Failed to fetch IP info from all providers".to_string(),
+    )
 }
 
 /// SSE endpoint for streaming logs to the UI

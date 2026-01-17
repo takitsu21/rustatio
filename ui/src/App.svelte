@@ -1,7 +1,16 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
   import { get } from 'svelte/store';
-  import { initWasm, api, listenToLogs, listenToInstanceEvents, getRunMode } from './lib/api.js';
+  import {
+    initWasm,
+    api,
+    listenToLogs,
+    listenToInstanceEvents,
+    getRunMode,
+    checkAuthStatus,
+    verifyAuthToken,
+    getAuthToken,
+  } from './lib/api.js';
 
   // Import instance stores
   import {
@@ -28,12 +37,28 @@
   import UpdateChecker from './components/UpdateChecker.svelte';
   import ThemeIcon from './components/ThemeIcon.svelte';
   import DownloadButton from './components/DownloadButton.svelte';
+  import AuthPage from './components/AuthPage.svelte';
+
+  // Import theme store
+  import {
+    getTheme,
+    getShowThemeDropdown,
+    toggleThemeDropdown,
+    selectTheme,
+    initializeTheme,
+    handleClickOutside,
+    getThemeName,
+  } from './lib/themeStore.svelte.js';
 
   // Check if running in Tauri
   const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
   // Loading state to prevent UI flash during initialization
   let isInitialized = $state(false);
+
+  // Authentication state
+  let showAuthDialog = $state(false);
+  let _isAuthenticated = $state(false);
 
   // Flag to prevent store subscriptions from firing during initialization
   let isInitializing = true;
@@ -53,11 +78,6 @@
     transmission: 51413,
     deluge: 6881,
   };
-
-  // Theme management
-  let theme = $state('system'); // system, light, dark
-  let effectiveTheme = $state('light'); // The actual applied theme
-  let showThemeDropdown = $state(false);
 
   // Logs
   let logs = $state([]);
@@ -112,86 +132,38 @@
   // Load configuration on mount
   onMount(async () => {
     try {
-      // Initialize WASM
+      // Initialize WASM/detect server mode
       await initWasm();
 
-      // Load config from localStorage
-      const storedShowLogs = localStorage.getItem('rustatio-show-logs');
-      showLogs = storedShowLogs ? JSON.parse(storedShowLogs) : false;
+      // Check if authentication is required (server mode only)
+      const { authEnabled } = await checkAuthStatus();
 
-      // Log level priority for filtering
-      const LOG_LEVELS = { error: 0, warn: 1, info: 2, debug: 3, trace: 4 };
-
-      // Set up log listener (works for both Tauri and web)
-      await listenToLogs(logEvent => {
-        // Filter logs based on configured log level
-        const configuredLevel = localStorage.getItem('rustatio-log-level') || 'info';
-        const eventPriority = LOG_LEVELS[logEvent.level] ?? 2;
-        const configuredPriority = LOG_LEVELS[configuredLevel] ?? 2;
-
-        // Only show logs at or below the configured level
-        if (eventPriority > configuredPriority) {
-          return;
-        }
-
-        logs = [...logs, logEvent];
-
-        // Limit logs to prevent memory issues (keep last 500)
-        if (logs.length > 500) {
-          logs = logs.slice(-500);
-        }
-      });
-
-      // Initialize instance store (will restore session from localStorage)
-      await instanceActions.initialize();
-
-      // Start polling for any instances that were restored in a running state (server mode)
-      // This ensures UI updates after page refresh when instances are still running on server
-      const restoredInstances = get(instances);
-      for (const inst of restoredInstances) {
-        if (inst.isRunning && !inst.isPaused) {
-          devLog('log', `Starting polling for restored running instance ${inst.id}`);
-          startPollingForInstance(inst.id, inst.updateIntervalSeconds ?? 5);
-        }
-      }
-
-      // Set up instance events subscription for real-time sync (server mode only)
-      // This allows watch folder instances to appear without page refresh
-      if (getRunMode() === 'server') {
-        instanceEventsCleanup = listenToInstanceEvents(async event => {
-          devLog('log', 'Received instance event:', event);
-
-          if (event.type === 'created') {
-            // Fetch full instance info from server
-            try {
-              const serverInstances = await api.listInstances();
-              const newInstance = serverInstances.find(inst => inst.id === event.id);
-
-              if (newInstance) {
-                const wasAdded = instanceActions.mergeServerInstance(newInstance);
-                if (wasAdded && newInstance.stats.state === 'Running') {
-                  // Start polling for the new running instance
-                  startPollingForInstance(
-                    event.id,
-                    newInstance.config.update_interval || 5
-                  );
-                }
-              }
-            } catch (error) {
-              console.error('Failed to fetch new instance:', error);
-            }
-          } else if (event.type === 'deleted') {
-            // Remove instance from frontend store
-            instanceActions.removeInstanceFromStore(event.id);
+      if (authEnabled) {
+        // Check if we have a valid token stored
+        const storedToken = getAuthToken();
+        if (storedToken) {
+          const { valid } = await verifyAuthToken();
+          if (valid) {
+            _isAuthenticated = true;
+          } else {
+            // Token is invalid, show auth dialog
+            showAuthDialog = true;
+            isInitialized = true;
+            return; // Don't continue initialization until authenticated
           }
-        });
+        } else {
+          // No token stored, show auth dialog
+          showAuthDialog = true;
+          isInitialized = true;
+          return; // Don't continue initialization until authenticated
+        }
+      } else {
+        // Auth not enabled, consider authenticated
+        _isAuthenticated = true;
       }
 
-      // Wait a tick for stores to update before showing UI
-      await new Promise(resolve => setTimeout(resolve, 0));
-
-      // Mark as initialized to show UI
-      isInitialized = true;
+      // Continue with normal initialization
+      await continueInitialization();
     } catch (error) {
       console.error('Failed to initialize app:', error);
       devLog('error', 'Failed to initialize:', error);
@@ -297,84 +269,97 @@
     isInitializing = false;
   });
 
-  // Config is saved via saveSession in instanceStore.js
+  // Continue initialization after authentication (called after auth is verified)
+  async function continueInitialization() {
+    // Load config from localStorage
+    const storedShowLogs = localStorage.getItem('rustatio-show-logs');
+    showLogs = storedShowLogs ? JSON.parse(storedShowLogs) : false;
 
-  // Initialize theme system
-  function initializeTheme() {
-    const savedTheme = localStorage.getItem('rustatio-theme') || 'system';
-    theme = savedTheme;
-    applyTheme(savedTheme);
+    // Log level priority for filtering
+    const LOG_LEVELS = { error: 0, warn: 1, info: 2, debug: 3, trace: 4 };
 
-    if (window.matchMedia) {
-      const darkModeQuery = window.matchMedia('(prefers-color-scheme: dark)');
-      darkModeQuery.addEventListener('change', e => {
-        if (theme === 'system') {
-          effectiveTheme = e.matches ? 'dark' : 'light';
-          if (effectiveTheme === 'dark') {
-            document.documentElement.classList.add('dark');
-            document.documentElement.style.colorScheme = 'dark';
-            devLog('log', '🔄 System theme changed to dark mode');
-          } else {
-            document.documentElement.classList.remove('dark');
-            document.documentElement.style.colorScheme = 'light';
-            devLog('log', '🔄 System theme changed to light mode');
+    // Set up log listener (works for both Tauri and web)
+    await listenToLogs(logEvent => {
+      // Filter logs based on configured log level
+      const configuredLevel = localStorage.getItem('rustatio-log-level') || 'info';
+      const eventPriority = LOG_LEVELS[logEvent.level] ?? 2;
+      const configuredPriority = LOG_LEVELS[configuredLevel] ?? 2;
+
+      // Only show logs at or below the configured level
+      if (eventPriority > configuredPriority) {
+        return;
+      }
+
+      logs = [...logs, logEvent];
+
+      // Limit logs to prevent memory issues (keep last 500)
+      if (logs.length > 500) {
+        logs = logs.slice(-500);
+      }
+    });
+
+    // Initialize instance store (will restore session from localStorage)
+    await instanceActions.initialize();
+
+    // Start polling for any instances that were restored in a running state (server mode)
+    // This ensures UI updates after page refresh when instances are still running on server
+    const restoredInstances = get(instances);
+    for (const inst of restoredInstances) {
+      if (inst.isRunning && !inst.isPaused) {
+        devLog('log', `Starting polling for restored running instance ${inst.id}`);
+        startPollingForInstance(inst.id, inst.updateIntervalSeconds ?? 5);
+      }
+    }
+
+    // Set up instance events subscription for real-time sync (server mode only)
+    // This allows watch folder instances to appear without page refresh
+    if (getRunMode() === 'server') {
+      instanceEventsCleanup = listenToInstanceEvents(async event => {
+        devLog('log', 'Received instance event:', event);
+
+        if (event.type === 'created') {
+          // Fetch full instance info from server
+          try {
+            const serverInstances = await api.listInstances();
+            const newInstance = serverInstances.find(inst => inst.id === event.id);
+
+            if (newInstance) {
+              const wasAdded = instanceActions.mergeServerInstance(newInstance);
+              if (wasAdded && newInstance.stats.state === 'Running') {
+                // Start polling for the new running instance
+                startPollingForInstance(event.id, newInstance.config.update_interval || 5);
+              }
+            }
+          } catch (error) {
+            console.error('Failed to fetch new instance:', error);
           }
-          document.documentElement.setAttribute('data-theme', effectiveTheme);
+        } else if (event.type === 'deleted') {
+          // Remove instance from frontend store
+          instanceActions.removeInstanceFromStore(event.id);
         }
       });
     }
+
+    // Wait a tick for stores to update before showing UI
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    // Mark as initialized to show UI
+    isInitialized = true;
   }
 
-  // Apply theme
-  function applyTheme(newTheme) {
-    theme = newTheme;
-    localStorage.setItem('rustatio-theme', newTheme);
+  // Handle successful authentication
+  async function handleAuthenticated() {
+    _isAuthenticated = true;
+    showAuthDialog = false;
 
-    if (newTheme === 'system') {
-      if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-        effectiveTheme = 'dark';
-      } else {
-        effectiveTheme = 'light';
-      }
-    } else {
-      effectiveTheme = newTheme;
-    }
+    // Continue initialization after successful auth
+    await continueInitialization();
 
-    // Apply dark class for Tailwind
-    if (effectiveTheme === 'dark') {
-      document.documentElement.classList.add('dark');
-      document.documentElement.style.colorScheme = 'dark';
-      devLog('log', '✅ Dark mode enabled - added .dark class and color-scheme to <html>');
-    } else {
-      document.documentElement.classList.remove('dark');
-      document.documentElement.style.colorScheme = 'light';
-      devLog('log', '☀️ Light mode enabled - removed .dark class and set color-scheme to light');
-    }
-
-    // Keep data-theme for backwards compatibility with remaining components
-    document.documentElement.setAttribute('data-theme', effectiveTheme);
+    // Initialize theme (needs to happen after isInitialized is set)
+    initializeTheme();
   }
 
-  // Theme selection
-  function selectTheme(newTheme) {
-    applyTheme(newTheme);
-    showThemeDropdown = false;
-  }
-
-  function toggleThemeDropdown(event) {
-    event.stopPropagation();
-    showThemeDropdown = !showThemeDropdown;
-  }
-
-  // Handle click outside to close dropdown
-  function handleClickOutside(event) {
-    if (showThemeDropdown) {
-      const themeSelector = document.querySelector('.theme-selector');
-      if (themeSelector && !themeSelector.contains(event.target)) {
-        showThemeDropdown = false;
-      }
-    }
-  }
+  // Config is saved via saveSession in instanceStore.js
 
   // Cleanup on unmount
   onDestroy(() => {
@@ -1068,12 +1053,6 @@
     return `${h}h ${m}m ${s}s`;
   }
 
-  function getThemeName(themeType) {
-    if (themeType === 'dark') return 'Dark';
-    if (themeType === 'light') return 'Light';
-    return 'System';
-  }
-
   // Sync instance config to server (debounced)
   // This ensures form changes persist across page refreshes in server mode
   function syncConfigToServer(instanceId) {
@@ -1150,6 +1129,9 @@
     <div class="w-15 h-15 border-4 border-muted border-t-primary rounded-full animate-spin"></div>
     <p class="text-xl text-muted-foreground">Loading Rustatio...</p>
   </div>
+{:else if showAuthDialog}
+  <!-- Authentication Page (shown when auth is required but not authenticated) -->
+  <AuthPage onAuthenticated={handleAuthenticated} />
 {:else}
   <div class="flex h-screen bg-background text-foreground">
     <!-- Sidebar -->
@@ -1173,10 +1155,10 @@
           <button
             onclick={toggleThemeDropdown}
             class="bg-secondary text-secondary-foreground border-2 border-border rounded-lg p-2 flex items-center gap-2 cursor-pointer transition-all hover:bg-primary hover:border-primary hover:text-primary-foreground active:scale-[0.98] shadow-lg"
-            title="Theme: {getThemeName(theme)}"
+            title="Theme: {getThemeName(getTheme())}"
             aria-label="Toggle theme menu"
           >
-            <ThemeIcon {theme} />
+            <ThemeIcon theme={getTheme()} />
             <svg
               width="14"
               height="14"
@@ -1184,17 +1166,17 @@
               fill="none"
               stroke="currentColor"
               stroke-width="2"
-              class="transition-transform {showThemeDropdown ? 'rotate-180' : ''}"
+              class="transition-transform {getShowThemeDropdown() ? 'rotate-180' : ''}"
             >
               <polyline points="6 9 12 15 18 9"></polyline>
             </svg>
           </button>
-          {#if showThemeDropdown}
+          {#if getShowThemeDropdown()}
             <div
               class="absolute top-[calc(100%+0.5rem)] right-0 bg-card text-card-foreground border border-border/50 rounded-xl shadow-2xl p-1.5 min-w-[180px] z-50 backdrop-blur-xl animate-in fade-in slide-in-from-top-2 duration-200"
             >
               <button
-                class="w-full flex items-center gap-3 px-3 py-2 border-none cursor-pointer rounded-lg transition-all {theme ===
+                class="w-full flex items-center gap-3 px-3 py-2 border-none cursor-pointer rounded-lg transition-all {getTheme() ===
                 'light'
                   ? 'bg-primary text-primary-foreground shadow-sm'
                   : 'bg-transparent text-card-foreground hover:bg-secondary/80'}"
@@ -1202,7 +1184,7 @@
               >
                 <ThemeIcon theme="light" />
                 <span class="flex-1 text-left text-sm font-medium">Light</span>
-                {#if theme === 'light'}
+                {#if getTheme() === 'light'}
                   <svg
                     width="16"
                     height="16"
@@ -1216,7 +1198,7 @@
                 {/if}
               </button>
               <button
-                class="w-full flex items-center gap-3 px-3 py-2 border-none cursor-pointer rounded-lg transition-all {theme ===
+                class="w-full flex items-center gap-3 px-3 py-2 border-none cursor-pointer rounded-lg transition-all {getTheme() ===
                 'dark'
                   ? 'bg-primary text-primary-foreground shadow-sm'
                   : 'bg-transparent text-card-foreground hover:bg-secondary/80'}"
@@ -1224,7 +1206,7 @@
               >
                 <ThemeIcon theme="dark" />
                 <span class="flex-1 text-left text-sm font-medium">Dark</span>
-                {#if theme === 'dark'}
+                {#if getTheme() === 'dark'}
                   <svg
                     width="16"
                     height="16"
@@ -1238,7 +1220,7 @@
                 {/if}
               </button>
               <button
-                class="w-full flex items-center gap-3 px-3 py-2 border-none cursor-pointer rounded-lg transition-all {theme ===
+                class="w-full flex items-center gap-3 px-3 py-2 border-none cursor-pointer rounded-lg transition-all {getTheme() ===
                 'system'
                   ? 'bg-primary text-primary-foreground shadow-sm'
                   : 'bg-transparent text-card-foreground hover:bg-secondary/80'}"
@@ -1246,7 +1228,7 @@
               >
                 <ThemeIcon theme="system" />
                 <span class="flex-1 text-left text-sm font-medium">System</span>
-                {#if theme === 'system'}
+                {#if getTheme() === 'system'}
                   <svg
                     width="16"
                     height="16"

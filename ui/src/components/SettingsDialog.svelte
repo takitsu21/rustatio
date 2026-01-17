@@ -568,8 +568,7 @@
                         >
                       {/if}
                       {#if preset.settings.selectedClient}
-                        <span
-                          class="px-2 py-1 bg-purple-500/20 text-purple-500 rounded capitalize"
+                        <span class="px-2 py-1 bg-purple-500/20 text-purple-500 rounded capitalize"
                           >{preset.settings.selectedClient}</span
                         >
                       {/if}

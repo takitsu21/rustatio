@@ -275,8 +275,6 @@ export const instanceActions = {
         try {
           const serverInstances = await api.listInstances();
           if (serverInstances && serverInstances.length > 0) {
-            console.log(`Restoring ${serverInstances.length} instance(s) from server`);
-            
             const restoredInstances = serverInstances.map(serverInst => {
               // Create frontend instance from server state
               const instance = createDefaultInstance(serverInst.id, {
@@ -298,7 +296,8 @@ export const instanceActions = {
                 stopAtUploadedEnabled: serverInst.config.stop_at_uploaded !== null,
                 stopAtUploadedGB: (serverInst.config.stop_at_uploaded || 0) / (1024 * 1024 * 1024),
                 stopAtDownloadedEnabled: serverInst.config.stop_at_downloaded !== null,
-                stopAtDownloadedGB: (serverInst.config.stop_at_downloaded || 0) / (1024 * 1024 * 1024),
+                stopAtDownloadedGB:
+                  (serverInst.config.stop_at_downloaded || 0) / (1024 * 1024 * 1024),
                 stopAtSeedTimeEnabled: serverInst.config.stop_at_seed_time !== null,
                 stopAtSeedTimeHours: (serverInst.config.stop_at_seed_time || 0) / 3600,
                 stopWhenNoLeechers: serverInst.config.stop_when_no_leechers || false,
@@ -312,12 +311,12 @@ export const instanceActions = {
               instance.torrent = serverInst.torrent;
               instance.torrentPath = serverInst.torrent.name;
               instance.stats = serverInst.stats;
-              
+
               // Set running state based on server state
               const state = serverInst.stats.state;
               instance.isRunning = state === 'Running';
               instance.isPaused = state === 'Paused';
-              
+
               if (instance.isRunning) {
                 instance.statusMessage = 'Running - restored from server';
                 instance.statusType = 'running';
@@ -335,12 +334,14 @@ export const instanceActions = {
             instances.set(restoredInstances);
             activeInstanceId.set(restoredInstances[0].id);
             updateActiveInstanceStore();
-            
-            console.log('Successfully restored instances from server');
+
             return restoredInstances[0].id;
           }
         } catch (error) {
-          console.warn('Failed to fetch instances from server, falling back to localStorage:', error);
+          console.warn(
+            'Failed to fetch instances from server, falling back to localStorage:',
+            error
+          );
         }
       }
 
@@ -554,13 +555,10 @@ export const instanceActions = {
   // Returns true if a new instance was added, false if it already existed
   mergeServerInstance: serverInst => {
     const currentInstances = get(instances);
-    const existingInstance = currentInstances.find(
-      inst => inst.id === serverInst.id
-    );
+    const existingInstance = currentInstances.find(inst => inst.id === serverInst.id);
 
     if (existingInstance) {
       // Instance already exists, no need to merge
-      console.log(`Instance ${serverInst.id} already exists, skipping merge`);
       return false;
     }
 
@@ -619,7 +617,6 @@ export const instanceActions = {
     instances.update(insts => [...insts, instance]);
     updateActiveInstanceStore();
 
-    console.log(`Merged new instance ${serverInst.id} from server (${serverInst.torrent.name})`);
     return true;
   },
 
@@ -652,7 +649,6 @@ export const instanceActions = {
     });
 
     updateActiveInstanceStore();
-    console.log(`Removed instance ${id} from store`);
     return true;
   },
 };

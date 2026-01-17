@@ -1,11 +1,12 @@
 mod api;
+mod auth;
 mod log_layer;
 mod persistence;
 mod state;
 mod static_files;
 mod watch;
 
-use axum::{routing::get, Router};
+use axum::{middleware, routing::get, Router};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::signal;
@@ -100,11 +101,13 @@ async fn main() {
 
     // Build router
     let app = Router::new()
-        // Health check
+        // Health check (no auth required)
         .route("/health", get(|| async { "OK" }))
-        // API routes
-        .nest("/api", api::router())
-        // Static files (web UI) - must be last as it catches all other routes
+        // Public API routes (no auth required)
+        .nest("/api", api::public_router())
+        // Protected API routes (auth required when AUTH_TOKEN is set)
+        .nest("/api", api::router().layer(middleware::from_fn(auth::auth_middleware)))
+        // Static files (web UI) - must be last as it catches all other routes (no auth)
         .fallback(static_files::static_handler)
         .layer(cors)
         .layer(TraceLayer::new_for_http())
@@ -114,6 +117,13 @@ async fn main() {
     tracing::info!("Rustatio server starting on http://{}", addr);
     tracing::info!("Web UI available at http://localhost:{}", port);
     tracing::info!("Data directory: {}", data_dir);
+
+    // Log authentication status
+    if auth::is_auth_enabled() {
+        tracing::info!("Authentication enabled (AUTH_TOKEN is set)");
+    } else {
+        tracing::warn!("Authentication disabled - API is open to all. Set AUTH_TOKEN to enable.");
+    }
 
     // Create shutdown signal channel
     let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
