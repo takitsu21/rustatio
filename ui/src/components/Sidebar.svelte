@@ -252,11 +252,13 @@
       <div class="mb-3 p-2 bg-muted/50 rounded-lg text-xs">
         <div class="flex justify-between text-muted-foreground mb-1">
           <span>Total Uploaded</span>
-          <span class="font-semibold text-green-500">↑ {formatBytes(totalStats().uploaded)}</span>
+          <span class="font-semibold text-stat-upload">↑ {formatBytes(totalStats().uploaded)}</span>
         </div>
         <div class="flex justify-between text-muted-foreground mb-1">
           <span>Total Downloaded</span>
-          <span class="font-semibold text-red-500">↓ {formatBytes(totalStats().downloaded)}</span>
+          <span class="font-semibold text-stat-leecher"
+            >↓ {formatBytes(totalStats().downloaded)}</span
+          >
         </div>
         <div class="flex justify-between text-muted-foreground">
           <span>Running</span>
@@ -288,8 +290,10 @@
           onclick={handleStopAll}
           disabled={!hasRunningInstances}
           size="sm"
-          variant="destructive"
-          class={cn('gap-1', isCollapsed ? 'lg:w-full lg:px-2' : 'flex-1')}
+          class={cn(
+            'gap-1 bg-stat-danger hover:bg-stat-danger/90 text-white shadow-lg shadow-stat-danger/25',
+            isCollapsed ? 'lg:w-full lg:px-2' : 'flex-1'
+          )}
           title="Stop all instances"
         >
           {#snippet children()}
@@ -342,8 +346,8 @@
               class={cn(
                 'flex-shrink-0',
                 status === 'idle' && 'text-muted-foreground',
-                status === 'running' && 'text-green-500 animate-pulse-slow',
-                status === 'paused' && 'text-amber-500'
+                status === 'running' && 'text-stat-upload animate-pulse-slow',
+                status === 'paused' && 'text-stat-ratio'
               )}
             >
               {#if status === 'running'}
@@ -373,8 +377,8 @@
               class={cn(
                 'flex-shrink-0 text-xs font-bold px-1.5 py-0.5 rounded',
                 instance.stats.ratio >= 1
-                  ? 'bg-green-500/20 text-green-500'
-                  : 'bg-amber-500/20 text-amber-500'
+                  ? 'bg-stat-upload/20 text-stat-upload'
+                  : 'bg-stat-ratio/20 text-stat-ratio'
               )}
               title="Current ratio"
             >
@@ -426,10 +430,10 @@
         <!-- Stats Row (when not collapsed and has stats) -->
         {#if !isCollapsed && instance.stats && instance.isRunning}
           <div class="mt-1.5 flex items-center gap-3 text-xs text-muted-foreground pl-5">
-            <span class="text-green-500" title="Session uploaded">
+            <span class="text-stat-upload" title="Session uploaded">
               ↑ {formatBytesCompact(instance.stats.session_uploaded)}
             </span>
-            <span class="text-red-500" title="Session downloaded">
+            <span class="text-stat-leecher" title="Session downloaded">
               ↓ {formatBytesCompact(instance.stats.session_downloaded)}
             </span>
             {#if instance.stats.current_upload_rate > 0}
@@ -448,9 +452,9 @@
                 class={cn(
                   'h-full rounded-full transition-all duration-300',
                   stopProgress.progress >= 100
-                    ? 'bg-green-500'
+                    ? 'bg-stat-upload'
                     : stopProgress.progress >= 75
-                      ? 'bg-amber-500'
+                      ? 'bg-stat-ratio'
                       : 'bg-primary'
                 )}
                 style="width: {Math.min(100, stopProgress.progress)}%"

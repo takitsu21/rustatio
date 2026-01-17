@@ -84,18 +84,18 @@
       <div class={cn('flex items-center gap-2', isCollapsed && 'lg:justify-center')}>
         {#if status.is_vpn}
           <!-- VPN detected - green lock -->
-          <Lock size={16} class="flex-shrink-0 text-green-500" />
+          <Lock size={16} class="flex-shrink-0 text-stat-upload" />
           <div class={cn('flex-1 min-w-0', isCollapsed && 'lg:hidden')}>
-            <div class="text-xs font-medium text-green-500 truncate">
+            <div class="text-xs font-medium text-stat-upload truncate">
               {status.vpn_provider || 'VPN Active'}
               <span class="text-muted-foreground font-normal">(Experimental)</span>
             </div>
           </div>
         {:else}
           <!-- No VPN - yellow warning -->
-          <LockOpen size={16} class="flex-shrink-0 text-amber-500" />
+          <LockOpen size={16} class="flex-shrink-0 text-stat-ratio" />
           <div class={cn('flex-1 min-w-0', isCollapsed && 'lg:hidden')}>
-            <div class="text-xs font-medium text-amber-500">
+            <div class="text-xs font-medium text-stat-ratio">
               No VPN <span class="text-muted-foreground font-normal">(Experimental)</span>
             </div>
           </div>

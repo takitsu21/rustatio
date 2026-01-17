@@ -16,13 +16,13 @@
   } = $props();
 
   const statusStyles = {
-    idle: 'bg-gradient-to-r from-green-600 to-green-500 text-white border-green-500 shadow-lg shadow-green-500/30',
+    idle: 'bg-gradient-to-r from-stat-upload to-stat-upload/90 text-white border-stat-upload shadow-lg shadow-stat-upload/30',
     running:
       'bg-gradient-to-r from-primary to-primary/90 text-primary-foreground border-primary shadow-lg shadow-primary/30',
     success:
-      'bg-gradient-to-r from-green-600 to-green-500 text-white border-green-500 shadow-lg shadow-green-500/30',
+      'bg-gradient-to-r from-stat-upload to-stat-upload/90 text-white border-stat-upload shadow-lg shadow-stat-upload/30',
     warning:
-      'bg-gradient-to-r from-amber-500 to-amber-400 text-white border-amber-400 shadow-lg shadow-amber-400/30',
+      'bg-gradient-to-r from-stat-ratio to-stat-ratio/90 text-white border-stat-ratio shadow-lg shadow-stat-ratio/30',
     error:
       'bg-gradient-to-r from-destructive to-destructive/90 text-destructive-foreground border-destructive shadow-lg shadow-destructive/30',
   };
@@ -52,7 +52,7 @@
       {#if !isRunning}
         <button
           onclick={startFaking}
-          class="px-3 py-1.5 rounded-md flex items-center gap-1.5 font-semibold text-sm transition-all bg-green-600 hover:bg-green-700 text-white shadow-lg shadow-green-500/25 border-0 cursor-pointer"
+          class="px-3 py-1.5 rounded-md flex items-center gap-1.5 font-semibold text-sm transition-all bg-white hover:bg-gray-100 text-gray-900 shadow-lg shadow-black/15 border-0 cursor-pointer"
         >
           <Play size={14} fill="currentColor" />
           <span>Start</span>
@@ -61,7 +61,7 @@
         {#if !isPaused}
           <button
             onclick={pauseFaking}
-            class="px-3 py-1.5 rounded-md flex items-center gap-1.5 font-semibold text-sm transition-all bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-600 hover:to-amber-500 text-white shadow-lg shadow-amber-500/25 border-0 cursor-pointer"
+            class="px-3 py-1.5 rounded-md flex items-center gap-1.5 font-semibold text-sm transition-all bg-stat-ratio hover:bg-stat-ratio/90 text-white shadow-lg shadow-stat-ratio/25 border-0 cursor-pointer"
           >
             <Pause size={14} fill="currentColor" />
             <span>Pause</span>
@@ -69,7 +69,7 @@
         {:else}
           <button
             onclick={resumeFaking}
-            class="px-3 py-1.5 rounded-md flex items-center gap-1.5 font-semibold text-sm transition-all bg-green-600 hover:bg-green-700 text-white shadow-lg shadow-green-500/25 border-0 cursor-pointer"
+            class="px-3 py-1.5 rounded-md flex items-center gap-1.5 font-semibold text-sm transition-all bg-white hover:bg-gray-100 text-gray-900 shadow-lg shadow-black/15 border-0 cursor-pointer"
           >
             <Play size={14} fill="currentColor" />
             <span>Resume</span>
@@ -84,7 +84,7 @@
         </button>
         <button
           onclick={stopFaking}
-          class="px-3 py-1.5 rounded-md flex items-center gap-1.5 font-semibold text-sm transition-all bg-gradient-to-r from-red-600 to-red-500 hover:from-red-700 hover:to-red-600 text-white shadow-lg shadow-red-500/25 border-0 cursor-pointer"
+          class="px-3 py-1.5 rounded-md flex items-center gap-1.5 font-semibold text-sm transition-all bg-stat-leecher hover:bg-stat-leecher/90 text-white shadow-lg shadow-stat-leecher/25 border-0 cursor-pointer"
         >
           <Square size={14} fill="currentColor" />
           <span>Stop</span>

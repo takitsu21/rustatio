@@ -3,6 +3,7 @@
   import Button from '$lib/components/ui/button.svelte';
   import { detectOS, getDownloadType } from '$lib/utils.js';
   import { Download, ChevronDown, ExternalLink, Github } from '@lucide/svelte';
+  import OSIcon from './OSIcon.svelte';
 
   const GITHUB_REPO = 'https://github.com/takitsu21/rustatio';
 
@@ -109,28 +110,6 @@
     window.location.href = downloadUrl;
   }
 
-  function getOSIconUrl(os) {
-    // Using icons from jsdelivr CDN with devicon (developer icons)
-    // These icons have proper colors and better rendering
-    const baseUrl = 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons';
-    switch (os) {
-      case 'windows':
-        return `${baseUrl}/windows8/windows8-original.svg`; // Windows logo with colors
-      case 'macos':
-        return `${baseUrl}/apple/apple-original.svg`; // Apple logo
-      case 'linux':
-        return `${baseUrl}/linux/linux-original.svg`; // Tux penguin with colors
-      case 'debian':
-        return `${baseUrl}/debian/debian-original.svg`; // Debian red spiral
-      case 'fedora':
-        return `${baseUrl}/fedora/fedora-original.svg`; // Fedora blue logo
-      case 'ubuntu':
-        return `${baseUrl}/ubuntu/ubuntu-plain.svg`; // Ubuntu orange
-      default:
-        return `${baseUrl}/linux/linux-original.svg`;
-    }
-  }
-
   function getDownloadOptions() {
     if (!latestVersion) {
       return [];
@@ -172,13 +151,7 @@
   <Button onclick={handleDownload} variant="default" size="sm">
     {#snippet children()}
       <!-- OS Icon -->
-      <img
-        src={getOSIconUrl(getCurrentDownloadOS())}
-        alt={getCurrentDownloadOS()}
-        width="16"
-        height="16"
-        class="inline-block"
-      />
+      <OSIcon os={getCurrentDownloadOS()} size={16} />
       <Download size={16} />
       <span>({getDownloadFormat(os, downloadType)})</span>
       <button
@@ -207,13 +180,7 @@
             showDropdown = false;
           }}
         >
-          <img
-            src={getOSIconUrl(option.os)}
-            alt={option.os}
-            width="16"
-            height="16"
-            class="inline-block flex-shrink-0 opacity-80"
-          />
+          <OSIcon os={option.os} size={16} class="flex-shrink-0 opacity-80" />
           <span class="flex-1 text-left text-sm font-medium">{option.label}</span>
           <Download size={14} />
         </a>

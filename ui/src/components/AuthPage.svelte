@@ -168,8 +168,8 @@
       <!-- Card Header -->
       <div class="px-8 pt-8 pb-4">
         <div class="flex items-center gap-3 mb-2">
-          <div class="w-10 h-10 bg-amber-500/10 rounded-xl flex items-center justify-center">
-            <Lock size={20} class="text-amber-500" />
+          <div class="w-10 h-10 bg-stat-ratio/10 rounded-xl flex items-center justify-center">
+            <Lock size={20} class="text-stat-ratio" />
           </div>
           <div>
             <h2 class="text-lg font-semibold text-foreground">Authentication Required</h2>
@@ -222,9 +222,11 @@
         </div>
 
         {#if error}
-          <div class="p-4 rounded-xl bg-red-500/10 border border-red-500/20 flex items-start gap-3">
-            <AlertCircle size={20} class="text-red-500 flex-shrink-0 mt-0.5" />
-            <p class="text-sm text-red-500">{error}</p>
+          <div
+            class="p-4 rounded-xl bg-stat-leecher/10 border border-stat-leecher/20 flex items-start gap-3"
+          >
+            <AlertCircle size={20} class="text-stat-leecher flex-shrink-0 mt-0.5" />
+            <p class="text-sm text-stat-leecher">{error}</p>
           </div>
         {/if}
 

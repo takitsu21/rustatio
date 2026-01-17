@@ -3,7 +3,7 @@
   import Checkbox from '$lib/components/ui/checkbox.svelte';
   import Input from '$lib/components/ui/input.svelte';
   import Label from '$lib/components/ui/label.svelte';
-  import { Target } from '@lucide/svelte';
+  import { Target, Percent, Upload, Download, Clock, Users } from '@lucide/svelte';
 
   let {
     stopAtRatioEnabled,
@@ -62,14 +62,38 @@
       isEditing = false;
     }, 100);
   }
+
+  // Count active conditions
+  let activeCount = $derived(
+    [
+      localStopAtRatioEnabled,
+      localStopAtUploadedEnabled,
+      localStopAtDownloadedEnabled,
+      localStopAtSeedTimeEnabled,
+      localStopWhenNoLeechers,
+    ].filter(Boolean).length
+  );
 </script>
 
 <Card class="p-3">
-  <h2 class="mb-3 text-primary text-lg font-semibold flex items-center gap-2">
-    <Target size={20} /> Stop Conditions
-  </h2>
-  <div class="flex flex-col gap-3">
-    <div class="flex items-center gap-2 p-2 bg-muted rounded-md">
+  <div class="flex items-center justify-between mb-3">
+    <h2 class="text-primary text-lg font-semibold flex items-center gap-2">
+      <Target size={20} /> Stop Conditions
+    </h2>
+    {#if activeCount > 0}
+      <span class="text-xs bg-primary/10 text-primary px-2 py-1 rounded-full font-medium">
+        {activeCount} active
+      </span>
+    {/if}
+  </div>
+
+  <div class="bg-muted/50 rounded-lg border border-border overflow-hidden">
+    <!-- Ratio -->
+    <div
+      class="flex items-center gap-3 p-3 border-b border-border {localStopAtRatioEnabled
+        ? 'bg-primary/5'
+        : ''}"
+    >
       <Checkbox
         id="stop-ratio"
         checked={localStopAtRatioEnabled}
@@ -79,26 +103,36 @@
           updateValue('stopAtRatioEnabled', checked);
         }}
       />
-      <Label
-        for="stop-ratio"
-        class="flex-1 cursor-pointer text-sm text-muted-foreground font-medium">Ratio</Label
-      >
+      <Percent
+        size={16}
+        class={localStopAtRatioEnabled ? 'text-primary' : 'text-muted-foreground'}
+      />
+      <Label for="stop-ratio" class="flex-1 cursor-pointer text-sm font-medium">Target Ratio</Label>
       {#if localStopAtRatioEnabled}
-        <Input
-          type="number"
-          bind:value={localStopAtRatio}
-          disabled={isRunning}
-          min="0.1"
-          max="100"
-          step="0.1"
-          class="w-24 h-9"
-          placeholder="2.0"
-          oninput={() => updateValue('stopAtRatio', localStopAtRatio)}
-        />
+        <div class="flex items-center gap-1">
+          <Input
+            type="number"
+            bind:value={localStopAtRatio}
+            disabled={isRunning}
+            min="0.1"
+            max="100"
+            step="0.1"
+            class="w-20 h-8 text-center font-medium"
+            placeholder="2.0"
+            oninput={() => updateValue('stopAtRatio', localStopAtRatio)}
+          />
+        </div>
+      {:else}
+        <span class="text-xs text-muted-foreground">disabled</span>
       {/if}
     </div>
 
-    <div class="flex items-center gap-2 p-2 bg-muted rounded-md">
+    <!-- Uploaded -->
+    <div
+      class="flex items-center gap-3 p-3 border-b border-border {localStopAtUploadedEnabled
+        ? 'bg-primary/5'
+        : ''}"
+    >
       <Checkbox
         id="stop-uploaded"
         checked={localStopAtUploadedEnabled}
@@ -108,26 +142,38 @@
           updateValue('stopAtUploadedEnabled', checked);
         }}
       />
-      <Label
-        for="stop-uploaded"
-        class="flex-1 cursor-pointer text-sm text-muted-foreground font-medium">Uploaded ↑</Label
-      >
+      <Upload
+        size={16}
+        class={localStopAtUploadedEnabled ? 'text-stat-upload' : 'text-muted-foreground'}
+      />
+      <Label for="stop-uploaded" class="flex-1 cursor-pointer text-sm font-medium">
+        Max Upload
+      </Label>
       {#if localStopAtUploadedEnabled}
-        <Input
-          type="number"
-          bind:value={localStopAtUploadedGB}
-          disabled={isRunning}
-          min="0.1"
-          step="0.1"
-          class="w-24 h-9"
-          placeholder="10"
-          oninput={() => updateValue('stopAtUploadedGB', localStopAtUploadedGB)}
-        />
-        <span class="text-xs text-muted-foreground font-semibold min-w-[40px]">GB</span>
+        <div class="flex items-center gap-1">
+          <Input
+            type="number"
+            bind:value={localStopAtUploadedGB}
+            disabled={isRunning}
+            min="0.1"
+            step="0.1"
+            class="w-20 h-8 text-center font-medium"
+            placeholder="10"
+            oninput={() => updateValue('stopAtUploadedGB', localStopAtUploadedGB)}
+          />
+          <span class="text-xs text-muted-foreground w-6">GB</span>
+        </div>
+      {:else}
+        <span class="text-xs text-muted-foreground">disabled</span>
       {/if}
     </div>
 
-    <div class="flex items-center gap-2 p-2 bg-muted rounded-md">
+    <!-- Downloaded -->
+    <div
+      class="flex items-center gap-3 p-3 border-b border-border {localStopAtDownloadedEnabled
+        ? 'bg-primary/5'
+        : ''}"
+    >
       <Checkbox
         id="stop-downloaded"
         checked={localStopAtDownloadedEnabled}
@@ -137,26 +183,38 @@
           updateValue('stopAtDownloadedEnabled', checked);
         }}
       />
-      <Label
-        for="stop-downloaded"
-        class="flex-1 cursor-pointer text-sm text-muted-foreground font-medium">Downloaded ↓</Label
-      >
+      <Download
+        size={16}
+        class={localStopAtDownloadedEnabled ? 'text-stat-download' : 'text-muted-foreground'}
+      />
+      <Label for="stop-downloaded" class="flex-1 cursor-pointer text-sm font-medium">
+        Max Download
+      </Label>
       {#if localStopAtDownloadedEnabled}
-        <Input
-          type="number"
-          bind:value={localStopAtDownloadedGB}
-          disabled={isRunning}
-          min="0.1"
-          step="0.1"
-          class="w-24 h-9"
-          placeholder="10"
-          oninput={() => updateValue('stopAtDownloadedGB', localStopAtDownloadedGB)}
-        />
-        <span class="text-xs text-muted-foreground font-semibold min-w-[40px]">GB</span>
+        <div class="flex items-center gap-1">
+          <Input
+            type="number"
+            bind:value={localStopAtDownloadedGB}
+            disabled={isRunning}
+            min="0.1"
+            step="0.1"
+            class="w-20 h-8 text-center font-medium"
+            placeholder="10"
+            oninput={() => updateValue('stopAtDownloadedGB', localStopAtDownloadedGB)}
+          />
+          <span class="text-xs text-muted-foreground w-6">GB</span>
+        </div>
+      {:else}
+        <span class="text-xs text-muted-foreground">disabled</span>
       {/if}
     </div>
 
-    <div class="flex items-center gap-2 p-2 bg-muted rounded-md">
+    <!-- Seed Time -->
+    <div
+      class="flex items-center gap-3 p-3 border-b border-border {localStopAtSeedTimeEnabled
+        ? 'bg-primary/5'
+        : ''}"
+    >
       <Checkbox
         id="stop-seedtime"
         checked={localStopAtSeedTimeEnabled}
@@ -166,26 +224,32 @@
           updateValue('stopAtSeedTimeEnabled', checked);
         }}
       />
-      <Label
-        for="stop-seedtime"
-        class="flex-1 cursor-pointer text-sm text-muted-foreground font-medium">Seed Time</Label
-      >
+      <Clock
+        size={16}
+        class={localStopAtSeedTimeEnabled ? 'text-stat-ratio' : 'text-muted-foreground'}
+      />
+      <Label for="stop-seedtime" class="flex-1 cursor-pointer text-sm font-medium">Seed Time</Label>
       {#if localStopAtSeedTimeEnabled}
-        <Input
-          type="number"
-          bind:value={localStopAtSeedTimeHours}
-          disabled={isRunning}
-          min="0.1"
-          step="0.1"
-          class="w-24 h-9"
-          placeholder="24"
-          oninput={() => updateValue('stopAtSeedTimeHours', localStopAtSeedTimeHours)}
-        />
-        <span class="text-xs text-muted-foreground font-semibold min-w-[40px]">hrs</span>
+        <div class="flex items-center gap-1">
+          <Input
+            type="number"
+            bind:value={localStopAtSeedTimeHours}
+            disabled={isRunning}
+            min="0.1"
+            step="0.1"
+            class="w-20 h-8 text-center font-medium"
+            placeholder="24"
+            oninput={() => updateValue('stopAtSeedTimeHours', localStopAtSeedTimeHours)}
+          />
+          <span class="text-xs text-muted-foreground w-6">hrs</span>
+        </div>
+      {:else}
+        <span class="text-xs text-muted-foreground">disabled</span>
       {/if}
     </div>
 
-    <div class="flex items-center gap-2 p-2 bg-muted rounded-md">
+    <!-- No Leechers -->
+    <div class="flex items-center gap-3 p-3 {localStopWhenNoLeechers ? 'bg-primary/5' : ''}">
       <Checkbox
         id="stop-no-leechers"
         checked={localStopWhenNoLeechers}
@@ -195,10 +259,18 @@
           updateValue('stopWhenNoLeechers', checked);
         }}
       />
-      <Label
-        for="stop-no-leechers"
-        class="flex-1 cursor-pointer text-sm text-muted-foreground font-medium">No Leechers</Label
-      >
+      <Users
+        size={16}
+        class={localStopWhenNoLeechers ? 'text-purple-500' : 'text-muted-foreground'}
+      />
+      <Label for="stop-no-leechers" class="flex-1 cursor-pointer text-sm font-medium">
+        No Leechers
+      </Label>
+      {#if localStopWhenNoLeechers}
+        <span class="text-xs text-primary font-medium">auto-stop</span>
+      {:else}
+        <span class="text-xs text-muted-foreground">disabled</span>
+      {/if}
     </div>
   </div>
 </Card>
