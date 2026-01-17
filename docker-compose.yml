@@ -29,7 +29,7 @@ services:
     volumes:
       - rustatio_data:/data
       # Optional: Uncomment to enable watch folder feature
-      - ${TORRENTS_DIR:-./torrents}:/torrents
+      # - ${TORRENTS_DIR:-/path/to/your/torrents}:/torrents
     restart: unless-stopped
     network_mode: service:gluetun
     depends_on:
