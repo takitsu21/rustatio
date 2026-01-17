@@ -14,29 +14,29 @@ Accurately simulate seeding behavior by emulating **uTorrent**, **qBittorrent**,
 
 ## 🎥 Demo
 
-[https://github.com/takitsu21/rustatio/assets/demo.mp4](https://github.com/user-attachments/assets/e07d1177-3a29-4865-a7f5-0ebbaecdd038)
+[https://github.com/takitsu21/rustatio/assets/demo.mp4](https://github.com/user-attachments/assets/2285bd54-95f3-4a56-b62a-978465abfa0f)
 
 ## 📸 Screenshots
 
 <table>
   <tr>
     <td width="50%">
-      <img src="screenshots/desktop-light.png" alt="Rustatio Light Theme">
+      <img src="screenshots/light-theme.png" alt="Rustatio Light Theme">
       <p align="center"><em>Light Theme - Main Interface</em></p>
     </td>
     <td width="50%">
-      <img src="screenshots/desktop-dark.png" alt="Rustatio Dark Theme">
+      <img src="screenshots/dark-theme.png" alt="Rustatio Dark Theme">
       <p align="center"><em>Dark Theme - Main Interface</em></p>
     </td>
   </tr>
   <tr>
     <td width="50%">
-      <img src="screenshots/loaded-torrent.png" alt="Loaded Torrent">
-      <p align="center"><em>Torrent Loaded with Statistics</em></p>
+      <img src="screenshots/dark-metrics.png" alt="Torrent in Progress">
+      <p align="center"><em>Active Torrent with Performance Charts</em></p>
     </td>
     <td width="50%">
-      <img src="screenshots/in-progress-torrent.png" alt="Torrent in Progress">
-      <p align="center"><em>Active Torrent with Performance Charts</em></p>
+      <img src="screenshots/dark-authentication.png" alt="Authentication">
+      <p align="center"><em>Authentication for Self-Hosted version</em></p>
     </td>
   </tr>
 </table>
