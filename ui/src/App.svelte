@@ -1,6 +1,7 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
   import { get } from 'svelte/store';
+  import { ChevronDown, Check } from '@lucide/svelte';
   import {
     initWasm,
     api,
@@ -789,8 +790,9 @@
       instanceActions.updateInstance($activeInstance.id, {
         isRunning: true,
         isPaused: false,
-        statusMessage: '🚀 Actively faking ratio...',
+        statusMessage: 'Actively faking ratio...',
         statusType: 'running',
+        statusIcon: 'rocket',
       });
 
       // Start polling intervals for UI updates
@@ -895,8 +897,9 @@
       await api.pauseFaker($activeInstance.id);
       instanceActions.updateInstance($activeInstance.id, {
         isPaused: true,
-        statusMessage: '⏸️ Paused',
+        statusMessage: 'Paused',
         statusType: 'idle',
+        statusIcon: 'pause',
       });
     } catch (error) {
       devLog('error', 'Pause error:', error);
@@ -918,8 +921,9 @@
       await api.resumeFaker($activeInstance.id);
       instanceActions.updateInstance($activeInstance.id, {
         isPaused: false,
-        statusMessage: '🚀 Actively faking ratio...',
+        statusMessage: 'Actively faking ratio...',
         statusType: 'running',
+        statusIcon: 'rocket',
       });
     } catch (error) {
       devLog('error', 'Resume error:', error);
@@ -1006,14 +1010,16 @@
       const stats = await api.getStats($activeInstance.id);
 
       // Restore the correct status message based on paused state
-      const statusMessage = isPausedBeforeUpdate ? '⏸️ Paused' : '🚀 Actively faking ratio...';
+      const statusMessage = isPausedBeforeUpdate ? 'Paused' : 'Actively faking ratio...';
       const statusType = isPausedBeforeUpdate ? 'idle' : 'running';
+      const statusIcon = isPausedBeforeUpdate ? 'pause' : 'rocket';
 
       instanceActions.updateInstance($activeInstance.id, {
         stats,
         nextUpdateIn: $activeInstance.updateIntervalSeconds ?? 5,
         statusMessage,
         statusType,
+        statusIcon,
       });
     } catch (error) {
       devLog('error', 'Manual update error:', error);
@@ -1027,11 +1033,13 @@
         // Only update status if the instance is still running
         const instance = $instances.find(i => i.id === instanceId);
         if (instance && instance.isRunning) {
-          const statusMessage = instance.isPaused ? '⏸️ Paused' : '🚀 Actively faking ratio...';
+          const statusMessage = instance.isPaused ? 'Paused' : 'Actively faking ratio...';
           const statusType = instance.isPaused ? 'idle' : 'running';
+          const statusIcon = instance.isPaused ? 'pause' : 'rocket';
           instanceActions.updateInstance(instanceId, {
             statusMessage,
             statusType,
+            statusIcon,
           });
         }
       }, 2000);
@@ -1161,17 +1169,10 @@
             aria-label="Toggle theme menu"
           >
             <ThemeIcon theme={getTheme()} />
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
+            <ChevronDown
+              size={14}
               class="transition-transform {getShowThemeDropdown() ? 'rotate-180' : ''}"
-            >
-              <polyline points="6 9 12 15 18 9"></polyline>
-            </svg>
+            />
           </button>
           {#if getShowThemeDropdown()}
             <div
@@ -1179,14 +1180,20 @@
             >
               {#each Object.entries(THEME_CATEGORIES) as [categoryId, category] (categoryId)}
                 <!-- Category Header -->
-                <div class="px-3 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider {categoryId !== 'default' ? 'mt-2 border-t border-border pt-2' : ''}">
+                <div
+                  class="px-3 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider {categoryId !==
+                  'default'
+                    ? 'mt-2 border-t border-border pt-2'
+                    : ''}"
+                >
                   {category.name}
                 </div>
 
                 {#each category.themes as themeId (themeId)}
                   {@const themeOption = THEMES[themeId]}
                   <button
-                    class="w-full flex items-center gap-3 px-3 py-2 border-none cursor-pointer rounded-lg transition-all {getTheme() === themeOption.id
+                    class="w-full flex items-center gap-3 px-3 py-2 border-none cursor-pointer rounded-lg transition-all {getTheme() ===
+                    themeOption.id
                       ? 'bg-primary text-primary-foreground shadow-sm'
                       : 'bg-transparent text-card-foreground hover:bg-secondary/80'}"
                     onclick={() => selectTheme(themeOption.id)}
@@ -1199,16 +1206,7 @@
                       {/if}
                     </div>
                     {#if getTheme() === themeOption.id}
-                      <svg
-                        width="16"
-                        height="16"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2.5"
-                      >
-                        <polyline points="20 6 9 17 4 12"></polyline>
-                      </svg>
+                      <Check size={16} strokeWidth={2.5} />
                     {/if}
                   </button>
                 {/each}
@@ -1228,6 +1226,7 @@
       <StatusBar
         statusMessage={$activeInstance?.statusMessage || 'Select a torrent file to begin'}
         statusType={$activeInstance?.statusType || 'warning'}
+        statusIcon={$activeInstance?.statusIcon || null}
         isRunning={$activeInstance?.isRunning || false}
         isPaused={$activeInstance?.isPaused || false}
         {startFaking}

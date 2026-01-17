@@ -2,7 +2,7 @@
   "id": "partial",
   "name": "Partial Download",
   "description": "Simulates downloading while also uploading",
-  "icon": "📥",
+  "icon": "download",
   "recommended": false,
   "settings": {
     "uploadRate": 300,

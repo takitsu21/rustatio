@@ -2,7 +2,7 @@
   "id": "seedbox",
   "name": "Seedbox Mode",
   "description": "Emulates a dedicated seedbox - very high speeds",
-  "icon": "🖥️",
+  "icon": "server",
   "recommended": false,
   "settings": {
     "uploadRate": 5000,

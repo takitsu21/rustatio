@@ -2,7 +2,7 @@
   "id": "fast",
   "name": "Fast Seeder",
   "description": "Rapid ratio building - use on lenient trackers",
-  "icon": "🚀",
+  "icon": "rocket",
   "recommended": false,
   "settings": {
     "uploadRate": 1000,

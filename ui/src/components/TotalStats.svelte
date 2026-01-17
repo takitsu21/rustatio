@@ -1,5 +1,6 @@
 <script>
   import Card from '$lib/components/ui/card.svelte';
+  import { TrendingUp } from '@lucide/svelte';
 
   let { stats, torrent, formatBytes } = $props();
 
@@ -28,7 +29,9 @@
 </script>
 
 <Card class="p-5 border-2 border-primary shadow-lg shadow-primary/20">
-  <h2 class="mb-3 text-primary text-lg font-semibold">📈 Total Stats</h2>
+  <h2 class="mb-3 text-primary text-lg font-semibold flex items-center gap-2">
+    <TrendingUp size={20} /> Total Stats
+  </h2>
   <div class="flex flex-col gap-2">
     <div
       class="flex justify-between items-center p-2.5 bg-muted rounded-md border border-border transition-all hover:translate-x-0.5 hover:border-primary"

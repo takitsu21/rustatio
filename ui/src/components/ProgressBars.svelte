@@ -1,5 +1,6 @@
 <script>
   import Card from '$lib/components/ui/card.svelte';
+  import { BarChart3 } from '@lucide/svelte';
 
   let {
     stats,
@@ -17,7 +18,9 @@
 </script>
 
 <Card class="p-3">
-  <h2 class="mb-3 text-primary text-lg font-semibold">📊 Progress</h2>
+  <h2 class="mb-3 text-primary text-lg font-semibold flex items-center gap-2">
+    <BarChart3 size={20} /> Progress
+  </h2>
   <div class="flex flex-col gap-3">
     {#if stopAtRatioEnabled && stats.ratio_progress >= 0}
       <div>

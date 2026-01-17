@@ -2,7 +2,7 @@
   "id": "balanced",
   "name": "Balanced Seeder",
   "description": "Good ratio building speed with reasonable safety",
-  "icon": "⚖️",
+  "icon": "scale",
   "recommended": true,
   "settings": {
     "uploadRate": 500,

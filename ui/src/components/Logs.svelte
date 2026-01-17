@@ -3,6 +3,7 @@
   import Button from '$lib/components/ui/button.svelte';
   import Checkbox from '$lib/components/ui/checkbox.svelte';
   import Label from '$lib/components/ui/label.svelte';
+  import { ScrollText } from '@lucide/svelte';
 
   let { logs = $bindable([]), showLogs = $bindable(false), onUpdate } = $props();
 
@@ -68,8 +69,8 @@
           }
         }}
       />
-      <Label for="show-logs" class="cursor-pointer font-semibold text-base"
-        >📜 Show Application Logs</Label
+      <Label for="show-logs" class="cursor-pointer font-semibold text-base flex items-center gap-2"
+        ><ScrollText size={18} /> Show Application Logs</Label
       >
     </div>
     {#if showLogs && logs.length > 0}

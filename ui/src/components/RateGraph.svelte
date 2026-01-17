@@ -2,6 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import * as echarts from 'echarts';
   import Card from '$lib/components/ui/card.svelte';
+  import { LineChart, Users } from '@lucide/svelte';
 
   let { stats, formatDuration } = $props();
 
@@ -81,9 +82,12 @@
 
     // Use CSS custom properties for theme-aware colors
     const computedStyle = getComputedStyle(root);
-    const textColor = computedStyle.getPropertyValue('--foreground').trim() || (isDark ? '#e5e7eb' : '#1f2937');
-    const gridColor = computedStyle.getPropertyValue('--border').trim() || (isDark ? '#374151' : '#e5e7eb');
-    const mutedBg = computedStyle.getPropertyValue('--muted').trim() || (isDark ? '#1f2937' : '#f3f4f6');
+    const textColor =
+      computedStyle.getPropertyValue('--foreground').trim() || (isDark ? '#e5e7eb' : '#1f2937');
+    const gridColor =
+      computedStyle.getPropertyValue('--border').trim() || (isDark ? '#374151' : '#e5e7eb');
+    const mutedBg =
+      computedStyle.getPropertyValue('--muted').trim() || (isDark ? '#1f2937' : '#f3f4f6');
     const backgroundColor = 'transparent';
 
     const xAxisData = stats.upload_rate_history.map((_, i) => i + 1);
@@ -313,7 +317,9 @@
 
 <Card class="p-3">
   <div class="flex justify-between items-center mb-3">
-    <h2 class="text-primary text-lg font-semibold">📊 Performance & Peer Analytics</h2>
+    <h2 class="text-primary text-lg font-semibold flex items-center gap-2">
+      <LineChart size={20} /> Performance & Peer Analytics
+    </h2>
     {#if userHasZoomed}
       <button
         onclick={resetZoom}
@@ -388,7 +394,9 @@
         {@const leecherPercent = total > 0 ? (stats.leechers / total) * 100 : 50}
 
         <div class="bg-muted rounded-lg border border-border p-3 h-[250px] flex flex-col">
-          <h3 class="text-sm font-semibold text-primary mb-2">🌐 Peer Distribution</h3>
+          <h3 class="text-sm font-semibold text-primary mb-2 flex items-center gap-1.5">
+            <Users size={16} /> Peer Distribution
+          </h3>
           <div class="flex flex-col justify-center gap-3 flex-1">
             <!-- Total Peers -->
             <div class="text-center">

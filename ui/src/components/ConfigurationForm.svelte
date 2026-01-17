@@ -4,6 +4,7 @@
   import Input from '$lib/components/ui/input.svelte';
   import Select from '$lib/components/ui/select.svelte';
   import Checkbox from '$lib/components/ui/checkbox.svelte';
+  import { Settings } from '@lucide/svelte';
 
   let {
     clients,
@@ -149,7 +150,9 @@
 </script>
 
 <Card class="p-3">
-  <h2 class="mb-3 text-primary text-lg font-semibold">⚙️ Configuration</h2>
+  <h2 class="mb-3 text-primary text-lg font-semibold flex items-center gap-2">
+    <Settings size={20} /> Configuration
+  </h2>
 
   <!-- Client Settings -->
   <div class="mb-3">

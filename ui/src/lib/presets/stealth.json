@@ -2,7 +2,7 @@
   "id": "stealth",
   "name": "Stealth Seeder",
   "description": "Slow and steady ratio building - maximum safety",
-  "icon": "🥷",
+  "icon": "eye-off",
   "recommended": false,
   "settings": {
     "uploadRate": 100,

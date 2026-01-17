@@ -3,6 +3,7 @@
   import Checkbox from '$lib/components/ui/checkbox.svelte';
   import Input from '$lib/components/ui/input.svelte';
   import Label from '$lib/components/ui/label.svelte';
+  import { Target } from '@lucide/svelte';
 
   let {
     stopAtRatioEnabled,
@@ -64,7 +65,9 @@
 </script>
 
 <Card class="p-3">
-  <h2 class="mb-3 text-primary text-lg font-semibold">🎯 Stop Conditions</h2>
+  <h2 class="mb-3 text-primary text-lg font-semibold flex items-center gap-2">
+    <Target size={20} /> Stop Conditions
+  </h2>
   <div class="flex flex-col gap-3">
     <div class="flex items-center gap-2 p-2 bg-muted rounded-md">
       <Checkbox

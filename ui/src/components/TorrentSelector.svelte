@@ -1,6 +1,17 @@
 <script>
   import Card from '$lib/components/ui/card.svelte';
   import Button from '$lib/components/ui/button.svelte';
+  import {
+    FileText,
+    FolderOpen,
+    File,
+    HardDrive,
+    Puzzle,
+    Package,
+    Key,
+    Globe,
+    Files,
+  } from '@lucide/svelte';
 
   let { torrent, selectTorrent, formatBytes } = $props();
 
@@ -52,7 +63,9 @@
 </script>
 
 <Card class="p-3">
-  <h2 class="mb-3 text-primary text-lg font-semibold">📁 Torrent File</h2>
+  <h2 class="mb-3 text-primary text-lg font-semibold flex items-center gap-2">
+    <FileText size={20} /> Torrent File
+  </h2>
   <div class="flex flex-col gap-3.5">
     <input
       type="file"
@@ -63,7 +76,13 @@
     />
     <Button onclick={handleFileSelect} class="w-full">
       {#snippet children()}
-        {torrent ? '📄 Change File' : '📂 Select Torrent File'}
+        <span class="flex items-center gap-2">
+          {#if torrent}
+            <File size={16} /> Change File
+          {:else}
+            <FolderOpen size={16} /> Select Torrent File
+          {/if}
+        </span>
       {/snippet}
     </Button>
     {#if torrent}
@@ -96,23 +115,31 @@
         >
           <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div class="flex flex-col gap-1.5">
-              <strong class="text-foreground text-sm font-semibold">📊 Total Size:</strong>
+              <strong class="text-foreground text-sm font-semibold flex items-center gap-1.5"
+                ><HardDrive size={14} /> Total Size:</strong
+              >
               <span class="text-muted-foreground text-sm">{formatBytes(torrent.total_size)}</span>
             </div>
             <div class="flex flex-col gap-1.5">
-              <strong class="text-foreground text-sm font-semibold">🧩 Pieces:</strong>
+              <strong class="text-foreground text-sm font-semibold flex items-center gap-1.5"
+                ><Puzzle size={14} /> Pieces:</strong
+              >
               <span class="text-muted-foreground text-sm"
                 >{torrent.num_pieces?.toLocaleString() || 'N/A'}</span
               >
             </div>
             <div class="flex flex-col gap-1.5">
-              <strong class="text-foreground text-sm font-semibold">📦 Piece Size:</strong>
+              <strong class="text-foreground text-sm font-semibold flex items-center gap-1.5"
+                ><Package size={14} /> Piece Size:</strong
+              >
               <span class="text-muted-foreground text-sm"
                 >{torrent.piece_length ? formatBytes(torrent.piece_length) : 'N/A'}</span
               >
             </div>
             <div class="flex flex-col gap-1.5">
-              <strong class="text-foreground text-sm font-semibold">📁 Files:</strong>
+              <strong class="text-foreground text-sm font-semibold flex items-center gap-1.5"
+                ><File size={14} /> Files:</strong
+              >
               <span class="text-muted-foreground text-sm"
                 >{torrent.files?.length || 1} file{(torrent.files?.length || 1) > 1
                   ? 's'
@@ -122,7 +149,9 @@
           </div>
 
           <div class="flex flex-col gap-1.5 col-span-full">
-            <strong class="text-foreground text-sm font-semibold">🔑 Info Hash:</strong>
+            <strong class="text-foreground text-sm font-semibold flex items-center gap-1.5"
+              ><Key size={14} /> Info Hash:</strong
+            >
             <code
               class="bg-background text-primary px-2.5 py-1.5 rounded text-xs break-all font-mono block"
             >
@@ -136,8 +165,8 @@
 
           {#if trackers.length > 0}
             <div class="flex flex-col gap-1.5 col-span-full">
-              <strong class="text-foreground text-sm font-semibold"
-                >🌐 Tracker{trackers.length > 1 ? 's' : ''} ({trackers.length}):</strong
+              <strong class="text-foreground text-sm font-semibold flex items-center gap-1.5"
+                ><Globe size={14} /> Tracker{trackers.length > 1 ? 's' : ''} ({trackers.length}):</strong
               >
               <div class="flex flex-col gap-1 mt-1 max-h-[120px] overflow-y-auto pr-1">
                 {#each trackers as tracker, index (tracker)}
@@ -164,7 +193,9 @@
 
           {#if torrent.files && torrent.files.length > 0 && torrent.files.length <= 10}
             <div class="flex flex-col gap-1.5 col-span-full">
-              <strong class="text-foreground text-sm font-semibold">📄 File List:</strong>
+              <strong class="text-foreground text-sm font-semibold flex items-center gap-1.5"
+                ><Files size={14} /> File List:</strong
+              >
               <div class="flex flex-col gap-2 mt-2 max-h-[300px] overflow-y-auto pr-2">
                 {#each torrent.files as file (file.path)}
                   <div
@@ -184,7 +215,9 @@
             </div>
           {:else if torrent.files && torrent.files.length > 10}
             <div class="flex flex-col gap-1.5 col-span-full">
-              <strong class="text-foreground text-sm font-semibold">📄 Files:</strong>
+              <strong class="text-foreground text-sm font-semibold flex items-center gap-1.5"
+                ><Files size={14} /> Files:</strong
+              >
               <span class="text-muted-foreground italic text-sm"
                 >{torrent.files.length} files (too many to display)</span
               >

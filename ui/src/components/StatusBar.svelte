@@ -1,9 +1,11 @@
 <script>
   import { cn } from '$lib/utils.js';
+  import { Play, Pause, Square, RefreshCw, Rocket } from '@lucide/svelte';
 
   let {
     statusMessage,
     statusType,
+    statusIcon = null,
     isRunning = false,
     isPaused = false,
     startFaking = null,
@@ -32,10 +34,16 @@
     statusStyles[statusType] || statusStyles.idle
   )}
 >
-  <div
-    class={cn('w-3 h-3 rounded-full flex-shrink-0', statusType === 'running' && 'animate-pulse')}
-    style="background: currentColor;"
-  ></div>
+  {#if statusIcon === 'rocket'}
+    <Rocket size={18} class="flex-shrink-0" />
+  {:else if statusIcon === 'pause'}
+    <Pause size={18} class="flex-shrink-0" fill="currentColor" />
+  {:else}
+    <div
+      class={cn('w-3 h-3 rounded-full flex-shrink-0', statusType === 'running' && 'animate-pulse')}
+      style="background: currentColor;"
+    ></div>
+  {/if}
   <span class="flex-1 text-[15px]">{statusMessage}</span>
 
   <!-- Control Buttons -->
@@ -46,9 +54,7 @@
           onclick={startFaking}
           class="px-3 py-1.5 rounded-md flex items-center gap-1.5 font-semibold text-sm transition-all bg-green-600 hover:bg-green-700 text-white shadow-lg shadow-green-500/25 border-0 cursor-pointer"
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M8 5v14l11-7z" />
-          </svg>
+          <Play size={14} fill="currentColor" />
           <span>Start</span>
         </button>
       {:else}
@@ -57,9 +63,7 @@
             onclick={pauseFaking}
             class="px-3 py-1.5 rounded-md flex items-center gap-1.5 font-semibold text-sm transition-all bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-600 hover:to-amber-500 text-white shadow-lg shadow-amber-500/25 border-0 cursor-pointer"
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
-            </svg>
+            <Pause size={14} fill="currentColor" />
             <span>Pause</span>
           </button>
         {:else}
@@ -67,9 +71,7 @@
             onclick={resumeFaking}
             class="px-3 py-1.5 rounded-md flex items-center gap-1.5 font-semibold text-sm transition-all bg-green-600 hover:bg-green-700 text-white shadow-lg shadow-green-500/25 border-0 cursor-pointer"
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M8 5v14l11-7z" />
-            </svg>
+            <Play size={14} fill="currentColor" />
             <span>Resume</span>
           </button>
         {/if}
@@ -77,26 +79,14 @@
           onclick={manualUpdate}
           class="px-3 py-1.5 rounded-md flex items-center gap-1.5 font-semibold text-sm transition-all bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 text-white shadow-lg shadow-blue-500/25 border-0 cursor-pointer"
         >
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-          >
-            <path d="M1 4v6h6M23 20v-6h-6" />
-            <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15" />
-          </svg>
+          <RefreshCw size={14} />
           <span>Update</span>
         </button>
         <button
           onclick={stopFaking}
           class="px-3 py-1.5 rounded-md flex items-center gap-1.5 font-semibold text-sm transition-all bg-gradient-to-r from-red-600 to-red-500 hover:from-red-700 hover:to-red-600 text-white shadow-lg shadow-red-500/25 border-0 cursor-pointer"
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-            <rect x="6" y="6" width="12" height="12" />
-          </svg>
+          <Square size={14} fill="currentColor" />
           <span>Stop</span>
         </button>
       {/if}

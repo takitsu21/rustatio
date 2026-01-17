@@ -3,12 +3,9 @@
   import { get } from 'svelte/store';
   import Button from '$lib/components/ui/button.svelte';
   import { builtInPresets } from '$lib/presets/index.js';
-  import {
-    THEMES,
-    THEME_CATEGORIES,
-    getTheme,
-    selectTheme,
-  } from '../lib/themeStore.svelte.js';
+  import { THEMES, THEME_CATEGORIES, getTheme, selectTheme } from '../lib/themeStore.svelte.js';
+  import { Settings, X, Check, Trash2, Download, Upload } from '@lucide/svelte';
+  import PresetIcon from './PresetIcon.svelte';
 
   let { isOpen = $bindable(false) } = $props();
 
@@ -212,7 +209,7 @@
       description:
         exportPresetDescription.trim() ||
         `Custom preset created on ${new Date().toLocaleDateString()}`,
-      icon: '⭐',
+      icon: 'star',
       createdAt: new Date().toISOString(),
       settings: {
         selectedClient: instance.selectedClient,
@@ -322,7 +319,7 @@
         id: `custom-${Date.now()}`,
         name: data.name || 'Imported Preset',
         description: data.description || 'Imported custom preset',
-        icon: data.icon || '📁',
+        icon: data.icon || 'folder',
         custom: true,
         createdAt: data.createdAt || new Date().toISOString(),
         settings: data.settings,
@@ -390,20 +387,7 @@
       <div class="flex items-start justify-between p-6 border-b border-border flex-shrink-0">
         <div class="flex items-center gap-3">
           <div class="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              class="text-primary"
-            >
-              <circle cx="12" cy="12" r="3"></circle>
-              <path
-                d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"
-              ></path>
-            </svg>
+            <Settings size={20} class="text-primary" />
           </div>
           <div>
             <h2 id="settings-title" class="text-xl font-bold text-foreground">Settings</h2>
@@ -415,17 +399,7 @@
           class="p-1 rounded hover:bg-muted transition-colors"
           aria-label="Close dialog"
         >
-          <svg
-            width="20"
-            height="20"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-          >
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
+          <X size={20} />
         </button>
       </div>
 
@@ -504,9 +478,7 @@
             <!-- Theme Section -->
             <div class="border border-border rounded-lg p-4">
               <h3 class="font-semibold text-foreground mb-2">Theme</h3>
-              <p class="text-sm text-muted-foreground mb-4">
-                Choose your preferred color theme.
-              </p>
+              <p class="text-sm text-muted-foreground mb-4">Choose your preferred color theme.</p>
               <div class="flex items-center gap-4">
                 <label for="themeSelect" class="text-sm font-medium min-w-[60px]">Theme</label>
                 <select
@@ -548,7 +520,11 @@
                     <!-- Header row with title and action button -->
                     <div class="flex items-start justify-between gap-3 mb-2">
                       <div class="flex items-center gap-2 flex-wrap flex-1 min-w-0">
-                        <span class="text-xl flex-shrink-0">{preset.icon}</span>
+                        <PresetIcon
+                          icon={preset.icon}
+                          size={20}
+                          class="flex-shrink-0 text-primary"
+                        />
                         <h3 class="font-semibold text-foreground">{preset.name}</h3>
                         {#if preset.recommended}
                           <span
@@ -564,16 +540,7 @@
                           <span
                             class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold rounded-lg bg-green-500/20 text-green-500"
                           >
-                            <svg
-                              width="14"
-                              height="14"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              stroke-width="2.5"
-                            >
-                              <polyline points="20 6 9 17 4 12"></polyline>
-                            </svg>
+                            <Check size={14} strokeWidth={2.5} />
                             Applied
                           </span>
                         {:else}
@@ -668,7 +635,11 @@
                       <!-- Header row with title and action buttons -->
                       <div class="flex items-start justify-between gap-3 mb-2">
                         <div class="flex items-center gap-2 flex-wrap flex-1 min-w-0">
-                          <span class="text-xl flex-shrink-0">{preset.icon}</span>
+                          <PresetIcon
+                            icon={preset.icon}
+                            size={20}
+                            class="flex-shrink-0 text-primary"
+                          />
                           <h3 class="font-semibold text-foreground">{preset.name}</h3>
                           <span
                             class="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground"
@@ -682,16 +653,7 @@
                             <span
                               class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold rounded-lg bg-green-500/20 text-green-500"
                             >
-                              <svg
-                                width="14"
-                                height="14"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                stroke-width="2.5"
-                              >
-                                <polyline points="20 6 9 17 4 12"></polyline>
-                              </svg>
+                              <Check size={14} strokeWidth={2.5} />
                               Applied
                             </span>
                           {:else}
@@ -702,19 +664,7 @@
                             class="p-2 rounded hover:bg-red-500/10 text-muted-foreground hover:text-red-500 transition-colors"
                             aria-label="Delete preset"
                           >
-                            <svg
-                              width="16"
-                              height="16"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              stroke-width="2"
-                            >
-                              <polyline points="3 6 5 6 21 6"></polyline>
-                              <path
-                                d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"
-                              ></path>
-                            </svg>
+                            <Trash2 size={16} />
                           </button>
                         </div>
                       </div>
@@ -794,18 +744,7 @@
                     onclick={openExportDialog}
                     class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg font-semibold ring-offset-background transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 bg-primary text-primary-foreground shadow-lg shadow-primary/25 hover:bg-primary/90 hover:shadow-xl hover:shadow-primary/30 hover:-translate-y-0.5 active:scale-95 px-4 py-2 text-sm"
                   >
-                    <svg
-                      width="16"
-                      height="16"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                    >
-                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                      <polyline points="7 10 12 15 17 10"></polyline>
-                      <line x1="12" y1="15" x2="12" y2="3"></line>
-                    </svg>
+                    <Download size={16} />
                     Export Config
                   </button>
                   {#if exportSuccess}
@@ -828,18 +767,7 @@
                     onclick={triggerImport}
                     class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg font-semibold ring-offset-background transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 border-2 border-primary/20 bg-background hover:bg-primary/5 hover:border-primary/40 hover:-translate-y-0.5 active:scale-95 px-4 py-2 text-sm"
                   >
-                    <svg
-                      width="16"
-                      height="16"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                    >
-                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                      <polyline points="17 8 12 3 7 8"></polyline>
-                      <line x1="12" y1="3" x2="12" y2="15"></line>
-                    </svg>
+                    <Upload size={16} />
                     Import Preset
                   </button>
                   {#if importError}
@@ -907,17 +835,7 @@
           class="p-1 rounded hover:bg-muted transition-colors"
           aria-label="Close dialog"
         >
-          <svg
-            width="18"
-            height="18"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-          >
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
+          <X size={18} />
         </button>
       </div>
 

@@ -2,6 +2,7 @@
   import { instances, activeInstanceId, instanceActions } from '../lib/instanceStore.js';
   import { cn } from '$lib/utils.js';
   import Button from '$lib/components/ui/button.svelte';
+  import { Circle, Pause, FolderOpen, X, Plus, Play, Square } from '@lucide/svelte';
 
   let { onStartAll = () => {}, onStopAll = () => {} } = $props();
 
@@ -119,18 +120,11 @@
               )}
             >
               {#if status === 'running'}
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                  <circle cx="12" cy="12" r="10" />
-                </svg>
+                <Circle size={12} fill="currentColor" />
               {:else if status === 'paused'}
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                  <rect x="6" y="4" width="4" height="16" />
-                  <rect x="14" y="4" width="4" height="16" />
-                </svg>
+                <Pause size={12} fill="currentColor" />
               {:else}
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" opacity="0.3">
-                  <circle cx="12" cy="12" r="8" />
-                </svg>
+                <Circle size={12} fill="currentColor" class="opacity-30" />
               {/if}
             </span>
             <span class="select-none flex-shrink-0">{getInstanceLabel(instance)}</span>
@@ -138,20 +132,7 @@
               <!-- Watch folder instance: show folder icon + force delete button -->
               <div class="flex items-center gap-1 ml-1">
                 <span class="flex-shrink-0 text-muted-foreground" title="From watch folder">
-                  <svg
-                    width="12"
-                    height="12"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  >
-                    <path
-                      d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"
-                    ></path>
-                  </svg>
+                  <FolderOpen size={12} />
                 </span>
                 {#if $instances.length > 1}
                   <button
@@ -165,19 +146,11 @@
                     title="Force delete (file may be missing)"
                     aria-label="Force delete instance"
                   >
-                    <svg
-                      width="12"
-                      height="12"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2.5"
-                      stroke-linecap="round"
+                    <X
+                      size={12}
+                      strokeWidth={2.5}
                       class="text-muted-foreground group-hover:text-destructive transition-colors"
-                    >
-                      <line x1="18" y1="6" x2="6" y2="18"></line>
-                      <line x1="6" y1="6" x2="18" y2="18"></line>
-                    </svg>
+                    />
                   </button>
                 {/if}
               </div>
@@ -188,19 +161,11 @@
                 title="Close instance"
                 aria-label="Close instance"
               >
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2.5"
-                  stroke-linecap="round"
+                <X
+                  size={14}
+                  strokeWidth={2.5}
                   class="text-muted-foreground group-hover:text-destructive transition-colors"
-                >
-                  <line x1="18" y1="6" x2="6" y2="18"></line>
-                  <line x1="6" y1="6" x2="18" y2="18"></line>
-                </svg>
+                />
               </button>
             {/if}
           </div>
@@ -213,18 +178,7 @@
           aria-label="Add new instance"
         >
           {#snippet children()}
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2.5"
-              stroke-linecap="round"
-            >
-              <line x1="12" y1="5" x2="12" y2="19"></line>
-              <line x1="5" y1="12" x2="19" y2="12"></line>
-            </svg>
+            <Plus size={16} strokeWidth={2.5} />
           {/snippet}
         </Button>
       </div>
@@ -241,9 +195,7 @@
             title="Start all instances with torrents loaded"
           >
             {#snippet children()}
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M8 5v14l11-7z" />
-              </svg>
+              <Play size={14} fill="currentColor" />
               <span class="hidden sm:inline">Start All</span>
             {/snippet}
           </Button>
@@ -257,9 +209,7 @@
             title="Stop all running instances"
           >
             {#snippet children()}
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                <rect x="6" y="6" width="12" height="12" />
-              </svg>
+              <Square size={14} fill="currentColor" />
               <span class="hidden sm:inline">Stop All</span>
             {/snippet}
           </Button>

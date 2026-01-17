@@ -2,6 +2,7 @@
   import { api } from '$lib/api.js';
   import { cn } from '$lib/utils.js';
   import { onMount } from 'svelte';
+  import { Loader2, Ban, AlertCircle, Lock, LockOpen, RefreshCw } from '@lucide/svelte';
 
   let { isCollapsed = false } = $props();
 
@@ -48,16 +49,7 @@
   {#if loading}
     <!-- Loading state -->
     <div class="flex items-center gap-2 text-xs text-muted-foreground">
-      <svg
-        class="animate-spin h-4 w-4"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-      >
-        <circle cx="12" cy="12" r="10" stroke-opacity="0.25"></circle>
-        <path d="M12 2a10 10 0 0 1 10 10" stroke-opacity="0.75"></path>
-      </svg>
+      <Loader2 size={16} class="animate-spin" />
       <span class={cn(isCollapsed && 'lg:hidden')}>Checking...</span>
     </div>
   {:else if error === 'unavailable'}
@@ -69,19 +61,7 @@
       )}
       title="Network status unavailable in this mode"
     >
-      <svg
-        width="16"
-        height="16"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-        stroke-linecap="round"
-        class="flex-shrink-0 opacity-50"
-      >
-        <circle cx="12" cy="12" r="10"></circle>
-        <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line>
-      </svg>
+      <Ban size={16} class="flex-shrink-0 opacity-50" />
       <span class={cn(isCollapsed && 'lg:hidden')}>IP hidden</span>
     </div>
   {:else if error}
@@ -94,20 +74,7 @@
       onclick={fetchStatus}
       title="Click to retry"
     >
-      <svg
-        width="16"
-        height="16"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-        stroke-linecap="round"
-        class="flex-shrink-0"
-      >
-        <circle cx="12" cy="12" r="10"></circle>
-        <line x1="12" y1="8" x2="12" y2="12"></line>
-        <line x1="12" y1="16" x2="12.01" y2="16"></line>
-      </svg>
+      <AlertCircle size={16} class="flex-shrink-0" />
       <span class={cn(isCollapsed && 'lg:hidden')}>Error</span>
     </button>
   {:else if status}
@@ -117,19 +84,7 @@
       <div class={cn('flex items-center gap-2', isCollapsed && 'lg:justify-center')}>
         {#if status.is_vpn}
           <!-- VPN detected - green lock -->
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            class="flex-shrink-0 text-green-500"
-          >
-            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
-          </svg>
+          <Lock size={16} class="flex-shrink-0 text-green-500" />
           <div class={cn('flex-1 min-w-0', isCollapsed && 'lg:hidden')}>
             <div class="text-xs font-medium text-green-500 truncate">
               {status.vpn_provider || 'VPN Active'}
@@ -138,19 +93,7 @@
           </div>
         {:else}
           <!-- No VPN - yellow warning -->
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            class="flex-shrink-0 text-amber-500"
-          >
-            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-            <path d="M7 11V7a5 5 0 0 1 9.9-1"></path>
-          </svg>
+          <LockOpen size={16} class="flex-shrink-0 text-amber-500" />
           <div class={cn('flex-1 min-w-0', isCollapsed && 'lg:hidden')}>
             <div class="text-xs font-medium text-amber-500">
               No VPN <span class="text-muted-foreground font-normal">(Experimental)</span>
@@ -167,21 +110,7 @@
           onclick={fetchStatus}
           title="Refresh network status"
         >
-          <svg
-            width="12"
-            height="12"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            class="text-muted-foreground hover:text-foreground"
-          >
-            <path d="M21 2v6h-6"></path>
-            <path d="M3 12a9 9 0 0 1 15-6.7L21 8"></path>
-            <path d="M3 22v-6h6"></path>
-            <path d="M21 12a9 9 0 0 1-15 6.7L3 16"></path>
-          </svg>
+          <RefreshCw size={12} class="text-muted-foreground hover:text-foreground" />
         </button>
       </div>
 

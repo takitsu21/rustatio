@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import Button from '$lib/components/ui/button.svelte';
   import { detectOS, getDownloadType } from '$lib/utils.js';
+  import { Download, ChevronDown, ExternalLink, Github } from '@lucide/svelte';
 
   const GITHUB_REPO = 'https://github.com/takitsu21/rustatio';
 
@@ -178,20 +179,7 @@
         height="16"
         class="inline-block"
       />
-      <svg
-        width="16"
-        height="16"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      >
-        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-        <polyline points="7 10 12 15 17 10" />
-        <line x1="12" y1="15" x2="12" y2="3" />
-      </svg>
+      <Download size={16} />
       <span>({getDownloadFormat(os, downloadType)})</span>
       <button
         onclick={e => {
@@ -201,16 +189,7 @@
         class="ml-1 hover:bg-white/20 rounded px-1 transition-colors"
         aria-label="Show download options"
       >
-        <svg
-          width="12"
-          height="12"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-        >
-          <polyline points="6 9 12 15 18 9"></polyline>
-        </svg>
+        <ChevronDown size={12} />
       </button>
     {/snippet}
   </Button>
@@ -236,18 +215,7 @@
             class="inline-block flex-shrink-0 opacity-80"
           />
           <span class="flex-1 text-left text-sm font-medium">{option.label}</span>
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-          >
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-            <polyline points="7 10 12 15 17 10" />
-            <line x1="12" y1="15" x2="12" y2="3" />
-          </svg>
+          <Download size={14} />
         </a>
       {/each}
       <div class="border-t border-border/50 mt-1 pt-1">
@@ -260,20 +228,9 @@
             showDropdown = false;
           }}
         >
-          <span class="text-lg">📦</span>
+          <Github size={18} class="opacity-80" />
           <span class="flex-1 text-left text-sm font-medium">View on GitHub</span>
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-          >
-            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-            <polyline points="15 3 21 3 21 9" />
-            <line x1="10" y1="14" x2="21" y2="3" />
-          </svg>
+          <ExternalLink size={14} />
         </a>
       </div>
     </div>
