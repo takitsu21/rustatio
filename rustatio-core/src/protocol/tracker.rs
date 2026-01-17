@@ -250,7 +250,21 @@ impl TrackerClient {
     fn parse_announce_response(&self, data: &[u8]) -> Result<AnnounceResponse> {
         log_trace!("Parsing announce response ({} bytes)", data.len());
 
-        let value = bencode::parse(data)?;
+        let value = match bencode::parse(data) {
+            Ok(v) => v,
+            Err(_) => {
+                // Try to provide a helpful error message about what the tracker returned
+                let preview = self.format_response_preview(data);
+                log_error!(
+                    "Failed to parse tracker response as bencode. Response preview: {}",
+                    preview
+                );
+                return Err(TrackerError::InvalidResponse(format!(
+                    "Tracker returned invalid response (not bencode). {}. This usually means: invalid passkey, torrent not registered, IP blocked, or tracker requires login.",
+                    preview
+                )));
+            }
+        };
         let dict = match &value {
             serde_bencode::value::Value::Dict(d) => d,
             _ => {
@@ -310,7 +324,20 @@ impl TrackerClient {
 
     /// Parse scrape response from bencoded data
     fn parse_scrape_response(&self, data: &[u8], info_hash: &[u8; 20]) -> Result<ScrapeResponse> {
-        let value = bencode::parse(data)?;
+        let value = match bencode::parse(data) {
+            Ok(v) => v,
+            Err(_) => {
+                let preview = self.format_response_preview(data);
+                log_error!(
+                    "Failed to parse scrape response as bencode. Response preview: {}",
+                    preview
+                );
+                return Err(TrackerError::InvalidResponse(format!(
+                    "Tracker returned invalid scrape response (not bencode). {}",
+                    preview
+                )));
+            }
+        };
         let dict = match &value {
             serde_bencode::value::Value::Dict(d) => d,
             _ => return Err(TrackerError::InvalidResponse("Response is not a dictionary".into())),
@@ -348,5 +375,62 @@ impl TrackerClient {
             downloaded,
             name,
         })
+    }
+
+    /// Format a preview of the response data for error messages
+    fn format_response_preview(&self, data: &[u8]) -> String {
+        if data.is_empty() {
+            return "Response was empty".to_string();
+        }
+
+        // Check for common HTML indicators
+        let is_html = data.starts_with(b"<!DOCTYPE")
+            || data.starts_with(b"<!doctype")
+            || data.starts_with(b"<html")
+            || data.starts_with(b"<HTML")
+            || data.starts_with(b"<?xml");
+
+        // Check for gzip magic bytes
+        let is_gzip = data.len() >= 2 && data[0] == 0x1f && data[1] == 0x8b;
+
+        if is_html {
+            // Try to extract a meaningful snippet from HTML
+            let text = String::from_utf8_lossy(&data[..data.len().min(500)]);
+            // Try to find title or error message
+            if let Some(start) = text.find("<title>").or_else(|| text.find("<TITLE>")) {
+                if let Some(end) = text[start..]
+                    .find("</title>")
+                    .or_else(|| text[start..].find("</TITLE>"))
+                {
+                    let title = &text[start + 7..start + end];
+                    return format!("Received HTML page with title: \"{}\"", title.trim());
+                }
+            }
+            return "Received HTML page instead of tracker response".to_string();
+        }
+
+        if is_gzip {
+            return "Received gzip-compressed response (tracker may require Accept-Encoding header)".to_string();
+        }
+
+        // For other binary data, show a preview
+        let preview_len = data.len().min(100);
+        let text = String::from_utf8_lossy(&data[..preview_len]);
+
+        // If it looks like text, show it
+        if text
+            .chars()
+            .filter(|c| c.is_ascii_graphic() || c.is_ascii_whitespace())
+            .count()
+            > preview_len / 2
+        {
+            format!(
+                "Response starts with: \"{}{}\"",
+                text.trim(),
+                if data.len() > preview_len { "..." } else { "" }
+            )
+        } else {
+            format!("Received {} bytes of binary data", data.len())
+        }
     }
 }
