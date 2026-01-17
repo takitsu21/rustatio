@@ -71,9 +71,19 @@
       return;
     }
 
-    const isDark = document.documentElement.classList.contains('dark');
-    const textColor = isDark ? '#e5e7eb' : '#1f2937';
-    const gridColor = isDark ? '#374151' : '#e5e7eb';
+    // Check for any dark theme (default dark or Catppuccin dark variants)
+    const root = document.documentElement;
+    const isDark =
+      root.classList.contains('dark') ||
+      root.classList.contains('frappe') ||
+      root.classList.contains('macchiato') ||
+      root.classList.contains('mocha');
+
+    // Use CSS custom properties for theme-aware colors
+    const computedStyle = getComputedStyle(root);
+    const textColor = computedStyle.getPropertyValue('--foreground').trim() || (isDark ? '#e5e7eb' : '#1f2937');
+    const gridColor = computedStyle.getPropertyValue('--border').trim() || (isDark ? '#374151' : '#e5e7eb');
+    const mutedBg = computedStyle.getPropertyValue('--muted').trim() || (isDark ? '#1f2937' : '#f3f4f6');
     const backgroundColor = 'transparent';
 
     const xAxisData = stats.upload_rate_history.map((_, i) => i + 1);
@@ -92,7 +102,7 @@
       animation: false, // Disable animations to prevent chart redrawing
       tooltip: {
         trigger: 'axis',
-        backgroundColor: isDark ? '#1f2937' : '#ffffff',
+        backgroundColor: mutedBg,
         borderColor: '#7c3aed',
         borderWidth: 2,
         textStyle: {
@@ -278,7 +288,7 @@
           type: 'slider',
           start: currentZoom.start,
           end: currentZoom.end,
-          backgroundColor: isDark ? '#1f2937' : '#f3f4f6',
+          backgroundColor: mutedBg,
           fillerColor: 'rgba(124, 58, 237, 0.3)',
           borderColor: gridColor,
           textStyle: {

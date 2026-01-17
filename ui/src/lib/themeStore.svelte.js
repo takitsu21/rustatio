@@ -1,9 +1,83 @@
 /**
  * Shared theme store for consistent theming across all pages
+ * Supports:
+ * - Original themes: Light, Dark, System
+ * - Catppuccin flavors: Latte (light), Frappé, Macchiato, Mocha (dark)
  */
 
+// Available themes organized by category
+export const THEME_CATEGORIES = {
+  default: {
+    name: 'Default',
+    themes: ['system', 'light', 'dark'],
+  },
+  catppuccin: {
+    name: 'Catppuccin',
+    themes: ['latte', 'frappe', 'macchiato', 'mocha'],
+  },
+};
+
+// All available themes
+export const THEMES = {
+  // Default themes
+  system: {
+    id: 'system',
+    name: 'System',
+    description: 'Follow system preference',
+    isDark: null, // Determined by system
+    category: 'default',
+  },
+  light: {
+    id: 'light',
+    name: 'Light',
+    description: 'Default light theme',
+    isDark: false,
+    category: 'default',
+  },
+  dark: {
+    id: 'dark',
+    name: 'Dark',
+    description: 'Default dark theme',
+    isDark: true,
+    category: 'default',
+  },
+  // Catppuccin themes
+  latte: {
+    id: 'latte',
+    name: 'Catppuccin Latte',
+    description: 'Light with warm tones',
+    isDark: false,
+    category: 'catppuccin',
+    color: '#8839ef', // Mauve
+  },
+  frappe: {
+    id: 'frappe',
+    name: 'Catppuccin Frappé',
+    description: 'Muted dark theme',
+    isDark: true,
+    category: 'catppuccin',
+    color: '#ca9ee6', // Mauve
+  },
+  macchiato: {
+    id: 'macchiato',
+    name: 'Catppuccin Macchiato',
+    description: 'Medium contrast dark',
+    isDark: true,
+    category: 'catppuccin',
+    color: '#c6a0f6', // Mauve
+  },
+  mocha: {
+    id: 'mocha',
+    name: 'Catppuccin Mocha',
+    description: 'The original dark',
+    isDark: true,
+    category: 'catppuccin',
+    color: '#cba6f7', // Mauve
+  },
+};
+
 // Theme state - using module-level variables that can be imported
-let theme = $state('system'); // 'system', 'light', 'dark'
+let theme = $state('system'); // Current theme setting
 let effectiveTheme = $state('light'); // The actual applied theme
 let showThemeDropdown = $state(false);
 
@@ -19,6 +93,24 @@ export function getTheme() {
  */
 export function getEffectiveTheme() {
   return effectiveTheme;
+}
+
+/**
+ * Check if the current effective theme is dark
+ */
+export function isDarkTheme() {
+  const themeInfo = THEMES[effectiveTheme];
+  if (themeInfo && themeInfo.isDark !== null) {
+    return themeInfo.isDark;
+  }
+  // For system theme, check the effective theme
+  if (effectiveTheme === 'dark') return true;
+  if (effectiveTheme === 'light') return false;
+  // Check actual applied class
+  if (typeof document !== 'undefined') {
+    return document.documentElement.classList.contains('dark');
+  }
+  return false;
 }
 
 /**
@@ -49,12 +141,26 @@ export function toggleThemeDropdown(event) {
  * Get human-readable theme name
  */
 export function getThemeName(themeValue) {
-  const names = {
-    light: 'Light',
-    dark: 'Dark',
-    system: 'System',
-  };
-  return names[themeValue] || 'System';
+  const themeInfo = THEMES[themeValue];
+  return themeInfo ? themeInfo.name : 'System';
+}
+
+/**
+ * Get theme description
+ */
+export function getThemeDescription(themeValue) {
+  const themeInfo = THEMES[themeValue];
+  return themeInfo ? themeInfo.description : '';
+}
+
+/**
+ * Determine effective theme based on system preference
+ */
+function getSystemTheme() {
+  if (typeof window !== 'undefined' && window.matchMedia) {
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+  return 'light';
 }
 
 /**
@@ -68,20 +174,41 @@ export function initializeTheme() {
   // Listen for system theme changes
   if (typeof window !== 'undefined' && window.matchMedia) {
     const darkModeQuery = window.matchMedia('(prefers-color-scheme: dark)');
-    darkModeQuery.addEventListener('change', e => {
+    darkModeQuery.addEventListener('change', () => {
       if (theme === 'system') {
-        effectiveTheme = e.matches ? 'dark' : 'light';
-        if (effectiveTheme === 'dark') {
-          document.documentElement.classList.add('dark');
-          document.documentElement.style.colorScheme = 'dark';
-        } else {
-          document.documentElement.classList.remove('dark');
-          document.documentElement.style.colorScheme = 'light';
-        }
-        document.documentElement.setAttribute('data-theme', effectiveTheme);
+        const newEffective = getSystemTheme();
+        effectiveTheme = newEffective;
+        applyThemeClasses(newEffective);
       }
     });
   }
+}
+
+/**
+ * Apply CSS classes for a theme
+ */
+function applyThemeClasses(themeName) {
+  if (typeof document === 'undefined') return;
+
+  const root = document.documentElement;
+
+  // Remove all theme classes
+  root.classList.remove('light', 'dark', 'latte', 'frappe', 'macchiato', 'mocha');
+
+  // Add the appropriate class
+  root.classList.add(themeName);
+
+  // Set color scheme for native elements
+  const themeInfo = THEMES[themeName];
+  if (themeInfo && themeInfo.isDark !== null) {
+    root.style.colorScheme = themeInfo.isDark ? 'dark' : 'light';
+  } else {
+    // For system or unknown, determine from name
+    root.style.colorScheme = themeName === 'dark' ? 'dark' : 'light';
+  }
+
+  // Keep data-theme for backwards compatibility
+  root.setAttribute('data-theme', themeName);
 }
 
 /**
@@ -92,32 +219,12 @@ export function applyTheme(newTheme) {
   localStorage.setItem('rustatio-theme', newTheme);
 
   if (newTheme === 'system') {
-    if (
-      typeof window !== 'undefined' &&
-      window.matchMedia &&
-      window.matchMedia('(prefers-color-scheme: dark)').matches
-    ) {
-      effectiveTheme = 'dark';
-    } else {
-      effectiveTheme = 'light';
-    }
+    effectiveTheme = getSystemTheme();
   } else {
     effectiveTheme = newTheme;
   }
 
-  // Apply dark class for Tailwind
-  if (typeof document !== 'undefined') {
-    if (effectiveTheme === 'dark') {
-      document.documentElement.classList.add('dark');
-      document.documentElement.style.colorScheme = 'dark';
-    } else {
-      document.documentElement.classList.remove('dark');
-      document.documentElement.style.colorScheme = 'light';
-    }
-
-    // Keep data-theme for backwards compatibility
-    document.documentElement.setAttribute('data-theme', effectiveTheme);
-  }
+  applyThemeClasses(effectiveTheme);
 }
 
 /**

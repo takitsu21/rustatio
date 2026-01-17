@@ -3,6 +3,9 @@
 @import url('https://cdn.jsdelivr.net/npm/@fontsource/maple-mono@latest/index.css');
 @import url('https://cdn.jsdelivr.net/npm/@fontsource/maple-mono@latest/700.css');
 
+/* Catppuccin color themes */
+@import './lib/catppuccin.css';
+
 html,
 body {
   margin: 0;
@@ -39,7 +42,9 @@ body {
 }
 
 @layer base {
-  :root {
+  :root,
+  :root.light,
+  .light {
     --background: hsl(220 13% 95%);
     --foreground: hsl(216 12% 12%);
     --card: hsl(0 0% 100%);
@@ -60,6 +65,27 @@ body {
     --input: hsl(220 13% 91%);
     --ring: hsl(235 86% 65%);
     --radius: 0.5rem;
+
+    /* Tailwind 4 color variables */
+    --color-background: hsl(220 13% 95%);
+    --color-foreground: hsl(216 12% 12%);
+    --color-card: hsl(0 0% 100%);
+    --color-card-foreground: hsl(216 12% 12%);
+    --color-popover: hsl(0 0% 100%);
+    --color-popover-foreground: hsl(216 12% 12%);
+    --color-primary: hsl(235 86% 65%);
+    --color-primary-foreground: hsl(0 0% 100%);
+    --color-secondary: hsl(220 13% 91%);
+    --color-secondary-foreground: hsl(216 12% 16%);
+    --color-muted: hsl(220 13% 96%);
+    --color-muted-foreground: hsl(220 9% 46%);
+    --color-accent: hsl(235 86% 95%);
+    --color-accent-foreground: hsl(235 86% 35%);
+    --color-destructive: hsl(0 85% 60%);
+    --color-destructive-foreground: hsl(0 0% 100%);
+    --color-border: hsl(220 13% 87%);
+    --color-input: hsl(220 13% 91%);
+    --color-ring: hsl(235 86% 65%);
   }
 
   :root.dark,
@@ -83,10 +109,31 @@ body {
     --border: hsl(220 9% 28%);
     --input: hsl(223 7% 23%);
     --ring: hsl(235 86% 65%);
+
+    /* Tailwind 4 color variables */
+    --color-background: hsl(223 7% 15%);
+    --color-foreground: hsl(213 5% 91%);
+    --color-card: hsl(220 7% 18%);
+    --color-card-foreground: hsl(213 5% 91%);
+    --color-popover: hsl(220 9% 12%);
+    --color-popover-foreground: hsl(213 5% 91%);
+    --color-primary: hsl(235 86% 65%);
+    --color-primary-foreground: hsl(0 0% 100%);
+    --color-secondary: hsl(222 10% 24%);
+    --color-secondary-foreground: hsl(213 5% 91%);
+    --color-muted: hsl(223 7% 23%);
+    --color-muted-foreground: hsl(215 10% 65%);
+    --color-accent: hsl(235 86% 25%);
+    --color-accent-foreground: hsl(235 86% 85%);
+    --color-destructive: hsl(0 73% 57%);
+    --color-destructive-foreground: hsl(0 0% 100%);
+    --color-border: hsl(220 9% 28%);
+    --color-input: hsl(223 7% 23%);
+    --color-ring: hsl(235 86% 65%);
   }
 
   @media (prefers-color-scheme: dark) {
-    :root:not(.light) {
+    :root:not(.light):not(.latte):not(.frappe):not(.macchiato):not(.mocha) {
       --background: hsl(223 7% 15%);
       --foreground: hsl(213 5% 91%);
       --card: hsl(220 7% 18%);

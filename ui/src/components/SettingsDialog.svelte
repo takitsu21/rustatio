@@ -3,6 +3,12 @@
   import { get } from 'svelte/store';
   import Button from '$lib/components/ui/button.svelte';
   import { builtInPresets } from '$lib/presets/index.js';
+  import {
+    THEMES,
+    THEME_CATEGORIES,
+    getTheme,
+    selectTheme,
+  } from '../lib/themeStore.svelte.js';
 
   let { isOpen = $bindable(false) } = $props();
 
@@ -492,6 +498,35 @@
               <p class="mt-3 text-xs text-muted-foreground italic">
                 Note: Log level changes apply to the backend. In desktop/server mode, you may need
                 to restart for changes to take effect.
+              </p>
+            </div>
+
+            <!-- Theme Section -->
+            <div class="border border-border rounded-lg p-4">
+              <h3 class="font-semibold text-foreground mb-2">Theme</h3>
+              <p class="text-sm text-muted-foreground mb-4">
+                Choose your preferred color theme.
+              </p>
+              <div class="flex items-center gap-4">
+                <label for="themeSelect" class="text-sm font-medium min-w-[60px]">Theme</label>
+                <select
+                  id="themeSelect"
+                  value={getTheme()}
+                  onchange={e => selectTheme(e.target.value)}
+                  class="px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-primary/50 w-56"
+                >
+                  {#each Object.entries(THEME_CATEGORIES) as [categoryId, category] (categoryId)}
+                    <optgroup label={category.name}>
+                      {#each category.themes as themeId (themeId)}
+                        {@const themeOption = THEMES[themeId]}
+                        <option value={themeOption.id}>{themeOption.name}</option>
+                      {/each}
+                    </optgroup>
+                  {/each}
+                </select>
+              </div>
+              <p class="mt-3 text-xs text-muted-foreground">
+                {THEMES[getTheme()]?.description || ''}
               </p>
             </div>
           </div>

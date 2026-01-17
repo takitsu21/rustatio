@@ -4,6 +4,8 @@
   import Button from '$lib/components/ui/button.svelte';
   import ThemeIcon from './ThemeIcon.svelte';
   import {
+    THEMES,
+    THEME_CATEGORIES,
     getTheme,
     getShowThemeDropdown,
     toggleThemeDropdown,
@@ -102,74 +104,44 @@
       </button>
       {#if getShowThemeDropdown()}
         <div
-          class="absolute top-[calc(100%+0.5rem)] right-0 bg-card text-card-foreground border border-border/50 rounded-xl shadow-2xl p-1.5 min-w-[180px] z-50 backdrop-blur-xl animate-in fade-in slide-in-from-top-2 duration-200"
+          class="absolute top-[calc(100%+0.5rem)] right-0 bg-card text-card-foreground border border-border/50 rounded-xl shadow-2xl p-1.5 min-w-[200px] max-h-[400px] overflow-y-auto z-50 backdrop-blur-xl animate-in fade-in slide-in-from-top-2 duration-200"
         >
-          <button
-            class="w-full flex items-center gap-3 px-3 py-2 border-none cursor-pointer rounded-lg transition-all {getTheme() ===
-            'light'
-              ? 'bg-primary text-primary-foreground shadow-sm'
-              : 'bg-transparent text-card-foreground hover:bg-secondary/80'}"
-            onclick={() => selectTheme('light')}
-          >
-            <ThemeIcon theme="light" />
-            <span class="flex-1 text-left text-sm font-medium">Light</span>
-            {#if getTheme() === 'light'}
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2.5"
+          {#each Object.entries(THEME_CATEGORIES) as [categoryId, category] (categoryId)}
+            <!-- Category Header -->
+            <div class="px-3 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider {categoryId !== 'default' ? 'mt-2 border-t border-border pt-2' : ''}">
+              {category.name}
+            </div>
+
+            {#each category.themes as themeId (themeId)}
+              {@const themeOption = THEMES[themeId]}
+              <button
+                class="w-full flex items-center gap-3 px-3 py-2 border-none cursor-pointer rounded-lg transition-all {getTheme() === themeOption.id
+                  ? 'bg-primary text-primary-foreground shadow-sm'
+                  : 'bg-transparent text-card-foreground hover:bg-secondary/80'}"
+                onclick={() => selectTheme(themeOption.id)}
               >
-                <polyline points="20 6 9 17 4 12"></polyline>
-              </svg>
-            {/if}
-          </button>
-          <button
-            class="w-full flex items-center gap-3 px-3 py-2 border-none cursor-pointer rounded-lg transition-all {getTheme() ===
-            'dark'
-              ? 'bg-primary text-primary-foreground shadow-sm'
-              : 'bg-transparent text-card-foreground hover:bg-secondary/80'}"
-            onclick={() => selectTheme('dark')}
-          >
-            <ThemeIcon theme="dark" />
-            <span class="flex-1 text-left text-sm font-medium">Dark</span>
-            {#if getTheme() === 'dark'}
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2.5"
-              >
-                <polyline points="20 6 9 17 4 12"></polyline>
-              </svg>
-            {/if}
-          </button>
-          <button
-            class="w-full flex items-center gap-3 px-3 py-2 border-none cursor-pointer rounded-lg transition-all {getTheme() ===
-            'system'
-              ? 'bg-primary text-primary-foreground shadow-sm'
-              : 'bg-transparent text-card-foreground hover:bg-secondary/80'}"
-            onclick={() => selectTheme('system')}
-          >
-            <ThemeIcon theme="system" />
-            <span class="flex-1 text-left text-sm font-medium">System</span>
-            {#if getTheme() === 'system'}
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-              >
-                <polyline points="20 6 9 17 4 12"></polyline>
-              </svg>
-            {/if}
-          </button>
+                <ThemeIcon theme={themeOption.id} />
+                <div class="flex-1 text-left">
+                  <span class="text-sm font-medium">{themeOption.name}</span>
+                  {#if themeOption.description}
+                    <span class="block text-xs opacity-70">{themeOption.description}</span>
+                  {/if}
+                </div>
+                {#if getTheme() === themeOption.id}
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2.5"
+                  >
+                    <polyline points="20 6 9 17 4 12"></polyline>
+                  </svg>
+                {/if}
+              </button>
+            {/each}
+          {/each}
         </div>
       {/if}
     </div>
