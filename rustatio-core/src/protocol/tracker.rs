@@ -102,6 +102,7 @@ impl TrackerClient {
         let client = reqwest::Client::builder()
             .user_agent(&client_config.user_agent)
             .timeout(std::time::Duration::from_secs(30))
+            .gzip(true)
             .build()?;
 
         #[cfg(target_arch = "wasm32")]
