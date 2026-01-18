@@ -2,7 +2,6 @@
   import Card from '$lib/components/ui/card.svelte';
   import Label from '$lib/components/ui/label.svelte';
   import Input from '$lib/components/ui/input.svelte';
-  import Select from '$lib/components/ui/select.svelte';
   import Checkbox from '$lib/components/ui/checkbox.svelte';
   import {
     Settings,
@@ -15,6 +14,7 @@
   } from '@lucide/svelte';
   import ClientIcon from './ClientIcon.svelte';
   import ClientSelect from './ClientSelect.svelte';
+  import VersionSelect from './VersionSelect.svelte';
 
   let {
     clients,
@@ -185,17 +185,12 @@
           <Label for="clientVersion" class="text-xs text-muted-foreground mb-1.5 block"
             >Version</Label
           >
-          <Select
-            id="clientVersion"
+          <VersionSelect
+            versions={clientVersions[localSelectedClient] || []}
             bind:value={localSelectedClientVersion}
             disabled={isRunning}
             onchange={() => updateValue('selectedClientVersion', localSelectedClientVersion)}
-            class="h-9"
-          >
-            {#each clientVersions[localSelectedClient] || [] as version (version)}
-              <option value={version}>{version}</option>
-            {/each}
-          </Select>
+          />
         </div>
         <div>
           <Label for="port" class="text-xs text-muted-foreground mb-1.5 block">Port</Label>
