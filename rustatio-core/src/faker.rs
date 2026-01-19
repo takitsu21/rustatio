@@ -16,6 +16,9 @@ use tokio::sync::RwLock;
 #[cfg(target_arch = "wasm32")]
 use std::cell::RefCell;
 
+#[cfg(target_arch = "wasm32")]
+use js_sys;
+
 // Macros for platform-specific lock access
 #[cfg(not(target_arch = "wasm32"))]
 macro_rules! read_lock {
@@ -215,6 +218,7 @@ pub struct FakerStats {
     pub upload_rate_history: Vec<f64>,
     pub download_rate_history: Vec<f64>,
     pub ratio_history: Vec<f64>,
+    pub history_timestamps: Vec<u64>, // Unix timestamps in milliseconds
 
     // === INTERNAL ===
     #[serde(skip)]
@@ -341,6 +345,7 @@ impl RatioFaker {
             upload_rate_history: Vec::new(),
             download_rate_history: Vec::new(),
             ratio_history: Vec::new(),
+            history_timestamps: Vec::new(),
 
             // Internal
             last_announce: None,
@@ -715,6 +720,10 @@ impl RatioFaker {
         stats.current_upload_rate = upload_rate;
         stats.current_download_rate = download_rate;
 
+        // Record timestamp for this data point (Unix millis)
+        let timestamp = Self::current_timestamp_millis();
+        Self::add_to_history_u64(&mut stats.history_timestamps, timestamp, 60);
+
         Self::add_to_history(&mut stats.upload_rate_history, upload_rate, 60);
         Self::add_to_history(&mut stats.download_rate_history, download_rate, 60);
     }
@@ -770,6 +779,30 @@ impl RatioFaker {
         history.push(value);
         if history.len() > max_len {
             history.remove(0);
+        }
+    }
+
+    /// Add a u64 value to a history vec, keeping only the last `max_len` items
+    fn add_to_history_u64(history: &mut Vec<u64>, value: u64, max_len: usize) {
+        history.push(value);
+        if history.len() > max_len {
+            history.remove(0);
+        }
+    }
+
+    /// Get current timestamp in milliseconds (cross-platform)
+    fn current_timestamp_millis() -> u64 {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            use std::time::{SystemTime, UNIX_EPOCH};
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as u64
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            js_sys::Date::now() as u64
         }
     }
 
