@@ -10,10 +10,13 @@
   let chart = $state();
   let currentZoom = $state({ start: 0, end: 100 });
   let userHasZoomed = $state(false);
-  let lastDataLength = $state(0);
+  let chartLastDataLength = $state(0);
 
-  // Track timestamps for each data point
-  let timestamps = $state([]);
+  // Fallback timestamps for when backend doesn't provide them
+  // We track values to detect when data shifts
+  let fallbackTimestamps = $state([]);
+  let lastFirstValue = $state(null);
+  let lastLastValue = $state(null);
 
   // Colors
   const COLORS = {
@@ -25,16 +28,6 @@
     primary: '#8b5cf6', // violet-500
   };
 
-  // Format time for tooltip
-  function formatTimeTooltip(date) {
-    return date.toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false,
-    });
-  }
-
   // Calculate statistics for a data array
   function calcStats(data) {
     if (!data || data.length === 0) return { min: 0, max: 0, avg: 0 };
@@ -44,29 +37,307 @@
     return { min, max, avg };
   }
 
+  // Get theme-aware colors
+  function getThemeColors() {
+    const root = document.documentElement;
+    const isDark =
+      root.classList.contains('dark') ||
+      root.classList.contains('frappe') ||
+      root.classList.contains('macchiato') ||
+      root.classList.contains('mocha');
+
+    return {
+      isDark,
+      text: isDark ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.6)',
+      textStrong: isDark ? 'rgba(255, 255, 255, 0.9)' : 'rgba(0, 0, 0, 0.85)',
+      grid: isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.06)',
+      axisLine: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+      tooltipBg: isDark ? 'rgba(24, 24, 27, 0.95)' : 'rgba(255, 255, 255, 0.95)',
+      tooltipBorder: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+    };
+  }
+
+  // Build tooltip configuration
+  function buildTooltipConfig(theme) {
+    return {
+      trigger: 'axis',
+      backgroundColor: theme.tooltipBg,
+      borderColor: theme.tooltipBorder,
+      borderWidth: 1,
+      borderRadius: 8,
+      padding: [12, 16],
+      textStyle: {
+        color: theme.textStrong,
+        fontSize: 12,
+      },
+      axisPointer: {
+        type: 'line',
+        lineStyle: {
+          color: COLORS.primary,
+          width: 1,
+          type: 'dashed',
+        },
+        crossStyle: {
+          color: COLORS.primary,
+        },
+      },
+      formatter: function (params) {
+        const timeLabel = params[0].axisValue;
+        let result = `<div style="font-size: 11px; color: ${theme.text}; margin-bottom: 8px; font-weight: 500;">${timeLabel}</div>`;
+        result += '<div style="display: flex; flex-direction: column; gap: 6px;">';
+        params.forEach(param => {
+          const value = param.value.toFixed(2);
+          const unit = param.seriesName === 'Ratio' ? '' : ' KB/s';
+          const color = param.color;
+          result += `<div style="display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="width: 8px; height: 8px; border-radius: 2px; background: ${color};"></span>
+              <span style="font-size: 12px; color: ${theme.text};">${param.seriesName}</span>
+            </div>
+            <span style="font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums;">${value}${unit}</span>
+          </div>`;
+        });
+        result += '</div>';
+        return result;
+      },
+    };
+  }
+
+  // Build X axis configuration
+  function buildXAxisConfig(timeLabels, theme) {
+    return [
+      {
+        type: 'category',
+        data: timeLabels,
+        boundaryGap: false,
+        axisLine: {
+          show: true,
+          lineStyle: { color: theme.axisLine },
+        },
+        axisTick: { show: false },
+        axisLabel: {
+          color: theme.text,
+          fontSize: 10,
+          margin: 8,
+          interval: Math.max(0, Math.floor(timeLabels.length / 6) - 1),
+        },
+        splitLine: {
+          show: true,
+          lineStyle: { color: theme.grid, type: 'dashed' },
+        },
+      },
+    ];
+  }
+
+  // Build Y axes configuration
+  function buildYAxesConfig(theme) {
+    return [
+      {
+        type: 'value',
+        position: 'left',
+        axisLine: { show: false },
+        axisTick: { show: false },
+        axisLabel: {
+          color: theme.text,
+          fontSize: 10,
+          margin: 8,
+          formatter: value => (value >= 1000 ? (value / 1000).toFixed(1) + 'k' : value.toFixed(0)),
+        },
+        splitLine: {
+          lineStyle: { color: theme.grid, type: 'dashed' },
+        },
+        splitNumber: 4,
+      },
+      {
+        type: 'value',
+        position: 'right',
+        axisLine: { show: false },
+        axisTick: { show: false },
+        axisLabel: {
+          color: theme.text,
+          fontSize: 10,
+          margin: 8,
+          formatter: value => value.toFixed(1),
+        },
+        splitLine: { show: false },
+        splitNumber: 4,
+      },
+    ];
+  }
+
+  // Build series configuration
+  function buildSeriesConfig(uploadData, downloadData, ratioData) {
+    return [
+      {
+        name: 'Upload',
+        type: 'line',
+        smooth: 0.3,
+        symbol: 'none',
+        showSymbol: false,
+        lineStyle: { color: COLORS.upload, width: 2 },
+        areaStyle: {
+          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: COLORS.uploadLight },
+            { offset: 1, color: 'rgba(16, 185, 129, 0)' },
+          ]),
+        },
+        emphasis: { focus: 'series', lineStyle: { width: 2.5 } },
+        data: uploadData,
+        yAxisIndex: 0,
+      },
+      {
+        name: 'Download',
+        type: 'line',
+        smooth: 0.3,
+        symbol: 'none',
+        showSymbol: false,
+        lineStyle: { color: COLORS.download, width: 2 },
+        areaStyle: {
+          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: COLORS.downloadLight },
+            { offset: 1, color: 'rgba(59, 130, 246, 0)' },
+          ]),
+        },
+        emphasis: { focus: 'series', lineStyle: { width: 2.5 } },
+        data: downloadData,
+        yAxisIndex: 0,
+      },
+      {
+        name: 'Ratio',
+        type: 'line',
+        smooth: 0.3,
+        symbol: 'none',
+        showSymbol: false,
+        lineStyle: { color: COLORS.ratio, width: 1.5, type: [4, 4] },
+        emphasis: { focus: 'series', lineStyle: { width: 2 } },
+        data: ratioData,
+        yAxisIndex: 1,
+      },
+    ];
+  }
+
+  // Build dataZoom configuration
+  function buildDataZoomConfig(theme) {
+    return [
+      {
+        type: 'inside',
+        start: currentZoom.start,
+        end: currentZoom.end,
+        filterMode: 'none',
+        zoomLock: false,
+        moveOnMouseMove: true,
+        moveOnMouseWheel: true,
+        preventDefaultMouseMove: true,
+      },
+      {
+        type: 'slider',
+        show: true,
+        start: currentZoom.start,
+        end: currentZoom.end,
+        height: 20,
+        bottom: 8,
+        borderColor: 'transparent',
+        backgroundColor: theme.isDark ? 'rgba(255, 255, 255, 0.03)' : 'rgba(0, 0, 0, 0.03)',
+        fillerColor: theme.isDark ? 'rgba(139, 92, 246, 0.2)' : 'rgba(139, 92, 246, 0.15)',
+        handleIcon:
+          'path://M-9.35,34.56V42m0-40V9.5m-2,0h4a2,2,0,0,1,2,2v21a2,2,0,0,1-2,2h-4a2,2,0,0,1-2-2v-21A2,2,0,0,1-11.35,9.5Z',
+        handleSize: '80%',
+        handleStyle: { color: COLORS.primary, borderColor: COLORS.primary },
+        moveHandleStyle: { color: COLORS.primary },
+        textStyle: { color: theme.text, fontSize: 10 },
+        brushSelect: false,
+        emphasis: {
+          handleStyle: { color: COLORS.primary, borderColor: COLORS.primary },
+        },
+        dataBackground: {
+          lineStyle: { color: theme.isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)' },
+          areaStyle: { color: theme.isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)' },
+        },
+        selectedDataBackground: {
+          lineStyle: { color: COLORS.primary },
+          areaStyle: { color: theme.isDark ? 'rgba(139, 92, 246, 0.2)' : 'rgba(139, 92, 246, 0.15)' },
+        },
+      },
+    ];
+  }
+
+  // Format timestamp to time label
+  function formatTimeLabel(ts) {
+    return new Date(ts).toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    });
+  }
+
   // Derived statistics
   const uploadStats = $derived(calcStats(stats?.upload_rate_history));
   const downloadStats = $derived(calcStats(stats?.download_rate_history));
 
-  // Update timestamps when new data points are added
+  // Update fallback timestamps when data changes
+  // Track both first and last values to detect rolling window shifts
   $effect(() => {
-    if (stats?.upload_rate_history) {
-      const currentLength = stats.upload_rate_history.length;
-      const timestampLength = timestamps.length;
+    if (!stats?.upload_rate_history) return;
 
-      if (currentLength > timestampLength) {
-        // Add timestamps for new data points
-        const newTimestamps = [...timestamps];
-        for (let i = timestampLength; i < currentLength; i++) {
-          newTimestamps.push(new Date());
-        }
-        timestamps = newTimestamps;
-      } else if (currentLength < timestampLength) {
-        // Data was reset, clear timestamps
-        timestamps = [];
-        for (let i = 0; i < currentLength; i++) {
-          timestamps.push(new Date());
-        }
+    const currentLength = stats.upload_rate_history.length;
+    const hasBackendTimestamps =
+      stats.history_timestamps &&
+      stats.history_timestamps.length === currentLength &&
+      currentLength > 0;
+
+    // If backend provides timestamps, we don't need fallback
+    if (hasBackendTimestamps) {
+      fallbackTimestamps = [];
+      lastFirstValue = null;
+      lastLastValue = null;
+      return;
+    }
+
+    const now = Date.now();
+    const updateInterval = 5000; // ~5 seconds between updates
+    const currentFirstValue = currentLength > 0 ? stats.upload_rate_history[0] : null;
+    const currentLastValue = currentLength > 0 ? stats.upload_rate_history[currentLength - 1] : null;
+
+    if (currentLength === 0) {
+      // No data
+      fallbackTimestamps = [];
+      lastFirstValue = null;
+      lastLastValue = null;
+    } else if (fallbackTimestamps.length === 0) {
+      // First time seeing data - initialize with evenly spaced timestamps
+      fallbackTimestamps = Array.from({ length: currentLength }, (_, i) => {
+        return now - (currentLength - 1 - i) * updateInterval;
+      });
+      lastFirstValue = currentFirstValue;
+      lastLastValue = currentLastValue;
+    } else if (currentLength > fallbackTimestamps.length) {
+      // Data grew - add new timestamp(s) at the end
+      const newPoints = currentLength - fallbackTimestamps.length;
+      const newTimestamps = Array.from({ length: newPoints }, (_, i) => {
+        return now - (newPoints - 1 - i) * updateInterval;
+      });
+      fallbackTimestamps = [...fallbackTimestamps, ...newTimestamps];
+      lastFirstValue = currentFirstValue;
+      lastLastValue = currentLastValue;
+    } else if (currentLength < fallbackTimestamps.length) {
+      // Data shrunk (reset) - reinitialize
+      fallbackTimestamps = Array.from({ length: currentLength }, (_, i) => {
+        return now - (currentLength - 1 - i) * updateInterval;
+      });
+      lastFirstValue = currentFirstValue;
+      lastLastValue = currentLastValue;
+    } else {
+      // Same length - check if rolling window shifted
+      // Detect by checking if first value changed OR last value changed
+      const firstChanged = lastFirstValue !== null && currentFirstValue !== lastFirstValue;
+      const lastChanged = lastLastValue !== null && currentLastValue !== lastLastValue;
+      
+      if (firstChanged || lastChanged) {
+        // Shift timestamps: remove oldest, add new one at end
+        fallbackTimestamps = [...fallbackTimestamps.slice(1), now];
+        lastFirstValue = currentFirstValue;
+        lastLastValue = currentLastValue;
       }
     }
   });
@@ -127,93 +398,38 @@
       return;
     }
 
-    const root = document.documentElement;
-    const isDark =
-      root.classList.contains('dark') ||
-      root.classList.contains('frappe') ||
-      root.classList.contains('macchiato') ||
-      root.classList.contains('mocha');
-
-    const textColor = isDark ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.6)';
-    const textColorStrong = isDark ? 'rgba(255, 255, 255, 0.9)' : 'rgba(0, 0, 0, 0.85)';
-    const gridColor = isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.06)';
-    const axisLineColor = isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)';
-    const tooltipBg = isDark ? 'rgba(24, 24, 27, 0.95)' : 'rgba(255, 255, 255, 0.95)';
-    const tooltipBorder = isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)';
-
     const dataLength = stats.upload_rate_history.length;
 
-    if (!userHasZoomed && lastDataLength === 0 && dataLength > 0) {
+    // Reset zoom on first data
+    if (!userHasZoomed && chartLastDataLength === 0 && dataLength > 0) {
       currentZoom = { start: 0, end: 100 };
     }
-    lastDataLength = dataLength;
+    chartLastDataLength = dataLength;
 
-    // Capture timestamps in closure for tooltip formatter
-    const capturedTimestamps = [...timestamps];
+    // Get timestamps (backend or fallback)
+    const backendTimestamps = stats.history_timestamps || [];
+    const hasValidTimestamps = backendTimestamps.length === dataLength && backendTimestamps.length > 0;
+    const timestamps = hasValidTimestamps ? backendTimestamps : fallbackTimestamps;
 
-    // Create time-series data: [timestamp, value] pairs
-    const uploadData = stats.upload_rate_history.map((value, i) => {
-      const time = capturedTimestamps[i] ? capturedTimestamps[i].getTime() : Date.now();
-      return [time, value];
-    });
-    const downloadData = stats.download_rate_history.map((value, i) => {
-      const time = capturedTimestamps[i] ? capturedTimestamps[i].getTime() : Date.now();
-      return [time, value];
-    });
-    const ratioData = (stats.ratio_history || []).map((value, i) => {
-      const time = capturedTimestamps[i] ? capturedTimestamps[i].getTime() : Date.now();
-      return [time, value];
-    });
+    // Safety check - wait for timestamps to be ready
+    if (timestamps.length < dataLength) {
+      return;
+    }
+
+    // Prepare data
+    const timeLabels = timestamps.map(formatTimeLabel);
+    const uploadData = stats.upload_rate_history;
+    const downloadData = stats.download_rate_history;
+    const ratioData = stats.ratio_history || [];
+
+    // Build chart configuration using helpers
+    const theme = getThemeColors();
 
     const option = {
       backgroundColor: 'transparent',
       animation: false,
-      tooltip: {
-        trigger: 'axis',
-        backgroundColor: tooltipBg,
-        borderColor: tooltipBorder,
-        borderWidth: 1,
-        borderRadius: 8,
-        padding: [12, 16],
-        textStyle: {
-          color: textColorStrong,
-          fontSize: 12,
-        },
-        axisPointer: {
-          type: 'line',
-          lineStyle: {
-            color: COLORS.primary,
-            width: 1,
-            type: 'dashed',
-          },
-          crossStyle: {
-            color: COLORS.primary,
-          },
-        },
-        formatter: function (params) {
-          const timestamp = new Date(params[0].value[0]);
-          const timeLabel = formatTimeTooltip(timestamp);
-          let result = `<div style="font-size: 11px; color: ${textColor}; margin-bottom: 8px; font-weight: 500;">${timeLabel}</div>`;
-          result += '<div style="display: flex; flex-direction: column; gap: 6px;">';
-          params.forEach(param => {
-            const value = param.value[1].toFixed(2);
-            const unit = param.seriesName === 'Ratio' ? '' : ' KB/s';
-            const color = param.color;
-            result += `<div style="display: flex; align-items: center; justify-content: space-between; gap: 16px;">
-              <div style="display: flex; align-items: center; gap: 8px;">
-                <span style="width: 8px; height: 8px; border-radius: 2px; background: ${color};"></span>
-                <span style="font-size: 12px; color: ${textColor};">${param.seriesName}</span>
-              </div>
-              <span style="font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums;">${value}${unit}</span>
-            </div>`;
-          });
-          result += '</div>';
-          return result;
-        },
-      },
-      legend: {
-        show: false,
-      },
+      tooltip: buildTooltipConfig(theme),
+      legend: { show: false },
       grid: {
         left: 12,
         right: 12,
@@ -221,219 +437,10 @@
         top: 12,
         containLabel: true,
       },
-      xAxis: [
-        {
-          type: 'time',
-          boundaryGap: false,
-          axisLine: {
-            show: true,
-            lineStyle: {
-              color: axisLineColor,
-            },
-          },
-          axisTick: {
-            show: false,
-          },
-          axisLabel: {
-            color: textColor,
-            fontSize: 10,
-            margin: 8,
-            formatter: {
-              hour: '{HH}:{mm}',
-              minute: '{HH}:{mm}',
-              second: '{HH}:{mm}:{ss}',
-            },
-            hideOverlap: true,
-          },
-          splitLine: {
-            show: true,
-            lineStyle: {
-              color: gridColor,
-              type: 'dashed',
-            },
-          },
-        },
-      ],
-      yAxis: [
-        {
-          type: 'value',
-          position: 'left',
-          axisLine: {
-            show: false,
-          },
-          axisTick: {
-            show: false,
-          },
-          axisLabel: {
-            color: textColor,
-            fontSize: 10,
-            margin: 8,
-            formatter: value => {
-              if (value >= 1000) return (value / 1000).toFixed(1) + 'k';
-              return value.toFixed(0);
-            },
-          },
-          splitLine: {
-            lineStyle: {
-              color: gridColor,
-              type: 'dashed',
-            },
-          },
-          splitNumber: 4,
-        },
-        {
-          type: 'value',
-          position: 'right',
-          axisLine: {
-            show: false,
-          },
-          axisTick: {
-            show: false,
-          },
-          axisLabel: {
-            color: textColor,
-            fontSize: 10,
-            margin: 8,
-            formatter: value => value.toFixed(1),
-          },
-          splitLine: {
-            show: false,
-          },
-          splitNumber: 4,
-        },
-      ],
-      series: [
-        {
-          name: 'Upload',
-          type: 'line',
-          smooth: 0.3,
-          symbol: 'none',
-          sampling: 'lttb',
-          lineStyle: {
-            color: COLORS.upload,
-            width: 2,
-          },
-          areaStyle: {
-            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-              { offset: 0, color: COLORS.uploadLight },
-              { offset: 1, color: 'rgba(16, 185, 129, 0)' },
-            ]),
-          },
-          emphasis: {
-            focus: 'series',
-            lineStyle: {
-              width: 2.5,
-            },
-          },
-          data: uploadData,
-          yAxisIndex: 0,
-        },
-        {
-          name: 'Download',
-          type: 'line',
-          smooth: 0.3,
-          symbol: 'none',
-          sampling: 'lttb',
-          lineStyle: {
-            color: COLORS.download,
-            width: 2,
-          },
-          areaStyle: {
-            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-              { offset: 0, color: COLORS.downloadLight },
-              { offset: 1, color: 'rgba(59, 130, 246, 0)' },
-            ]),
-          },
-          emphasis: {
-            focus: 'series',
-            lineStyle: {
-              width: 2.5,
-            },
-          },
-          data: downloadData,
-          yAxisIndex: 0,
-        },
-        {
-          name: 'Ratio',
-          type: 'line',
-          smooth: 0.3,
-          symbol: 'none',
-          sampling: 'lttb',
-          lineStyle: {
-            color: COLORS.ratio,
-            width: 1.5,
-            type: [4, 4],
-          },
-          emphasis: {
-            focus: 'series',
-            lineStyle: {
-              width: 2,
-            },
-          },
-          data: ratioData,
-          yAxisIndex: 1,
-        },
-      ],
-      dataZoom: [
-        {
-          type: 'inside',
-          start: currentZoom.start,
-          end: currentZoom.end,
-          filterMode: 'none',
-          zoomLock: false,
-          moveOnMouseMove: true,
-          moveOnMouseWheel: true,
-          preventDefaultMouseMove: true,
-        },
-        {
-          type: 'slider',
-          show: true,
-          start: currentZoom.start,
-          end: currentZoom.end,
-          height: 20,
-          bottom: 8,
-          borderColor: 'transparent',
-          backgroundColor: isDark ? 'rgba(255, 255, 255, 0.03)' : 'rgba(0, 0, 0, 0.03)',
-          fillerColor: isDark ? 'rgba(139, 92, 246, 0.2)' : 'rgba(139, 92, 246, 0.15)',
-          handleIcon:
-            'path://M-9.35,34.56V42m0-40V9.5m-2,0h4a2,2,0,0,1,2,2v21a2,2,0,0,1-2,2h-4a2,2,0,0,1-2-2v-21A2,2,0,0,1-11.35,9.5Z',
-          handleSize: '80%',
-          handleStyle: {
-            color: COLORS.primary,
-            borderColor: COLORS.primary,
-          },
-          moveHandleStyle: {
-            color: COLORS.primary,
-          },
-          textStyle: {
-            color: textColor,
-            fontSize: 10,
-          },
-          brushSelect: false,
-          emphasis: {
-            handleStyle: {
-              color: COLORS.primary,
-              borderColor: COLORS.primary,
-            },
-          },
-          dataBackground: {
-            lineStyle: {
-              color: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
-            },
-            areaStyle: {
-              color: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)',
-            },
-          },
-          selectedDataBackground: {
-            lineStyle: {
-              color: COLORS.primary,
-            },
-            areaStyle: {
-              color: isDark ? 'rgba(139, 92, 246, 0.2)' : 'rgba(139, 92, 246, 0.15)',
-            },
-          },
-        },
-      ],
+      xAxis: buildXAxisConfig(timeLabels, theme),
+      yAxis: buildYAxesConfig(theme),
+      series: buildSeriesConfig(uploadData, downloadData, ratioData),
+      dataZoom: buildDataZoomConfig(theme),
     };
 
     chart.setOption(option, false, false);
@@ -507,7 +514,7 @@
 
   <div class="grid grid-cols-1 lg:grid-cols-4 gap-3">
     <!-- Performance Chart -->
-    <div class="lg:col-span-3">
+    <div class="lg:col-span-3 bg-muted/50 rounded-lg border border-border p-3 flex flex-col h-[220px]">
       <!-- Custom Legend -->
       {#if stats && stats.upload_rate_history && stats.upload_rate_history.length > 0}
         <div class="flex items-center gap-4 mb-2 px-1">
@@ -530,11 +537,14 @@
             <span class="text-xs text-muted-foreground">Ratio</span>
           </div>
         </div>
+      {:else}
+        <!-- Placeholder to maintain consistent height when no data -->
+        <div class="h-[22px] mb-2"></div>
       {/if}
 
       <div
         bind:this={chartContainer}
-        class="w-full h-[220px] bg-muted/20 rounded-lg border border-border"
+        class="w-full flex-1 min-h-0"
       >
         {#if !stats || !stats.upload_rate_history || stats.upload_rate_history.length === 0}
           <div class="w-full h-full flex items-center justify-center">

@@ -15,17 +15,32 @@
 
   let { logs = $bindable([]), showLogs = $bindable(false), onUpdate } = $props();
 
-  let logsContainer = $state();
+  let scrollContainer = $state();
+  let isAtBottom = $state(true);
 
-  // Auto-scroll to bottom when new logs are added
+  // Check if user is at the bottom of the scroll container
+  function handleScroll() {
+    if (!scrollContainer) return;
+    const threshold = 10; // pixels from bottom to consider "at bottom"
+    const { scrollTop, scrollHeight, clientHeight } = scrollContainer;
+    isAtBottom = scrollHeight - scrollTop - clientHeight < threshold;
+  }
+
+  // Auto-scroll to bottom when new logs are added, but only if user is at bottom
   $effect(() => {
-    if (logsContainer && logs.length > 0) {
-      logsContainer.scrollTop = logsContainer.scrollHeight;
+    if (scrollContainer && logs.length > 0 && isAtBottom) {
+      // Use requestAnimationFrame to ensure DOM has updated
+      requestAnimationFrame(() => {
+        if (scrollContainer) {
+          scrollContainer.scrollTop = scrollContainer.scrollHeight;
+        }
+      });
     }
   });
 
   function clearLogs() {
     logs = [];
+    isAtBottom = true; // Reset to auto-scroll after clearing
   }
 
   function formatTimestamp(timestamp) {
@@ -143,10 +158,7 @@
   <!-- Log content -->
   {#if showLogs}
     <div class="mt-3">
-      <div
-        class="bg-muted/50 border border-border rounded-lg overflow-hidden"
-        bind:this={logsContainer}
-      >
+      <div class="bg-muted/50 border border-border rounded-lg overflow-hidden">
         {#if logs.length === 0}
           <div class="p-8 text-center">
             <Terminal size={32} class="text-muted-foreground mx-auto mb-2 opacity-30" />
@@ -154,7 +166,11 @@
             <p class="text-xs text-muted-foreground/60 mt-1">Application events will appear here</p>
           </div>
         {:else}
-          <div class="max-h-[250px] overflow-y-auto p-2 font-mono text-xs space-y-1">
+          <div
+            bind:this={scrollContainer}
+            onscroll={handleScroll}
+            class="max-h-[250px] overflow-y-auto p-2 font-mono text-xs space-y-1"
+          >
             {#each logs as log, index (index)}
               {@const colors = getLogColors(log.level)}
               <div
