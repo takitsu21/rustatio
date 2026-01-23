@@ -352,177 +352,77 @@ async fn get_client_types() -> Response {
     ApiSuccess::response(types)
 }
 
-/// Network status response
+/// Network status response from gluetun
 #[derive(Serialize)]
 struct NetworkStatus {
     ip: String,
     country: Option<String>,
-    city: Option<String>,
-    org: Option<String>,
+    organization: Option<String>,
     is_vpn: bool,
-    vpn_provider: Option<String>,
 }
 
-/// Response from ipinfo.io
+/// Response from gluetun control server /v1/vpn/status
 #[derive(Deserialize)]
-struct IpInfoResponse {
-    ip: String,
-    #[serde(default)]
-    city: Option<String>,
-    #[serde(default)]
-    #[allow(dead_code)]
-    region: Option<String>,
-    #[serde(default)]
-    country: Option<String>,
-    #[serde(default)]
-    org: Option<String>,
+struct GluetunVpnStatus {
+    status: String,
 }
 
-/// Response from ip-api.com (fallback)
+/// Response from gluetun control server /v1/publicip/ip
 #[derive(Deserialize)]
-struct IpApiResponse {
-    #[serde(default)]
-    query: Option<String>,
-    #[serde(default)]
-    city: Option<String>,
-    #[serde(default)]
+struct GluetunPublicIp {
+    public_ip: String,
     country: Option<String>,
-    #[serde(default, rename = "countryCode")]
-    country_code: Option<String>,
-    #[serde(default)]
-    isp: Option<String>,
-    #[serde(default)]
-    org: Option<String>,
-}
-
-/// Known VPN provider patterns to detect
-const VPN_PROVIDERS: &[(&str, &str)] = &[
-    ("proton", "ProtonVPN"),
-    ("mullvad", "Mullvad"),
-    ("nordvpn", "NordVPN"),
-    ("nord", "NordVPN"),
-    ("expressvpn", "ExpressVPN"),
-    ("express", "ExpressVPN"),
-    ("surfshark", "Surfshark"),
-    ("private internet access", "Private Internet Access"),
-    ("pia", "Private Internet Access"),
-    ("windscribe", "Windscribe"),
-    ("cyberghost", "CyberGhost"),
-    ("ipvanish", "IPVanish"),
-    ("tunnelbear", "TunnelBear"),
-    ("hotspot shield", "Hotspot Shield"),
-    ("vyprvpn", "VyprVPN"),
-    ("hide.me", "Hide.me"),
-    ("perfect privacy", "Perfect Privacy"),
-    ("airvpn", "AirVPN"),
-    ("privatevpn", "PrivateVPN"),
-    ("torguard", "TorGuard"),
-    ("ivpn", "IVPN"),
-    ("ovpn", "OVPN"),
-    ("m247", "M247 (VPN Infrastructure)"),
-    ("datacamp", "Datacamp (VPN/Proxy)"),
-    ("hostwinds", "Hostwinds (VPN/VPS)"),
-    ("choopa", "Choopa/Vultr (VPN/VPS)"),
-    ("linode", "Linode (VPN/VPS)"),
-    ("digitalocean", "DigitalOcean (VPN/VPS)"),
-];
-
-/// Detect VPN provider from organization string
-fn detect_vpn_provider(org: &Option<String>) -> Option<String> {
-    let org_lower = org.as_ref()?.to_lowercase();
-
-    for (pattern, provider) in VPN_PROVIDERS {
-        if org_lower.contains(pattern) {
-            return Some(provider.to_string());
-        }
-    }
-
-    None
+    organization: Option<String>,
 }
 
 /// Get network status (public IP and VPN detection)
-/// Tries multiple IP lookup services with fallbacks for reliability
+/// Uses gluetun's control server for definitive VPN detection.
+/// This endpoint is only available when running with Docker + gluetun.
 async fn get_network_status() -> Response {
-    let client = match reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(5))
+    match try_gluetun_detection().await {
+        Some(status) => ApiSuccess::response(status),
+        None => ApiError::response(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Gluetun not available. Network status requires Docker with gluetun VPN container.",
+        ),
+    }
+}
+
+/// Try to detect VPN status via gluetun's control server
+async fn try_gluetun_detection() -> Option<NetworkStatus> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_millis(1000))
         .build()
-    {
-        Ok(c) => c,
-        Err(e) => {
-            return ApiError::response(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to create HTTP client: {}", e),
-            );
-        }
-    };
+        .ok()?;
 
-    // Try ip-api.com first (more reliable, no rate limits for non-commercial use)
-    if let Ok(response) = client.get("http://ip-api.com/json").send().await {
-        if let Ok(ip_info) = response.json::<IpApiResponse>().await {
-            if let Some(ip) = ip_info.query {
-                // Use ISP or org for VPN detection
-                let org = ip_info.isp.or(ip_info.org);
-                let vpn_provider = detect_vpn_provider(&org);
-                let is_vpn = vpn_provider.is_some();
+    // Get VPN status
+    let vpn_status = client
+        .get("http://localhost:8000/v1/vpn/status")
+        .send()
+        .await
+        .ok()?
+        .json::<GluetunVpnStatus>()
+        .await
+        .ok()?;
 
-                let status = NetworkStatus {
-                    ip,
-                    country: ip_info.country_code.or(ip_info.country),
-                    city: ip_info.city,
-                    org,
-                    is_vpn,
-                    vpn_provider,
-                };
+    let is_vpn = vpn_status.status == "running";
 
-                return ApiSuccess::response(status);
-            }
-        }
-    }
+    // Get public IP (includes country and organization from geolocation)
+    let public_ip = client
+        .get("http://localhost:8000/v1/publicip/ip")
+        .send()
+        .await
+        .ok()?
+        .json::<GluetunPublicIp>()
+        .await
+        .ok()?;
 
-    // Fallback to ipinfo.io
-    if let Ok(response) = client.get("https://ipinfo.io/json").send().await {
-        if let Ok(ip_info) = response.json::<IpInfoResponse>().await {
-            let vpn_provider = detect_vpn_provider(&ip_info.org);
-            let is_vpn = vpn_provider.is_some();
-
-            let status = NetworkStatus {
-                ip: ip_info.ip,
-                country: ip_info.country,
-                city: ip_info.city,
-                org: ip_info.org,
-                is_vpn,
-                vpn_provider,
-            };
-
-            return ApiSuccess::response(status);
-        }
-    }
-
-    // Last resort: just get the IP from ipify
-    if let Ok(response) = client.get("https://api.ipify.org?format=json").send().await {
-        #[derive(Deserialize)]
-        struct IpifyResponse {
-            ip: String,
-        }
-
-        if let Ok(ip_info) = response.json::<IpifyResponse>().await {
-            let status = NetworkStatus {
-                ip: ip_info.ip,
-                country: None,
-                city: None,
-                org: None,
-                is_vpn: false,
-                vpn_provider: None,
-            };
-
-            return ApiSuccess::response(status);
-        }
-    }
-
-    ApiError::response(
-        StatusCode::BAD_GATEWAY,
-        "Failed to fetch IP info from all providers".to_string(),
-    )
+    Some(NetworkStatus {
+        ip: public_ip.public_ip,
+        country: public_ip.country,
+        organization: public_ip.organization,
+        is_vpn,
+    })
 }
 
 /// SSE endpoint for streaming logs to the UI

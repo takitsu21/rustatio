@@ -87,17 +87,14 @@
           <Lock size={16} class="flex-shrink-0 text-stat-upload" />
           <div class={cn('flex-1 min-w-0', isCollapsed && 'lg:hidden')}>
             <div class="text-xs font-medium text-stat-upload truncate">
-              {status.vpn_provider || 'VPN Active'}
-              <span class="text-muted-foreground font-normal">(Experimental)</span>
+              {status.organization || 'VPN Active'}
             </div>
           </div>
         {:else}
           <!-- No VPN - yellow warning -->
           <LockOpen size={16} class="flex-shrink-0 text-stat-ratio" />
           <div class={cn('flex-1 min-w-0', isCollapsed && 'lg:hidden')}>
-            <div class="text-xs font-medium text-stat-ratio">
-              No VPN <span class="text-muted-foreground font-normal">(Experimental)</span>
-            </div>
+            <div class="text-xs font-medium text-stat-ratio">No VPN</div>
           </div>
         {/if}
 
@@ -116,18 +113,13 @@
 
       <!-- IP and Location -->
       {#if !isCollapsed}
-        <div class="text-[10px] text-muted-foreground pl-6 space-y-0.5">
+        <div class="text-[10px] text-muted-foreground pl-6">
           <div class="flex items-center gap-1.5">
             <span class="font-mono">{maskIp(status.ip)}</span>
             {#if status.country}
               <span class="text-muted-foreground/70">({status.country})</span>
             {/if}
           </div>
-          {#if status.org && !status.is_vpn}
-            <div class="truncate text-muted-foreground/60" title={status.org}>
-              {status.org}
-            </div>
-          {/if}
         </div>
       {/if}
     </div>

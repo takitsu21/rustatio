@@ -82,9 +82,7 @@ pub async fn auth_middleware(request: Request, next: Next) -> Response {
         .and_then(|value| value.to_str().ok());
 
     if let Some(header) = auth_header {
-        if header.starts_with("Bearer ") {
-            let provided_token = &header[7..]; // Skip "Bearer "
-
+        if let Some(provided_token) = header.strip_prefix("Bearer ") {
             // Constant-time comparison to prevent timing attacks
             if constant_time_eq(provided_token.as_bytes(), expected_token.as_bytes()) {
                 return next.run(request).await;
