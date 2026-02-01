@@ -14,13 +14,7 @@
   } from './lib/api.js';
 
   // Import instance stores
-  import {
-    instances,
-    activeInstance,
-    activeInstanceId,
-    instanceActions,
-    saveSession,
-  } from './lib/instanceStore.js';
+  import { instances, activeInstance, instanceActions, saveSession } from './lib/instanceStore.js';
 
   // Import components
   import Header from './components/Header.svelte';
@@ -934,62 +928,180 @@
     }
   }
 
-  // Start all instances with torrents loaded
+  // Helper to start a single instance by ID (for bulk operations)
+  async function startInstanceById(instance) {
+    const fakerConfig = {
+      upload_rate: parseFloat(instance.uploadRate ?? 50),
+      download_rate: parseFloat(instance.downloadRate ?? 100),
+      port: parseInt(instance.port ?? 6881),
+      client_type: instance.selectedClient || 'qbittorrent',
+      client_version:
+        instance.selectedClientVersion ||
+        clientVersions[instance.selectedClient || 'qbittorrent'][0],
+      initial_uploaded: parseInt(instance.initialUploaded ?? 0) * 1024 * 1024,
+      initial_downloaded: parseInt(instance.initialDownloaded ?? 0) * 1024 * 1024,
+      completion_percent: parseFloat(instance.completionPercent ?? 0),
+      num_want: 50,
+      randomize_rates: instance.randomizeRates ?? true,
+      random_range_percent: parseFloat(instance.randomRangePercent ?? 20),
+      stop_at_ratio: instance.stopAtRatioEnabled ? parseFloat(instance.stopAtRatio ?? 2.0) : null,
+      stop_at_uploaded: instance.stopAtUploadedEnabled
+        ? parseFloat(instance.stopAtUploadedGB ?? 10) * 1024 * 1024 * 1024
+        : null,
+      stop_at_downloaded: instance.stopAtDownloadedEnabled
+        ? parseFloat(instance.stopAtDownloadedGB ?? 10) * 1024 * 1024 * 1024
+        : null,
+      stop_at_seed_time: instance.stopAtSeedTimeEnabled
+        ? parseFloat(instance.stopAtSeedTimeHours ?? 24) * 3600
+        : null,
+      stop_when_no_leechers: instance.stopWhenNoLeechers ?? false,
+      progressive_rates: instance.progressiveRatesEnabled ?? false,
+      target_upload_rate: instance.progressiveRatesEnabled
+        ? parseFloat(instance.targetUploadRate ?? 100)
+        : null,
+      target_download_rate: instance.progressiveRatesEnabled
+        ? parseFloat(instance.targetDownloadRate ?? 200)
+        : null,
+      progressive_duration: parseFloat(instance.progressiveDurationHours ?? 1) * 3600,
+    };
+
+    await api.startFaker(instance.id, instance.torrent, fakerConfig);
+
+    instanceActions.updateInstance(instance.id, {
+      isRunning: true,
+      isPaused: false,
+      statusMessage: 'Actively faking ratio...',
+      statusType: 'running',
+      statusIcon: 'rocket',
+    });
+
+    const intervalSeconds = instance.updateIntervalSeconds ?? 5;
+    startPollingForInstance(instance.id, intervalSeconds);
+
+    const initialStats = await api.getStats(instance.id);
+    instanceActions.updateInstance(instance.id, { stats: initialStats });
+  }
+
+  // Helper to stop a single instance by ID (for bulk operations)
+  async function stopInstanceById(instance) {
+    let finalStats = null;
+    try {
+      finalStats = await api.getStats(instance.id);
+    } catch (error) {
+      console.warn('Failed to get final stats before stopping:', error);
+      finalStats = instance.stats;
+    }
+
+    await api.stopFaker(instance.id);
+
+    if (instance.updateInterval) clearInterval(instance.updateInterval);
+    if (instance.countdownInterval) clearInterval(instance.countdownInterval);
+    if (instance.liveStatsInterval) clearInterval(instance.liveStatsInterval);
+
+    const updates = {
+      isRunning: false,
+      nextUpdateIn: 0,
+      updateInterval: null,
+      countdownInterval: null,
+      liveStatsInterval: null,
+      statusMessage: 'Stopped successfully',
+      statusType: 'success',
+    };
+
+    if (finalStats) {
+      updates.cumulativeUploaded = Math.round(finalStats.uploaded / (1024 * 1024));
+      updates.cumulativeDownloaded = Math.round(finalStats.downloaded / (1024 * 1024));
+    }
+
+    instanceActions.updateInstance(instance.id, updates);
+  }
+
+  // Start all instances with torrents loaded (parallel)
   async function startAllInstances() {
     const currentInstances = get(instances);
     const instancesToStart = currentInstances.filter(inst => inst.torrent && !inst.isRunning);
 
-    if (instancesToStart.length === 0) {
-      return;
-    }
+    if (instancesToStart.length === 0) return;
 
-    const previousActiveId = get(activeInstanceId);
+    const results = await Promise.allSettled(
+      instancesToStart.map(instance => startInstanceById(instance))
+    );
 
-    for (const instance of instancesToStart) {
-      // Temporarily select this instance and start it
-      instanceActions.selectInstance(instance.id);
-
-      try {
-        await startFaking();
-      } catch (error) {
-        console.error(`Failed to start instance ${instance.id}:`, error);
+    results.forEach((result, index) => {
+      if (result.status === 'rejected') {
+        console.error(`Failed to start instance ${instancesToStart[index].id}:`, result.reason);
       }
-    }
-
-    // Restore previous active instance if it still exists
-    const updatedInstances = get(instances);
-    if (previousActiveId && updatedInstances.find(i => i.id === previousActiveId)) {
-      instanceActions.selectInstance(previousActiveId);
-    }
+    });
   }
 
-  // Stop all running instances
+  // Stop all running instances (parallel)
   async function stopAllInstances() {
     const currentInstances = get(instances);
     const instancesToStop = currentInstances.filter(inst => inst.isRunning);
 
-    if (instancesToStop.length === 0) {
-      return;
-    }
+    if (instancesToStop.length === 0) return;
 
-    const previousActiveId = get(activeInstanceId);
+    const results = await Promise.allSettled(
+      instancesToStop.map(instance => stopInstanceById(instance))
+    );
 
-    for (const instance of instancesToStop) {
-      // Temporarily select this instance and stop it
-      instanceActions.selectInstance(instance.id);
-
-      try {
-        await stopFaking();
-      } catch (error) {
-        console.error(`Failed to stop instance ${instance.id}:`, error);
+    results.forEach((result, index) => {
+      if (result.status === 'rejected') {
+        console.error(`Failed to stop instance ${instancesToStop[index].id}:`, result.reason);
       }
-    }
+    });
+  }
 
-    // Restore previous active instance if it still exists
-    const updatedInstances = get(instances);
-    if (previousActiveId && updatedInstances.find(i => i.id === previousActiveId)) {
-      instanceActions.selectInstance(previousActiveId);
-    }
+  // Pause all running instances (parallel)
+  async function pauseAllInstances() {
+    const currentInstances = get(instances);
+    const instancesToPause = currentInstances.filter(inst => inst.isRunning && !inst.isPaused);
+
+    if (instancesToPause.length === 0) return;
+
+    const results = await Promise.allSettled(
+      instancesToPause.map(async instance => {
+        await api.pauseFaker(instance.id);
+        instanceActions.updateInstance(instance.id, {
+          isPaused: true,
+          statusMessage: 'Paused',
+          statusType: 'idle',
+          statusIcon: 'pause',
+        });
+      })
+    );
+
+    results.forEach((result, index) => {
+      if (result.status === 'rejected') {
+        console.error(`Failed to pause instance ${instancesToPause[index].id}:`, result.reason);
+      }
+    });
+  }
+
+  // Resume all paused instances (parallel)
+  async function resumeAllInstances() {
+    const currentInstances = get(instances);
+    const instancesToResume = currentInstances.filter(inst => inst.isRunning && inst.isPaused);
+
+    if (instancesToResume.length === 0) return;
+
+    const results = await Promise.allSettled(
+      instancesToResume.map(async instance => {
+        await api.resumeFaker(instance.id);
+        instanceActions.updateInstance(instance.id, {
+          isPaused: false,
+          statusMessage: 'Actively faking ratio...',
+          statusType: 'running',
+          statusIcon: 'rocket',
+        });
+      })
+    );
+
+    results.forEach((result, index) => {
+      if (result.status === 'rejected') {
+        console.error(`Failed to resume instance ${instancesToResume[index].id}:`, result.reason);
+      }
+    });
   }
 
   // Manual update
@@ -1150,6 +1262,8 @@
       bind:isCollapsed={sidebarCollapsed}
       onStartAll={startAllInstances}
       onStopAll={stopAllInstances}
+      onPauseAll={pauseAllInstances}
+      onResumeAll={resumeAllInstances}
     />
 
     <!-- Main Content -->

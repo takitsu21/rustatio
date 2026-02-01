@@ -81,19 +81,24 @@
     </span>
     <ChevronDown
       size={16}
-      class="ml-2 flex-shrink-0 text-muted-foreground transition-transform {isOpen ? 'rotate-180' : ''}"
+      class="ml-2 flex-shrink-0 text-muted-foreground transition-transform {isOpen
+        ? 'rotate-180'
+        : ''}"
     />
   </button>
 
   <!-- Dropdown menu -->
   {#if isOpen}
-    <div class="absolute z-50 mt-1 w-full rounded-md border border-border bg-popover shadow-md max-h-48 overflow-y-auto">
+    <div
+      class="absolute z-50 mt-1 w-full rounded-md border border-border bg-popover shadow-md max-h-48 overflow-y-auto"
+    >
       {#each versions as version (version)}
         <button
           type="button"
           onclick={() => select(version)}
           onkeydown={e => handleOptionKeydown(e, version)}
-          class="flex w-full items-center px-3 py-2 text-sm hover:bg-muted transition-colors first:rounded-t-md last:rounded-b-md {version === value
+          class="flex w-full items-center px-3 py-2 text-sm hover:bg-muted transition-colors first:rounded-t-md last:rounded-b-md {version ===
+          value
             ? 'bg-muted'
             : ''}"
         >

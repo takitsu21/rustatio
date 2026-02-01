@@ -255,7 +255,9 @@
         },
         selectedDataBackground: {
           lineStyle: { color: COLORS.primary },
-          areaStyle: { color: theme.isDark ? 'rgba(139, 92, 246, 0.2)' : 'rgba(139, 92, 246, 0.15)' },
+          areaStyle: {
+            color: theme.isDark ? 'rgba(139, 92, 246, 0.2)' : 'rgba(139, 92, 246, 0.15)',
+          },
         },
       },
     ];
@@ -297,7 +299,8 @@
     const now = Date.now();
     const updateInterval = 5000; // ~5 seconds between updates
     const currentFirstValue = currentLength > 0 ? stats.upload_rate_history[0] : null;
-    const currentLastValue = currentLength > 0 ? stats.upload_rate_history[currentLength - 1] : null;
+    const currentLastValue =
+      currentLength > 0 ? stats.upload_rate_history[currentLength - 1] : null;
 
     if (currentLength === 0) {
       // No data
@@ -332,7 +335,7 @@
       // Detect by checking if first value changed OR last value changed
       const firstChanged = lastFirstValue !== null && currentFirstValue !== lastFirstValue;
       const lastChanged = lastLastValue !== null && currentLastValue !== lastLastValue;
-      
+
       if (firstChanged || lastChanged) {
         // Shift timestamps: remove oldest, add new one at end
         fallbackTimestamps = [...fallbackTimestamps.slice(1), now];
@@ -408,7 +411,8 @@
 
     // Get timestamps (backend or fallback)
     const backendTimestamps = stats.history_timestamps || [];
-    const hasValidTimestamps = backendTimestamps.length === dataLength && backendTimestamps.length > 0;
+    const hasValidTimestamps =
+      backendTimestamps.length === dataLength && backendTimestamps.length > 0;
     const timestamps = hasValidTimestamps ? backendTimestamps : fallbackTimestamps;
 
     // Safety check - wait for timestamps to be ready
@@ -514,7 +518,9 @@
 
   <div class="grid grid-cols-1 lg:grid-cols-4 gap-3">
     <!-- Performance Chart -->
-    <div class="lg:col-span-3 bg-muted/50 rounded-lg border border-border p-3 flex flex-col h-[220px]">
+    <div
+      class="lg:col-span-3 bg-muted/50 rounded-lg border border-border p-3 flex flex-col h-[220px]"
+    >
       <!-- Custom Legend -->
       {#if stats && stats.upload_rate_history && stats.upload_rate_history.length > 0}
         <div class="flex items-center gap-4 mb-2 px-1">
@@ -542,10 +548,7 @@
         <div class="h-[22px] mb-2"></div>
       {/if}
 
-      <div
-        bind:this={chartContainer}
-        class="w-full flex-1 min-h-0"
-      >
+      <div bind:this={chartContainer} class="w-full flex-1 min-h-0">
         {#if !stats || !stats.upload_rate_history || stats.upload_rate_history.length === 0}
           <div class="w-full h-full flex items-center justify-center">
             <div class="text-center">

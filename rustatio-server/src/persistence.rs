@@ -38,6 +38,9 @@ pub struct PersistedInstance {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct PersistedState {
     pub instances: HashMap<String, PersistedInstance>,
+    /// Default config for new instances (e.g., from watch folder)
+    #[serde(default)]
+    pub default_config: Option<FakerConfig>,
     /// Version for future migrations
     pub version: u32,
 }
@@ -46,6 +49,7 @@ impl PersistedState {
     pub fn new() -> Self {
         Self {
             instances: HashMap::new(),
+            default_config: None,
             version: 1,
         }
     }

@@ -130,6 +130,87 @@ pub struct FakerConfig {
     pub progressive_duration: u64,
 }
 
+/// UI-friendly preset settings format (matches frontend)
+/// Uses human-readable units (GB, hours) and enabled flags for optional fields
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct PresetSettings {
+    pub upload_rate: Option<f64>,
+    pub download_rate: Option<f64>,
+    pub port: Option<u16>,
+    pub selected_client: Option<ClientType>,
+    pub selected_client_version: Option<String>,
+    pub completion_percent: Option<f64>,
+    pub randomize_rates: Option<bool>,
+    pub random_range_percent: Option<f64>,
+    // Stop conditions with enabled flags
+    pub stop_at_ratio_enabled: Option<bool>,
+    pub stop_at_ratio: Option<f64>,
+    pub stop_at_uploaded_enabled: Option<bool>,
+    pub stop_at_uploaded_gb: Option<f64>,
+    pub stop_at_downloaded_enabled: Option<bool>,
+    pub stop_at_downloaded_gb: Option<f64>,
+    pub stop_at_seed_time_enabled: Option<bool>,
+    pub stop_at_seed_time_hours: Option<f64>,
+    pub stop_when_no_leechers: Option<bool>,
+    // Progressive rates
+    pub progressive_rates_enabled: Option<bool>,
+    pub target_upload_rate: Option<f64>,
+    pub target_download_rate: Option<f64>,
+    pub progressive_duration_hours: Option<f64>,
+}
+
+impl From<PresetSettings> for FakerConfig {
+    fn from(p: PresetSettings) -> Self {
+        let stop_at_ratio = if p.stop_at_ratio_enabled.unwrap_or(false) {
+            p.stop_at_ratio
+        } else {
+            None
+        };
+
+        let stop_at_uploaded = if p.stop_at_uploaded_enabled.unwrap_or(false) {
+            p.stop_at_uploaded_gb.map(|gb| (gb * 1024.0 * 1024.0 * 1024.0) as u64)
+        } else {
+            None
+        };
+
+        let stop_at_downloaded = if p.stop_at_downloaded_enabled.unwrap_or(false) {
+            p.stop_at_downloaded_gb.map(|gb| (gb * 1024.0 * 1024.0 * 1024.0) as u64)
+        } else {
+            None
+        };
+
+        let stop_at_seed_time = if p.stop_at_seed_time_enabled.unwrap_or(false) {
+            p.stop_at_seed_time_hours.map(|h| (h * 3600.0) as u64)
+        } else {
+            None
+        };
+
+        FakerConfig {
+            upload_rate: p.upload_rate.unwrap_or(50.0),
+            download_rate: p.download_rate.unwrap_or(100.0),
+            port: p.port.unwrap_or(6881),
+            client_type: p.selected_client.unwrap_or(ClientType::QBittorrent),
+            client_version: p.selected_client_version,
+            initial_uploaded: 0,
+            initial_downloaded: 0,
+            completion_percent: p.completion_percent.unwrap_or(100.0),
+            num_want: 50,
+            randomize_rates: p.randomize_rates.unwrap_or(true),
+            random_range_percent: p.random_range_percent.unwrap_or(20.0),
+            stop_at_ratio,
+            stop_at_uploaded,
+            stop_at_downloaded,
+            stop_at_seed_time,
+            stop_when_no_leechers: p.stop_when_no_leechers.unwrap_or(false),
+            progressive_rates: p.progressive_rates_enabled.unwrap_or(false),
+            target_upload_rate: p.target_upload_rate,
+            target_download_rate: p.target_download_rate,
+            progressive_duration: (p.progressive_duration_hours.unwrap_or(1.0) * 3600.0) as u64,
+        }
+    }
+}
+
 fn default_randomize_rates() -> bool {
     true
 }
@@ -943,5 +1024,77 @@ mod tests {
         let config = FakerConfig::default();
         assert_eq!(config.upload_rate, 50.0);
         assert_eq!(config.download_rate, 100.0);
+    }
+
+    #[test]
+    fn test_preset_settings_to_faker_config_defaults() {
+        let preset = PresetSettings::default();
+        let config: FakerConfig = preset.into();
+
+        assert_eq!(config.upload_rate, 50.0);
+        assert_eq!(config.download_rate, 100.0);
+        assert_eq!(config.port, 6881);
+        assert_eq!(config.client_type, ClientType::QBittorrent);
+        assert_eq!(config.completion_percent, 100.0);
+        assert!(config.randomize_rates);
+        assert_eq!(config.random_range_percent, 20.0);
+        assert!(config.stop_at_ratio.is_none());
+        assert!(config.stop_at_uploaded.is_none());
+        assert!(!config.progressive_rates);
+    }
+
+    #[test]
+    fn test_preset_settings_to_faker_config_with_values() {
+        let preset = PresetSettings {
+            upload_rate: Some(100.0),
+            download_rate: Some(200.0),
+            port: Some(51413),
+            selected_client: Some(ClientType::Transmission),
+            completion_percent: Some(50.0),
+            randomize_rates: Some(false),
+            stop_at_ratio_enabled: Some(true),
+            stop_at_ratio: Some(2.5),
+            stop_at_uploaded_enabled: Some(true),
+            stop_at_uploaded_gb: Some(10.0),
+            stop_at_seed_time_enabled: Some(true),
+            stop_at_seed_time_hours: Some(24.0),
+            progressive_rates_enabled: Some(true),
+            target_upload_rate: Some(500.0),
+            progressive_duration_hours: Some(2.0),
+            ..Default::default()
+        };
+        let config: FakerConfig = preset.into();
+
+        assert_eq!(config.upload_rate, 100.0);
+        assert_eq!(config.download_rate, 200.0);
+        assert_eq!(config.port, 51413);
+        assert_eq!(config.client_type, ClientType::Transmission);
+        assert_eq!(config.completion_percent, 50.0);
+        assert!(!config.randomize_rates);
+        assert_eq!(config.stop_at_ratio, Some(2.5));
+        // 10 GB in bytes
+        assert_eq!(config.stop_at_uploaded, Some(10 * 1024 * 1024 * 1024));
+        // 24 hours in seconds
+        assert_eq!(config.stop_at_seed_time, Some(24 * 3600));
+        assert!(config.progressive_rates);
+        assert_eq!(config.target_upload_rate, Some(500.0));
+        // 2 hours in seconds
+        assert_eq!(config.progressive_duration, 2 * 3600);
+    }
+
+    #[test]
+    fn test_preset_settings_disabled_stop_conditions() {
+        let preset = PresetSettings {
+            stop_at_ratio_enabled: Some(false),
+            stop_at_ratio: Some(2.0),
+            stop_at_uploaded_enabled: Some(false),
+            stop_at_uploaded_gb: Some(50.0),
+            ..Default::default()
+        };
+        let config: FakerConfig = preset.into();
+
+        // Even though values are set, they should be None because enabled is false
+        assert!(config.stop_at_ratio.is_none());
+        assert!(config.stop_at_uploaded.is_none());
     }
 }
