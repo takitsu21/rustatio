@@ -75,6 +75,8 @@ pub struct AppState {
     pub instance_sender: broadcast::Sender<InstanceEvent>,
     /// Persistence manager
     persistence: Arc<Persistence>,
+    /// Default config for new instances (e.g., from watch folder)
+    default_config: Arc<RwLock<Option<FakerConfig>>>,
 }
 
 impl AppState {
@@ -87,12 +89,40 @@ impl AppState {
             log_sender,
             instance_sender,
             persistence: Arc::new(Persistence::new(data_dir)),
+            default_config: Arc::new(RwLock::new(None)),
         }
+    }
+    
+    /// Get the default config for new instances
+    pub async fn get_default_config(&self) -> Option<FakerConfig> {
+        self.default_config.read().await.clone()
+    }
+    
+    /// Set the default config for new instances
+    pub async fn set_default_config(&self, config: Option<FakerConfig>) -> Result<(), String> {
+        *self.default_config.write().await = config.clone();
+        
+        // Also persist it
+        let mut state = PersistedState::new();
+        state.default_config = config;
+        
+        // Load existing state and update just the default_config
+        let existing = self.persistence.load().await;
+        let mut updated = existing;
+        updated.default_config = state.default_config;
+        
+        self.persistence.save(&updated).await
     }
 
     /// Load saved state and restore instances
     pub async fn load_saved_state(&self) -> Result<usize, String> {
         let saved = self.persistence.load().await;
+        
+        // Restore default config if present
+        if let Some(config) = saved.default_config.clone() {
+            *self.default_config.write().await = Some(config);
+            tracing::info!("Restored default config from saved state");
+        }
 
         let mut restored_count = 0;
 
@@ -156,6 +186,7 @@ impl AppState {
 
         let mut persisted = PersistedState {
             instances: HashMap::new(),
+            default_config: self.default_config.read().await.clone(),
             version: 1,
         };
 

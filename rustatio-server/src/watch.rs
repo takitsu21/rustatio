@@ -6,7 +6,7 @@
 use crate::persistence::InstanceSource;
 use crate::state::AppState;
 use notify::{Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
-use rustatio_core::{FakerConfig, TorrentInfo};
+use rustatio_core::TorrentInfo;
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -156,15 +156,96 @@ impl WatchService {
         self.loaded_hashes.clone()
     }
 
-    /// Initialize loaded hashes from existing instances
+    /// Initialize loaded hashes from existing instances, populate path_to_hash mapping,
+    /// and auto-start watch folder instances
     pub async fn init_from_state(&self) {
         let instances = self.state.list_instances().await;
         let mut hashes = self.loaded_hashes.write().await;
-        for instance in instances {
+        
+        let mut watch_folder_to_start = Vec::new();
+        
+        for instance in &instances {
             hashes.insert(instance.torrent.info_hash);
+            
+            // Collect watch folder instances that need to be auto-started
+            if self.config.auto_start 
+                && instance.source == InstanceSource::WatchFolder
+                && !matches!(instance.stats.state, rustatio_core::FakerState::Running)
+            {
+                watch_folder_to_start.push((instance.id.clone(), instance.torrent.name.clone()));
+            }
         }
+        
         if !hashes.is_empty() {
             tracing::info!("Initialized watch service with {} existing torrents", hashes.len());
+        }
+        
+        // Drop the write lock before scanning directory
+        drop(hashes);
+        
+        // Scan watch directory to populate path_to_hash mapping
+        // This is needed so file deletions can be properly tracked after restart
+        self.populate_path_to_hash_mapping().await;
+        
+        // Auto-start watch folder instances that weren't running
+        for (id, name) in watch_folder_to_start {
+            tracing::info!("Auto-starting watch folder instance {} ({})", id, name);
+            if let Err(e) = self.state.start_instance(&id).await {
+                tracing::warn!("Failed to auto-start watch folder instance {}: {}", id, e);
+            }
+        }
+    }
+    
+    /// Scan watch directory and populate path_to_hash mapping for existing torrent files
+    async fn populate_path_to_hash_mapping(&self) {
+        if !self.config.watch_dir.exists() {
+            return;
+        }
+        
+        let loaded = self.loaded_hashes.read().await;
+        let mut path_mapping = self.path_to_hash.write().await;
+        
+        let entries = match std::fs::read_dir(&self.config.watch_dir) {
+            Ok(entries) => entries,
+            Err(e) => {
+                tracing::warn!("Failed to read watch directory for path mapping: {}", e);
+                return;
+            }
+        };
+        
+        let mut mapped_count = 0;
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !is_torrent_file(&path) {
+                continue;
+            }
+            
+            // Try to parse the torrent to get its info_hash
+            let data = match std::fs::read(&path) {
+                Ok(data) => data,
+                Err(_) => continue,
+            };
+            
+            let torrent = match TorrentInfo::from_bytes(&data) {
+                Ok(t) => t,
+                Err(_) => continue,
+            };
+            
+            // Only add to mapping if this hash is in our loaded set
+            if loaded.contains(&torrent.info_hash) {
+                let canonical = path.canonicalize().unwrap_or_else(|_| path.clone());
+                path_mapping.insert(canonical.clone(), torrent.info_hash);
+                tracing::debug!(
+                    "Mapped {} to info_hash {}",
+                    canonical.display(),
+                    hex::encode(torrent.info_hash)
+                );
+                mapped_count += 1;
+            }
+        }
+        
+        if mapped_count > 0 {
+            tracing::info!("Populated path_to_hash mapping with {} entries", mapped_count);
         }
     }
 
@@ -426,7 +507,9 @@ async fn process_torrent_file(
 
     // Create instance with event emission for real-time sync
     let instance_id = state.next_instance_id().await;
-    let config = FakerConfig::default();
+    
+    // Use default config from settings if available, otherwise use built-in defaults
+    let config = state.get_default_config().await.unwrap_or_default();
 
     // Use create_instance_with_event so connected frontends get notified
     state

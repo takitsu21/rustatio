@@ -480,6 +480,19 @@ const serverApi = {
   deleteWatchFile: async filename => {
     await serverFetch(`/watch/files/${encodeURIComponent(filename)}`, { method: 'DELETE' });
   },
+  // Default config for new instances (watch folder, etc.)
+  getDefaultConfig: async () => {
+    return serverFetch('/config/default', { method: 'GET' });
+  },
+  setDefaultConfig: async config => {
+    await serverFetch('/config/default', {
+      method: 'PUT',
+      body: JSON.stringify(config),
+    });
+  },
+  clearDefaultConfig: async () => {
+    await serverFetch('/config/default', { method: 'DELETE' });
+  },
   // Update instance config (without starting the faker)
   // Used to persist form changes before the user clicks Start
   updateInstanceConfig: async (id, config) => {
@@ -696,6 +709,23 @@ const tauriApi = {
   getWatchStatus: async () => null,
   listWatchFiles: async () => [],
   deleteWatchFile: async () => {},
+  // Default config (use localStorage for Tauri since there's no server)
+  getDefaultConfig: async () => {
+    try {
+      const stored = localStorage.getItem('rustatio-default-preset');
+      if (!stored) return null;
+      const preset = JSON.parse(stored);
+      return preset?.settings || null;
+    } catch {
+      return null;
+    }
+  },
+  setDefaultConfig: async () => {
+    // No-op for Tauri - localStorage is managed by defaultPreset.js
+  },
+  clearDefaultConfig: async () => {
+    // No-op for Tauri - localStorage is managed by defaultPreset.js
+  },
   // Config sync not needed in Tauri (state is in-memory)
   updateInstanceConfig: async () => {},
 };
@@ -761,6 +791,23 @@ const wasmApi = {
   getWatchStatus: async () => null,
   listWatchFiles: async () => [],
   deleteWatchFile: async () => {},
+  // Default config (use localStorage for WASM since there's no server)
+  getDefaultConfig: async () => {
+    try {
+      const stored = localStorage.getItem('rustatio-default-preset');
+      if (!stored) return null;
+      const preset = JSON.parse(stored);
+      return preset?.settings || null;
+    } catch {
+      return null;
+    }
+  },
+  setDefaultConfig: async () => {
+    // No-op for WASM - localStorage is managed by defaultPreset.js
+  },
+  clearDefaultConfig: async () => {
+    // No-op for WASM - localStorage is managed by defaultPreset.js
+  },
   // Config sync not needed in WASM (state is in-memory)
   updateInstanceConfig: async () => {},
 };

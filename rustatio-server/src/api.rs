@@ -5,11 +5,11 @@ use axum::{
         sse::{Event, KeepAlive, Sse},
         IntoResponse, Response,
     },
-    routing::{delete, get, patch, post},
+    routing::{delete, get, patch, post, put},
     Json, Router,
 };
 use futures::stream::Stream;
-use rustatio_core::{FakerConfig, TorrentInfo};
+use rustatio_core::{FakerConfig, PresetSettings, TorrentInfo};
 use serde::{Deserialize, Serialize};
 use std::convert::Infallible;
 use tokio_stream::wrappers::BroadcastStream;
@@ -89,6 +89,10 @@ pub fn router() -> Router<ServerState> {
         .route("/watch/status", get(get_watch_status))
         .route("/watch/files", get(list_watch_files))
         .route("/watch/files/{filename}", delete(delete_watch_file))
+        // Default config for new instances
+        .route("/config/default", get(get_default_config))
+        .route("/config/default", put(set_default_config))
+        .route("/config/default", delete(clear_default_config))
         // Auth verification (returns success if token is valid)
         .route("/auth/verify", get(verify_auth))
 }
@@ -481,5 +485,31 @@ async fn delete_watch_file(State(state): State<ServerState>, Path(filename): Pat
     match watch.delete_file(&filename).await {
         Ok(()) => ApiSuccess::response(()),
         Err(e) => ApiError::response(StatusCode::NOT_FOUND, e),
+    }
+}
+
+/// Get the default config for new instances
+async fn get_default_config(State(state): State<ServerState>) -> Response {
+    let config = state.app.get_default_config().await;
+    ApiSuccess::response(config)
+}
+
+/// Set the default config for new instances
+async fn set_default_config(
+    State(state): State<ServerState>,
+    Json(preset): Json<PresetSettings>,
+) -> Response {
+    let config: FakerConfig = preset.into();
+    match state.app.set_default_config(Some(config)).await {
+        Ok(()) => ApiSuccess::response(()),
+        Err(e) => ApiError::response(StatusCode::INTERNAL_SERVER_ERROR, e),
+    }
+}
+
+/// Clear the default config (revert to built-in defaults)
+async fn clear_default_config(State(state): State<ServerState>) -> Response {
+    match state.app.set_default_config(None).await {
+        Ok(()) => ApiSuccess::response(()),
+        Err(e) => ApiError::response(StatusCode::INTERNAL_SERVER_ERROR, e),
     }
 }

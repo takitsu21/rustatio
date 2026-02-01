@@ -1,5 +1,6 @@
 import { writable, get } from 'svelte/store';
 import { api } from '$lib/api';
+import { getDefaultPreset } from '$lib/defaultPreset.js';
 
 // Check if running in Tauri
 const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
@@ -405,10 +406,13 @@ export const instanceActions = {
         updateActiveInstanceStore();
         return restoredInstances[0].id;
       } else {
-        // No saved session - create first instance with defaults
+        // No saved session - create first instance with default preset if available
         const instanceId = await api.createInstance();
 
-        const newInstance = createDefaultInstance(instanceId, {});
+        const defaultPreset = getDefaultPreset();
+        const effectiveDefaults = defaultPreset ? defaultPreset.settings : {};
+
+        const newInstance = createDefaultInstance(instanceId, effectiveDefaults);
         instances.set([newInstance]);
         activeInstanceId.set(instanceId);
         updateActiveInstanceStore();
@@ -424,7 +428,14 @@ export const instanceActions = {
   addInstance: async (defaults = {}) => {
     try {
       const instanceId = await api.createInstance();
-      const newInstance = createDefaultInstance(instanceId, defaults);
+
+      // Merge default preset settings with any passed defaults
+      const defaultPreset = getDefaultPreset();
+      const effectiveDefaults = defaultPreset
+        ? { ...defaultPreset.settings, ...defaults }
+        : defaults;
+
+      const newInstance = createDefaultInstance(instanceId, effectiveDefaults);
 
       instances.update(insts => [...insts, newInstance]);
       activeInstanceId.set(instanceId);

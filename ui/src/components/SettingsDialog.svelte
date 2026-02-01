@@ -1,8 +1,10 @@
 <script>
   import { instances, activeInstanceId, instanceActions } from '../lib/instanceStore.js';
   import { get } from 'svelte/store';
+  import { api } from '$lib/api.js';
   import Button from '$lib/components/ui/button.svelte';
   import { builtInPresets } from '$lib/presets/index.js';
+  import { getDefaultPresetId, setDefaultPreset, clearDefaultPreset } from '$lib/defaultPreset.js';
   import { THEMES, THEME_CATEGORIES, getTheme, selectTheme } from '../lib/themeStore.svelte.js';
   import { Settings, X, Check, Trash2, Download, Upload } from '@lucide/svelte';
   import PresetIcon from './PresetIcon.svelte';
@@ -48,6 +50,35 @@
   }
 
   let customPresets = $state(loadCustomPresets());
+
+  // Default preset state
+  let defaultPresetId = $state(getDefaultPresetId());
+
+  async function setAsDefault(preset) {
+    setDefaultPreset(preset);
+    defaultPresetId = preset.id;
+
+    // Sync to server for watch folder support
+    try {
+      await api.setDefaultConfig(preset.settings);
+    } catch (e) {
+      console.warn('Failed to sync default config to server:', e);
+    }
+  }
+
+  async function clearDefault() {
+    clearDefaultPreset();
+    defaultPresetId = null;
+
+    // Clear on server
+    try {
+      await api.clearDefaultConfig();
+    } catch (e) {
+      console.warn('Failed to clear default config on server:', e);
+    }
+  }
+
+
 
   // Detection avoidance tips
   const detectionTips = [
@@ -505,6 +536,16 @@
         {:else if activeTab === 'presets'}
           <!-- Presets Tab -->
           <div class="space-y-6">
+            <!-- Info box about Apply vs Default -->
+            <div class="bg-muted/50 border border-border rounded-lg p-4">
+              <p class="text-sm text-muted-foreground">
+                <span class="font-semibold text-foreground">Apply</span> applies a preset to the
+                current instance only.
+                <span class="font-semibold text-foreground">Set Default</span> makes new instances/torrents
+                use this preset's settings automatically.
+              </p>
+            </div>
+
             <!-- Built-in Presets -->
             <div>
               <h3 class="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
@@ -534,8 +575,8 @@
                           </span>
                         {/if}
                       </div>
-                      <!-- Action button in header -->
-                      <div class="flex-shrink-0">
+                      <!-- Action buttons in header -->
+                      <div class="flex items-center gap-1 flex-shrink-0">
                         {#if appliedPresetId === preset.id}
                           <span
                             class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold rounded-lg bg-stat-upload/20 text-stat-upload"
@@ -545,6 +586,23 @@
                           </span>
                         {:else}
                           <Button size="sm" onclick={() => applyPreset(preset)}>Apply</Button>
+                        {/if}
+                        {#if defaultPresetId === preset.id}
+                          <button
+                            onclick={() => clearDefault()}
+                            class="ml-1 px-2 py-1.5 text-xs font-medium rounded-lg bg-primary/20 text-primary hover:bg-primary/30 transition-colors"
+                            title="Click to clear default"
+                          >
+                            ★ Default
+                          </button>
+                        {:else}
+                          <button
+                            onclick={() => setAsDefault(preset)}
+                            class="ml-1 px-2 py-1.5 text-xs font-medium rounded-lg border border-border hover:bg-muted transition-colors"
+                            title="Set as default for new instances"
+                          >
+                            Set Default
+                          </button>
                         {/if}
                       </div>
                     </div>
@@ -658,6 +716,23 @@
                             </span>
                           {:else}
                             <Button size="sm" onclick={() => applyPreset(preset)}>Apply</Button>
+                          {/if}
+                          {#if defaultPresetId === preset.id}
+                            <button
+                              onclick={() => clearDefault()}
+                              class="px-2 py-1.5 text-xs font-medium rounded-lg bg-primary/20 text-primary hover:bg-primary/30 transition-colors"
+                              title="Click to clear default"
+                            >
+                              ★ Default
+                            </button>
+                          {:else}
+                            <button
+                              onclick={() => setAsDefault(preset)}
+                              class="px-2 py-1.5 text-xs font-medium rounded-lg border border-border hover:bg-muted transition-colors"
+                              title="Set as default for new instances"
+                            >
+                              Set Default
+                            </button>
                           {/if}
                           <button
                             onclick={() => deleteCustomPreset(preset.id)}

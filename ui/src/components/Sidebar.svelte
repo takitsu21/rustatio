@@ -22,6 +22,8 @@
   let {
     onStartAll = () => {},
     onStopAll = () => {},
+    onPauseAll = () => {},
+    onResumeAll = () => {},
     isOpen = $bindable(false),
     isCollapsed = $bindable(false),
   } = $props();
@@ -38,6 +40,12 @@
 
   let hasStoppedInstancesWithTorrents = $derived(
     $instances.some(inst => inst.torrent && !inst.isRunning)
+  );
+
+  let hasPausedInstances = $derived($instances.some(inst => inst.isRunning && inst.isPaused));
+
+  let hasUnpausedRunningInstances = $derived(
+    $instances.some(inst => inst.isRunning && !inst.isPaused)
   );
 
   // Total stats across all instances
@@ -202,6 +210,14 @@
   function handleStopAll() {
     onStopAll();
   }
+
+  function handlePauseAll() {
+    onPauseAll();
+  }
+
+  function handleResumeAll() {
+    onResumeAll();
+  }
 </script>
 
 <!-- Mobile Overlay -->
@@ -271,7 +287,7 @@
 
     <!-- Bulk Actions -->
     {#if hasMultipleInstancesWithTorrents}
-      <div class={cn('flex gap-2 mb-3', isCollapsed && 'lg:flex-col')}>
+      <div class={cn('flex flex-wrap gap-2 mb-3', isCollapsed && 'lg:flex-col')}>
         <Button
           onclick={handleStartAll}
           disabled={!hasStoppedInstancesWithTorrents}
@@ -299,6 +315,36 @@
           {#snippet children()}
             <Square size={12} fill="currentColor" />
             <span class={cn(isCollapsed && 'lg:hidden')}>Stop All</span>
+          {/snippet}
+        </Button>
+
+        <Button
+          onclick={handlePauseAll}
+          disabled={!hasUnpausedRunningInstances}
+          size="sm"
+          class={cn(
+            'gap-1 bg-stat-ratio hover:bg-stat-ratio/90 text-white shadow-lg shadow-stat-ratio/25',
+            isCollapsed ? 'lg:w-full lg:px-2' : 'flex-1'
+          )}
+          title="Pause all running instances"
+        >
+          {#snippet children()}
+            <Pause size={12} fill="currentColor" />
+            <span class={cn(isCollapsed && 'lg:hidden')}>Pause All</span>
+          {/snippet}
+        </Button>
+
+        <Button
+          onclick={handleResumeAll}
+          disabled={!hasPausedInstances}
+          size="sm"
+          variant="secondary"
+          class={cn('gap-1', isCollapsed ? 'lg:w-full lg:px-2' : 'flex-1')}
+          title="Resume all paused instances"
+        >
+          {#snippet children()}
+            <Play size={12} fill="currentColor" />
+            <span class={cn(isCollapsed && 'lg:hidden')}>Resume All</span>
           {/snippet}
         </Button>
       </div>
