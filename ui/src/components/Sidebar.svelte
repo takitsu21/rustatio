@@ -432,8 +432,8 @@
             </span>
           {/if}
 
-          <!-- Close Button (not shown for watch folder instances) -->
-          {#if $instances.length > 1 && !isCollapsed && instance.source !== 'watch_folder'}
+          <!-- Close Button -->
+          {#if !isCollapsed && instance.source !== 'watch_folder'}
             <button
               class="flex-shrink-0 p-1 rounded hover:bg-destructive/20 group bg-transparent border-0 cursor-pointer"
               onclick={e => handleRemoveInstance(e, instance.id)}
@@ -446,7 +446,7 @@
                 class="text-muted-foreground group-hover:text-destructive transition-colors"
               />
             </button>
-          {:else if instance.source === 'watch_folder' && !isCollapsed && $instances.length > 1}
+          {:else if instance.source === 'watch_folder' && !isCollapsed}
             <!-- Watch folder instance: show folder icon + force delete button -->
             <div class="flex items-center gap-1">
               <span class="flex-shrink-0 text-muted-foreground" title="From watch folder">
@@ -465,11 +465,6 @@
                 />
               </button>
             </div>
-          {:else if instance.source === 'watch_folder' && !isCollapsed}
-            <!-- Watch folder indicator (when only 1 instance) -->
-            <span class="flex-shrink-0 text-muted-foreground" title="From watch folder">
-              <FolderOpen size={12} />
-            </span>
           {/if}
         </div>
 

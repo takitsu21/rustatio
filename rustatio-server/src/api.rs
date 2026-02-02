@@ -16,6 +16,7 @@ use tokio_stream::wrappers::BroadcastStream;
 use tokio_stream::StreamExt;
 
 use crate::auth;
+use crate::persistence::InstanceSource;
 use crate::state::InstanceInfo;
 use crate::watch::{WatchStatus, WatchedFile};
 use crate::ServerState;
@@ -89,6 +90,8 @@ pub fn router() -> Router<ServerState> {
         .route("/watch/status", get(get_watch_status))
         .route("/watch/files", get(list_watch_files))
         .route("/watch/files/{filename}", delete(delete_watch_file))
+        .route("/watch/files/{filename}/reload", post(reload_watch_file))
+        .route("/watch/reload", post(reload_all_watch_files))
         // Default config for new instances
         .route("/config/default", get(get_default_config))
         .route("/config/default", put(set_default_config))
@@ -157,8 +160,22 @@ async fn delete_instance(
     Path(id): Path<String>,
     Query(query): Query<DeleteInstanceQuery>,
 ) -> Response {
+    // Get instance info before deleting (to clear watch service if needed)
+    let instance_info = state.app.get_instance_info_for_delete(&id).await;
+
     match state.app.delete_instance(&id, query.force).await {
-        Ok(()) => ApiSuccess::response(()),
+        Ok(()) => {
+            // If force deleting a watch folder instance, clear the info_hash
+            // so the torrent can be reloaded from the watch folder
+            if query.force {
+                if let Some((source, info_hash)) = instance_info {
+                    if source == InstanceSource::WatchFolder {
+                        state.watch.write().await.remove_info_hash(&info_hash).await;
+                    }
+                }
+            }
+            ApiSuccess::response(())
+        }
         Err(e) => ApiError::response(StatusCode::BAD_REQUEST, e),
     }
 }
@@ -488,6 +505,30 @@ async fn delete_watch_file(State(state): State<ServerState>, Path(filename): Pat
     }
 }
 
+/// Reload a single torrent file from watch folder
+async fn reload_watch_file(State(state): State<ServerState>, Path(filename): Path<String>) -> Response {
+    let watch = state.watch.read().await;
+    match watch.reload_file(&filename).await {
+        Ok(()) => ApiSuccess::response(()),
+        Err(e) => ApiError::response(StatusCode::INTERNAL_SERVER_ERROR, e),
+    }
+}
+
+/// Reload all response
+#[derive(Serialize)]
+struct ReloadAllResponse {
+    reloaded: u32,
+}
+
+/// Reload all torrent files from watch folder (loads any new/unloaded files)
+async fn reload_all_watch_files(State(state): State<ServerState>) -> Response {
+    let watch = state.watch.read().await;
+    match watch.reload_all().await {
+        Ok(count) => ApiSuccess::response(ReloadAllResponse { reloaded: count }),
+        Err(e) => ApiError::response(StatusCode::INTERNAL_SERVER_ERROR, e),
+    }
+}
+
 /// Get the default config for new instances
 async fn get_default_config(State(state): State<ServerState>) -> Response {
     let config = state.app.get_default_config().await;
@@ -495,10 +536,7 @@ async fn get_default_config(State(state): State<ServerState>) -> Response {
 }
 
 /// Set the default config for new instances
-async fn set_default_config(
-    State(state): State<ServerState>,
-    Json(preset): Json<PresetSettings>,
-) -> Response {
+async fn set_default_config(State(state): State<ServerState>, Json(preset): Json<PresetSettings>) -> Response {
     let config: FakerConfig = preset.into();
     match state.app.set_default_config(Some(config)).await {
         Ok(()) => ApiSuccess::response(()),

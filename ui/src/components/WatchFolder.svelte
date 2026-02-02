@@ -11,6 +11,7 @@
     X,
     Trash2,
     RefreshCw,
+    RotateCw,
   } from '@lucide/svelte';
 
   let { isCollapsed = false } = $props();
@@ -18,6 +19,8 @@
   let watchStatus = $state(null);
   let watchFiles = $state([]);
   let isLoading = $state(false);
+  let isReloading = $state(false);
+  let reloadingFile = $state(null);
   let isExpanded = $state(false);
   let error = $state(null);
 
@@ -75,6 +78,36 @@
       await loadWatchData();
     } catch (e) {
       console.error('Failed to delete file:', e);
+    }
+  }
+
+  async function handleReloadFile(filename) {
+    reloadingFile = filename;
+    try {
+      await api.reloadWatchFile(filename);
+      await loadWatchData();
+    } catch (e) {
+      console.error('Failed to reload file:', e);
+      error = e.message;
+    } finally {
+      reloadingFile = null;
+    }
+  }
+
+  async function handleReloadAll() {
+    isReloading = true;
+    error = null;
+    try {
+      const result = await api.reloadAllWatchFiles();
+      await loadWatchData();
+      if (result?.reloaded > 0) {
+        console.log(`Reloaded ${result.reloaded} torrent(s)`);
+      }
+    } catch (e) {
+      console.error('Failed to reload all files:', e);
+      error = e.message;
+    } finally {
+      isReloading = false;
     }
   }
 
@@ -195,6 +228,22 @@
                   </div>
                 </div>
 
+                <!-- Reload Button -->
+                <button
+                  onclick={() => handleReloadFile(file.filename)}
+                  disabled={reloadingFile === file.filename}
+                  class="flex-shrink-0 p-1 rounded hover:bg-primary/20 opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50"
+                  title="Reload file"
+                >
+                  <RotateCw
+                    size={12}
+                    class={cn(
+                      'text-muted-foreground hover:text-primary',
+                      reloadingFile === file.filename && 'animate-spin'
+                    )}
+                  />
+                </button>
+
                 <!-- Delete Button -->
                 <button
                   onclick={() => handleDeleteFile(file.filename)}
@@ -212,19 +261,41 @@
           </div>
         {/if}
 
-        <!-- Refresh Button -->
-        <Button
-          onclick={loadWatchData}
-          disabled={isLoading}
-          size="sm"
-          variant="outline"
-          class="w-full gap-2"
-        >
-          {#snippet children()}
-            <RefreshCw size={12} class={cn('transition-transform', isLoading && 'animate-spin')} />
-            {isLoading ? 'Loading...' : 'Refresh'}
-          {/snippet}
-        </Button>
+        <!-- Action Buttons -->
+        <div class="flex gap-2">
+          <Button
+            onclick={loadWatchData}
+            disabled={isLoading || isReloading}
+            size="sm"
+            variant="outline"
+            class="flex-1 gap-2"
+          >
+            {#snippet children()}
+              <RefreshCw
+                size={12}
+                class={cn('transition-transform', isLoading && 'animate-spin')}
+              />
+              {isLoading ? 'Loading...' : 'Refresh'}
+            {/snippet}
+          </Button>
+
+          <Button
+            onclick={handleReloadAll}
+            disabled={isLoading || isReloading}
+            size="sm"
+            variant="outline"
+            class="flex-1 gap-2"
+            title="Reload all unloaded torrent files"
+          >
+            {#snippet children()}
+              <RotateCw
+                size={12}
+                class={cn('transition-transform', isReloading && 'animate-spin')}
+              />
+              {isReloading ? 'Reloading...' : 'Reload All'}
+            {/snippet}
+          </Button>
+        </div>
       </div>
     {/if}
   </div>

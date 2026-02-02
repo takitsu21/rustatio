@@ -456,12 +456,6 @@ export const instanceActions = {
   removeInstance: async (id, force = false) => {
     const currentInstances = get(instances);
 
-    // Don't remove if it's the last instance
-    if (currentInstances.length <= 1) {
-      console.warn('Cannot remove the last instance');
-      return;
-    }
-
     // Find the instance to check its source
     const instanceToRemove = currentInstances.find(inst => inst.id === id);
     if (!force && instanceToRemove && instanceToRemove.source === 'watch_folder') {
@@ -471,6 +465,16 @@ export const instanceActions = {
     }
 
     try {
+      // If this is the last instance, create a new empty one on the backend first
+      let newInstanceId = null;
+      let newInstance = null;
+      if (currentInstances.length === 1) {
+        newInstanceId = await api.createInstance();
+        const defaultPreset = getDefaultPreset();
+        const effectiveDefaults = defaultPreset ? { ...defaultPreset.settings } : {};
+        newInstance = createDefaultInstance(newInstanceId, effectiveDefaults);
+      }
+
       // Delete the instance on the backend
       // Ignore "not found" errors - the instance may have been lost on server restart
       try {
@@ -482,19 +486,23 @@ export const instanceActions = {
         );
       }
 
-      let newActiveId = null;
+      let newActiveId = newInstanceId;
 
-      // Remove from frontend
+      // Atomically remove old instance and add new one (if last instance) in single update
       instances.update(insts => {
         const filtered = insts.filter(inst => inst.id !== id);
 
-        // If we're removing the active instance, switch to the first one
+        // If we're removing the active instance, switch to the new one or first available
         const currentActiveId = get(activeInstanceId);
         if (currentActiveId === id) {
-          newActiveId = filtered[0]?.id || null;
+          newActiveId = newActiveId || filtered[0]?.id || null;
           activeInstanceId.set(newActiveId);
         }
 
+        // Add new instance in the same update to avoid flicker
+        if (newInstance) {
+          return [...filtered, newInstance];
+        }
         return filtered;
       });
 

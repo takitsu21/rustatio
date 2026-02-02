@@ -78,8 +78,6 @@
     }
   }
 
-
-
   // Detection avoidance tips
   const detectionTips = [
     {

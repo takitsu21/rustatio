@@ -92,32 +92,32 @@ impl AppState {
             default_config: Arc::new(RwLock::new(None)),
         }
     }
-    
+
     /// Get the default config for new instances
     pub async fn get_default_config(&self) -> Option<FakerConfig> {
         self.default_config.read().await.clone()
     }
-    
+
     /// Set the default config for new instances
     pub async fn set_default_config(&self, config: Option<FakerConfig>) -> Result<(), String> {
         *self.default_config.write().await = config.clone();
-        
+
         // Also persist it
         let mut state = PersistedState::new();
         state.default_config = config;
-        
+
         // Load existing state and update just the default_config
         let existing = self.persistence.load().await;
         let mut updated = existing;
         updated.default_config = state.default_config;
-        
+
         self.persistence.save(&updated).await
     }
 
     /// Load saved state and restore instances
     pub async fn load_saved_state(&self) -> Result<usize, String> {
         let saved = self.persistence.load().await;
-        
+
         // Restore default config if present
         if let Some(config) = saved.default_config.clone() {
             *self.default_config.write().await = Some(config);
@@ -760,6 +760,13 @@ impl AppState {
         }
 
         result
+    }
+
+    /// Get instance info needed for delete (source and info_hash)
+    /// Returns None if instance doesn't exist
+    pub async fn get_instance_info_for_delete(&self, id: &str) -> Option<(InstanceSource, [u8; 20])> {
+        let instances = self.instances.read().await;
+        instances.get(id).map(|inst| (inst.source, inst.torrent_info_hash))
     }
 
     /// Find instance ID by info_hash

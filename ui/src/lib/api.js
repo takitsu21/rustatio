@@ -480,6 +480,12 @@ const serverApi = {
   deleteWatchFile: async filename => {
     await serverFetch(`/watch/files/${encodeURIComponent(filename)}`, { method: 'DELETE' });
   },
+  reloadWatchFile: async filename => {
+    await serverFetch(`/watch/files/${encodeURIComponent(filename)}/reload`, { method: 'POST' });
+  },
+  reloadAllWatchFiles: async () => {
+    return serverFetch('/watch/reload', { method: 'POST' });
+  },
   // Default config for new instances (watch folder, etc.)
   getDefaultConfig: async () => {
     return serverFetch('/config/default', { method: 'GET' });
@@ -709,6 +715,8 @@ const tauriApi = {
   getWatchStatus: async () => null,
   listWatchFiles: async () => [],
   deleteWatchFile: async () => {},
+  reloadWatchFile: async () => {},
+  reloadAllWatchFiles: async () => ({ reloaded: 0 }),
   // Default config (use localStorage for Tauri since there's no server)
   getDefaultConfig: async () => {
     try {
@@ -791,6 +799,8 @@ const wasmApi = {
   getWatchStatus: async () => null,
   listWatchFiles: async () => [],
   deleteWatchFile: async () => {},
+  reloadWatchFile: async () => {},
+  reloadAllWatchFiles: async () => ({ reloaded: 0 }),
   // Default config (use localStorage for WASM since there's no server)
   getDefaultConfig: async () => {
     try {
