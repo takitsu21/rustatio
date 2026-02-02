@@ -7,12 +7,16 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{broadcast, mpsc, RwLock};
 use tokio::task::JoinHandle;
+use utoipa::ToSchema;
 
 /// Log event sent to UI via SSE
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, ToSchema)]
 pub struct LogEvent {
+    /// Unix timestamp in milliseconds
     pub timestamp: u64,
+    /// Log level (trace, debug, info, warn, error)
     pub level: String,
+    /// Log message content
     pub message: String,
 }
 
@@ -31,18 +35,25 @@ impl LogEvent {
 }
 
 /// Instance event sent to UI via SSE for real-time sync
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, ToSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum InstanceEvent {
     /// A new instance was created (e.g., from watch folder)
     Created {
+        /// Unique instance identifier
         id: String,
+        /// Name of the torrent
         torrent_name: String,
+        /// Info hash of the torrent (hex encoded)
         info_hash: String,
+        /// Whether the instance was auto-started
         auto_started: bool,
     },
     /// An instance was deleted
-    Deleted { id: String },
+    Deleted {
+        /// Unique instance identifier
+        id: String,
+    },
 }
 
 /// Instance data with cumulative stats tracking
@@ -855,13 +866,22 @@ impl AppState {
 }
 
 /// Information about an instance for the list endpoint
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct InstanceInfo {
+    /// Unique instance identifier
     pub id: String,
+    /// Torrent information
+    #[schema(value_type = Object)]
     pub torrent: TorrentInfo,
+    /// Faker configuration
+    #[schema(value_type = Object)]
     pub config: FakerConfig,
+    /// Current faker statistics
+    #[schema(value_type = Object)]
     pub stats: FakerStats,
+    /// Unix timestamp when instance was created
     pub created_at: u64,
+    /// Source of the instance (manual or watch folder)
     pub source: InstanceSource,
 }
 

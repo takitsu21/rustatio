@@ -14,7 +14,10 @@ use tokio::sync::{oneshot, RwLock};
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::layer::SubscriberExt;
+use utoipa::OpenApi;
+use utoipa_swagger_ui::SwaggerUi;
 
+use crate::api::ApiDoc;
 use crate::log_layer::BroadcastLayer;
 use crate::state::AppState;
 use crate::watch::{WatchConfig, WatchDisabledReason, WatchService};
@@ -103,6 +106,16 @@ async fn main() {
     let app = Router::new()
         // Health check (no auth required)
         .route("/health", get(|| async { "OK" }))
+        // OpenAPI documentation with Swagger UI (public - users enter token via Authorize button)
+        .merge(
+            SwaggerUi::new("/docs")
+                .url("/api-docs/openapi.json", ApiDoc::openapi())
+                .config(
+                    utoipa_swagger_ui::Config::default()
+                        .persist_authorization(true)
+                        .try_it_out_enabled(true),
+                ),
+        )
         // Public API routes (no auth required)
         .nest("/api", api::public_router())
         // Protected API routes (auth required when AUTH_TOKEN is set)
@@ -116,6 +129,7 @@ async fn main() {
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
     tracing::info!("Rustatio server starting on http://{}", addr);
     tracing::info!("Web UI available at http://localhost:{}", port);
+    tracing::info!("API documentation at http://localhost:{}/docs", port);
     tracing::info!("Data directory: {}", data_dir);
 
     // Log authentication status

@@ -12,6 +12,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::{mpsc, RwLock};
+use utoipa::ToSchema;
 
 /// Configuration for the watch folder service
 #[derive(Debug, Clone)]
@@ -87,10 +88,13 @@ impl WatchConfig {
 }
 
 /// Status of a torrent file in the watch folder
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct WatchedFile {
+    /// Filename of the torrent file
     pub filename: String,
+    /// Full path to the torrent file
     pub path: String,
+    /// Current status of the file
     pub status: WatchedFileStatus,
     /// Info hash if successfully parsed (hex string)
     pub info_hash: Option<String>,
@@ -100,7 +104,8 @@ pub struct WatchedFile {
     pub size: u64,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq)]
+/// Status of a watched torrent file
+#[derive(Debug, Clone, Serialize, PartialEq, ToSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum WatchedFileStatus {
     /// File detected but not yet processed
@@ -114,12 +119,17 @@ pub enum WatchedFileStatus {
 }
 
 /// Watch folder service status
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct WatchStatus {
+    /// Whether the watch service is enabled
     pub enabled: bool,
+    /// Directory being watched
     pub watch_dir: String,
+    /// Whether new torrents are auto-started
     pub auto_start: bool,
+    /// Number of torrent files in the folder
     pub file_count: usize,
+    /// Number of successfully loaded torrents
     pub loaded_count: usize,
 }
 

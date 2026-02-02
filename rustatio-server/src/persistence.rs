@@ -4,9 +4,10 @@ use std::collections::HashMap;
 use std::path::Path;
 use tokio::fs;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use utoipa::ToSchema;
 
 /// Source of an instance - where it was created from
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum InstanceSource {
     /// Created manually via UI/API
