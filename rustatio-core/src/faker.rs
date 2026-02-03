@@ -1,6 +1,6 @@
 use crate::protocol::{AnnounceRequest, AnnounceResponse, TrackerClient, TrackerError, TrackerEvent};
 use crate::torrent::{ClientConfig, ClientType, TorrentInfo};
-use crate::{log_debug, log_info, log_trace};
+use crate::{log_debug, log_info, log_trace, log_warn};
 use instant::Instant;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
@@ -110,9 +110,17 @@ pub struct FakerConfig {
     /// Stop after seeding for this many seconds (optional)
     pub stop_at_seed_time: Option<u64>,
 
-    /// Stop when there are no leechers (optional, default false)
+    /// Idle (0 KB/s upload) when there are no leechers - stays connected for bonus points (optional, default false)
     #[serde(default)]
-    pub stop_when_no_leechers: bool,
+    pub idle_when_no_leechers: bool,
+
+    /// Idle (0 KB/s download) when there are no seeders - stays connected for bonus points (optional, default false)
+    #[serde(default)]
+    pub idle_when_no_seeders: bool,
+
+    /// Interval in seconds between scrape requests for peer count updates (default: 60)
+    #[serde(default = "default_scrape_interval")]
+    pub scrape_interval: u64,
 
     // Progressive rate adjustment
     /// Enable progressive rate adjustment
@@ -152,7 +160,8 @@ pub struct PresetSettings {
     pub stop_at_downloaded_gb: Option<f64>,
     pub stop_at_seed_time_enabled: Option<bool>,
     pub stop_at_seed_time_hours: Option<f64>,
-    pub stop_when_no_leechers: Option<bool>,
+    pub idle_when_no_leechers: Option<bool>,
+    pub idle_when_no_seeders: Option<bool>,
     // Progressive rates
     pub progressive_rates_enabled: Option<bool>,
     pub target_upload_rate: Option<f64>,
@@ -202,7 +211,9 @@ impl From<PresetSettings> for FakerConfig {
             stop_at_uploaded,
             stop_at_downloaded,
             stop_at_seed_time,
-            stop_when_no_leechers: p.stop_when_no_leechers.unwrap_or(false),
+            idle_when_no_leechers: p.idle_when_no_leechers.unwrap_or(false),
+            idle_when_no_seeders: p.idle_when_no_seeders.unwrap_or(false),
+            scrape_interval: 60,
             progressive_rates: p.progressive_rates_enabled.unwrap_or(false),
             target_upload_rate: p.target_upload_rate,
             target_download_rate: p.target_download_rate,
@@ -223,6 +234,10 @@ fn default_random_range() -> f64 {
     20.0
 }
 
+fn default_scrape_interval() -> u64 {
+    60 // 60 seconds
+}
+
 impl Default for FakerConfig {
     fn default() -> Self {
         FakerConfig {
@@ -241,7 +256,9 @@ impl Default for FakerConfig {
             stop_at_uploaded: None,
             stop_at_downloaded: None,
             stop_at_seed_time: None,
-            stop_when_no_leechers: false,
+            idle_when_no_leechers: false,
+            idle_when_no_seeders: false,
+            scrape_interval: 60,
             progressive_rates: false,
             target_upload_rate: None,
             target_download_rate: None,
@@ -271,6 +288,10 @@ pub struct FakerStats {
     pub seeders: i64,  // Seeders from tracker
     pub leechers: i64, // Leechers from tracker
     pub state: FakerState,
+
+    // === IDLE STATE ===
+    pub is_idling: bool,               // True when idling due to no peers
+    pub idling_reason: Option<String>, // "no_leechers" or "no_seeders"
 
     // === SESSION STATS (current session only) ===
     pub session_uploaded: u64,   // Uploaded in current session
@@ -328,6 +349,10 @@ pub struct RatioFaker {
     start_time: Instant,
     last_update: Instant,
     announce_interval: Duration,
+
+    // Scrape
+    last_scrape: Instant,
+    scrape_supported: bool,
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -349,6 +374,10 @@ pub struct RatioFaker {
     start_time: Instant,
     last_update: Instant,
     announce_interval: Duration,
+
+    // Scrape
+    last_scrape: Instant,
+    scrape_supported: bool,
 }
 
 impl RatioFaker {
@@ -399,6 +428,10 @@ impl RatioFaker {
             leechers: 0,
             state: FakerState::Idle,
 
+            // Idle state
+            is_idling: false,
+            idling_reason: None,
+
             // Session stats (starts fresh at 0)
             session_uploaded: 0,
             session_downloaded: 0,
@@ -448,6 +481,8 @@ impl RatioFaker {
                 start_time: Instant::now(),
                 last_update: Instant::now(),
                 announce_interval: Duration::from_secs(1800), // Default 30 minutes
+                last_scrape: Instant::now(),
+                scrape_supported: true,
             })
         }
 
@@ -465,6 +500,8 @@ impl RatioFaker {
                 start_time: Instant::now(),
                 last_update: Instant::now(),
                 announce_interval: Duration::from_secs(1800), // Default 30 minutes
+                last_scrape: Instant::now(),
+                scrape_supported: true,
             })
         }
     }
@@ -533,7 +570,7 @@ impl RatioFaker {
         let mut stats = write_lock!(self.stats);
 
         // Calculate and apply rates
-        let (upload_rate, download_rate) = self.calculate_current_rates(&stats);
+        let (upload_rate, download_rate) = self.calculate_current_rates(&mut stats);
         self.update_rate_stats(&mut stats, upload_rate, download_rate);
 
         // Update transfer amounts
@@ -584,10 +621,31 @@ impl RatioFaker {
         let elapsed = now.duration_since(self.last_update);
         self.last_update = now;
 
+        // Periodic scrape for peer counts (if supported and enough time has passed)
+        if self.scrape_supported && now.duration_since(self.last_scrape).as_secs() >= self.config.scrape_interval {
+            match self.scrape().await {
+                Ok(scrape_response) => {
+                    let mut stats = write_lock!(self.stats);
+                    stats.seeders = scrape_response.complete;
+                    stats.leechers = scrape_response.incomplete;
+                    self.last_scrape = now;
+                    log_debug!(
+                        "Scrape updated peer counts: seeders={}, leechers={}",
+                        scrape_response.complete,
+                        scrape_response.incomplete
+                    );
+                }
+                Err(e) => {
+                    log_warn!("Scrape failed, disabling periodic scrape: {}", e);
+                    self.scrape_supported = false;
+                }
+            }
+        }
+
         let mut stats = write_lock!(self.stats);
 
         // Calculate and apply rates
-        let (upload_rate, download_rate) = self.calculate_current_rates(&stats);
+        let (upload_rate, download_rate) = self.calculate_current_rates(&mut stats);
         self.update_rate_stats(&mut stats, upload_rate, download_rate);
 
         // Update transfer amounts
@@ -747,9 +805,9 @@ impl RatioFaker {
         Ok(())
     }
 
-    /// Check if any stop conditions are met
     /// Calculate current upload and download rates with progressive and random adjustments
-    fn calculate_current_rates(&self, stats: &FakerStats) -> (f64, f64) {
+    /// Also updates idle state in stats based on peer availability
+    fn calculate_current_rates(&self, stats: &mut FakerStats) -> (f64, f64) {
         let base_upload_rate = if self.config.progressive_rates {
             self.calculate_progressive_rate(
                 self.config.upload_rate,
@@ -773,10 +831,50 @@ impl RatioFaker {
         };
 
         // Apply randomization
-        let upload_rate = self.apply_randomization(base_upload_rate);
+        let mut upload_rate = self.apply_randomization(base_upload_rate);
         let mut download_rate = self.apply_randomization(base_download_rate);
 
+        // Reset idle state
+        stats.is_idling = false;
+        stats.idling_reason = None;
+
+        // No download if we're complete (left == 0 means nothing left to download)
+        if stats.left == 0 {
+            download_rate = 0.0;
+        }
+
+        // Idle when no leechers (for seeders) - only after first announce
+        // This keeps us connected to the tracker but with 0 upload rate
+        if self.config.idle_when_no_leechers && stats.leechers == 0 && stats.announce_count > 0 {
+            log_debug!(
+                "Idling: no leechers to upload to (leechers={}, announce_count={})",
+                stats.leechers,
+                stats.announce_count
+            );
+            upload_rate = 0.0;
+            stats.is_idling = true;
+            stats.idling_reason = Some("no_leechers".to_string());
+        }
+
+        // Idle when no seeders (for leechers) - only after first announce and if we still need data
+        // This keeps us connected to the tracker but with 0 download rate
+        if self.config.idle_when_no_seeders && stats.seeders == 0 && stats.left > 0 && stats.announce_count > 0 {
+            log_debug!(
+                "Idling: no seeders to download from (seeders={}, left={}, announce_count={})",
+                stats.seeders,
+                stats.left,
+                stats.announce_count
+            );
+            download_rate = 0.0;
+            // Only set idling if not already idling for another reason
+            if !stats.is_idling {
+                stats.is_idling = true;
+                stats.idling_reason = Some("no_seeders".to_string());
+            }
+        }
+
         // Can't download if there are no seeders (and we still have data left to download)
+        // This is the original behavior, separate from idle_when_no_seeders
         if stats.seeders <= 0 && stats.left > 0 {
             download_rate = 0.0;
         }
@@ -934,12 +1032,6 @@ impl RatioFaker {
                 );
                 return true;
             }
-        }
-
-        // Check no leechers condition (only after at least one announce)
-        if self.config.stop_when_no_leechers && stats.leechers == 0 && stats.announce_count > 0 {
-            log_info!("No leechers remaining, stopping");
-            return true;
         }
 
         false

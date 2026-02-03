@@ -1,6 +1,6 @@
 <script>
   import { cn } from '$lib/utils.js';
-  import { Play, Pause, Square, RefreshCw, Rocket } from '@lucide/svelte';
+  import { Play, Pause, Square, RefreshCw, Rocket, Moon } from '@lucide/svelte';
 
   let {
     statusMessage,
@@ -19,6 +19,8 @@
     idle: 'bg-gradient-to-r from-stat-upload to-stat-upload/90 text-white border-stat-upload shadow-lg shadow-stat-upload/30',
     running:
       'bg-gradient-to-r from-primary to-primary/90 text-primary-foreground border-primary shadow-lg shadow-primary/30',
+    idling:
+      'bg-gradient-to-r from-violet-600 to-violet-500 text-white border-violet-600 shadow-lg shadow-violet-600/30',
     success:
       'bg-gradient-to-r from-stat-upload to-stat-upload/90 text-white border-stat-upload shadow-lg shadow-stat-upload/30',
     warning:
@@ -36,6 +38,8 @@
 >
   {#if statusIcon === 'rocket'}
     <Rocket size={18} class="flex-shrink-0" />
+  {:else if statusIcon === 'moon'}
+    <Moon size={18} class="flex-shrink-0" />
   {:else if statusIcon === 'pause'}
     <Pause size={18} class="flex-shrink-0" fill="currentColor" />
   {:else}

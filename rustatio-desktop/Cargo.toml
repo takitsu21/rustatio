@@ -7,7 +7,7 @@ license.workspace = true
 description = "Modern BitTorrent ratio faker"
 
 [[bin]]
-name = "rustatio"
+name = "rustatio-desktop"
 path = "src/main.rs"
 
 [dependencies]

@@ -263,7 +263,8 @@
         stopAtDownloadedGB: instance.stopAtDownloadedGB,
         stopAtSeedTimeEnabled: instance.stopAtSeedTimeEnabled,
         stopAtSeedTimeHours: instance.stopAtSeedTimeHours,
-        stopWhenNoLeechers: instance.stopWhenNoLeechers,
+        idleWhenNoLeechers: instance.idleWhenNoLeechers,
+        idleWhenNoSeeders: instance.idleWhenNoSeeders,
       },
     };
 
@@ -651,9 +652,14 @@
                           >Stop @ {preset.settings.stopAtSeedTimeHours}h</span
                         >
                       {/if}
-                      {#if preset.settings.stopWhenNoLeechers}
+                      {#if preset.settings.idleWhenNoLeechers}
+                        <span class="px-2 py-1 bg-purple-500/20 text-purple-500 rounded"
+                          >Idle: No Leechers</span
+                        >
+                      {/if}
+                      {#if preset.settings.idleWhenNoSeeders}
                         <span class="px-2 py-1 bg-orange-500/20 text-orange-500 rounded"
-                          >Stop: No Leechers</span
+                          >Idle: No Seeders</span
                         >
                       {/if}
                     </div>
@@ -789,9 +795,14 @@
                             >Stop @ {preset.settings.stopAtSeedTimeHours}h</span
                           >
                         {/if}
-                        {#if preset.settings.stopWhenNoLeechers}
+                        {#if preset.settings.idleWhenNoLeechers}
+                          <span class="px-2 py-1 bg-purple-500/20 text-purple-500 rounded"
+                            >Idle: No Leechers</span
+                          >
+                        {/if}
+                        {#if preset.settings.idleWhenNoSeeders}
                           <span class="px-2 py-1 bg-orange-500/20 text-orange-500 rounded"
-                            >Stop: No Leechers</span
+                            >Idle: No Seeders</span
                           >
                         {/if}
                       </div>

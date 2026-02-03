@@ -539,6 +539,24 @@
     return stats.state === 'Stopped' || stats.state === 'Completed';
   }
 
+  // Derive status message/type/icon from stats (for idling state)
+  function getStatusFromStats(stats) {
+    if (stats.is_idling) {
+      const reason =
+        stats.idling_reason === 'no_leechers' ? 'No leechers available' : 'No seeders available';
+      return {
+        statusMessage: `Idling - ${reason}`,
+        statusType: 'idling',
+        statusIcon: 'moon',
+      };
+    }
+    return {
+      statusMessage: 'Actively faking ratio...',
+      statusType: 'running',
+      statusIcon: 'rocket',
+    };
+  }
+
   // =============================================================================
   // Polling Intervals
   // =============================================================================
@@ -568,6 +586,7 @@
         instanceActions.updateInstance(instanceId, {
           stats,
           nextUpdateIn: instance.updateIntervalSeconds ?? 5,
+          ...getStatusFromStats(stats),
         });
 
         if (shouldAutoStop(stats)) {
@@ -592,7 +611,10 @@
         const stats = await api.updateStatsOnly(instanceId);
 
         if (stats && instance.isRunning) {
-          instanceActions.updateInstance(instanceId, { stats });
+          instanceActions.updateInstance(instanceId, {
+            stats,
+            ...getStatusFromStats(stats),
+          });
 
           if (shouldAutoStop(stats)) {
             await handleAutoStop(instanceId, stats);
@@ -767,7 +789,8 @@
         stop_at_seed_time: $activeInstance.stopAtSeedTimeEnabled
           ? parseFloat($activeInstance.stopAtSeedTimeHours ?? 24) * 3600
           : null,
-        stop_when_no_leechers: $activeInstance.stopWhenNoLeechers ?? false,
+        idle_when_no_leechers: $activeInstance.idleWhenNoLeechers ?? false,
+        idle_when_no_seeders: $activeInstance.idleWhenNoSeeders ?? false,
         progressive_rates: $activeInstance.progressiveRatesEnabled ?? false,
         target_upload_rate: $activeInstance.progressiveRatesEnabled
           ? parseFloat($activeInstance.targetUploadRate ?? 100)
@@ -913,11 +936,11 @@
 
     try {
       await api.resumeFaker($activeInstance.id);
+      const stats = await api.getStats($activeInstance.id);
       instanceActions.updateInstance($activeInstance.id, {
         isPaused: false,
-        statusMessage: 'Actively faking ratio...',
-        statusType: 'running',
-        statusIcon: 'rocket',
+        stats,
+        ...getStatusFromStats(stats),
       });
     } catch (error) {
       devLog('error', 'Resume error:', error);
@@ -954,7 +977,8 @@
       stop_at_seed_time: instance.stopAtSeedTimeEnabled
         ? parseFloat(instance.stopAtSeedTimeHours ?? 24) * 3600
         : null,
-      stop_when_no_leechers: instance.stopWhenNoLeechers ?? false,
+      idle_when_no_leechers: instance.idleWhenNoLeechers ?? false,
+      idle_when_no_seeders: instance.idleWhenNoSeeders ?? false,
       progressive_rates: instance.progressiveRatesEnabled ?? false,
       target_upload_rate: instance.progressiveRatesEnabled
         ? parseFloat(instance.targetUploadRate ?? 100)
@@ -1088,11 +1112,11 @@
     const results = await Promise.allSettled(
       instancesToResume.map(async instance => {
         await api.resumeFaker(instance.id);
+        const stats = await api.getStats(instance.id);
         instanceActions.updateInstance(instance.id, {
           isPaused: false,
-          statusMessage: 'Actively faking ratio...',
-          statusType: 'running',
-          statusIcon: 'rocket',
+          stats,
+          ...getStatusFromStats(stats),
         });
       })
     );
@@ -1121,10 +1145,18 @@
       await api.updateFaker($activeInstance.id);
       const stats = await api.getStats($activeInstance.id);
 
-      // Restore the correct status message based on paused state
-      const statusMessage = isPausedBeforeUpdate ? 'Paused' : 'Actively faking ratio...';
-      const statusType = isPausedBeforeUpdate ? 'idle' : 'running';
-      const statusIcon = isPausedBeforeUpdate ? 'pause' : 'rocket';
+      // Restore the correct status message based on paused state or idling
+      let statusMessage, statusType, statusIcon;
+      if (isPausedBeforeUpdate) {
+        statusMessage = 'Paused';
+        statusType = 'idle';
+        statusIcon = 'pause';
+      } else {
+        const statusFromStats = getStatusFromStats(stats);
+        statusMessage = statusFromStats.statusMessage;
+        statusType = statusFromStats.statusType;
+        statusIcon = statusFromStats.statusIcon;
+      }
 
       instanceActions.updateInstance($activeInstance.id, {
         stats,
@@ -1145,9 +1177,21 @@
         // Only update status if the instance is still running
         const instance = $instances.find(i => i.id === instanceId);
         if (instance && instance.isRunning) {
-          const statusMessage = instance.isPaused ? 'Paused' : 'Actively faking ratio...';
-          const statusType = instance.isPaused ? 'idle' : 'running';
-          const statusIcon = instance.isPaused ? 'pause' : 'rocket';
+          let statusMessage, statusType, statusIcon;
+          if (instance.isPaused) {
+            statusMessage = 'Paused';
+            statusType = 'idle';
+            statusIcon = 'pause';
+          } else if (instance.stats?.is_idling) {
+            const statusFromStats = getStatusFromStats(instance.stats);
+            statusMessage = statusFromStats.statusMessage;
+            statusType = statusFromStats.statusType;
+            statusIcon = statusFromStats.statusIcon;
+          } else {
+            statusMessage = 'Actively faking ratio...';
+            statusType = 'running';
+            statusIcon = 'rocket';
+          }
           instanceActions.updateInstance(instanceId, {
             statusMessage,
             statusType,
@@ -1226,7 +1270,8 @@
           stop_at_seed_time: instance.stopAtSeedTimeEnabled
             ? parseFloat(instance.stopAtSeedTimeHours ?? 24) * 3600
             : null,
-          stop_when_no_leechers: instance.stopWhenNoLeechers ?? false,
+          idle_when_no_leechers: instance.idleWhenNoLeechers ?? false,
+          idle_when_no_seeders: instance.idleWhenNoSeeders ?? false,
           progressive_rates: instance.progressiveRatesEnabled ?? false,
           target_upload_rate: instance.progressiveRatesEnabled
             ? parseFloat(instance.targetUploadRate ?? 100)
@@ -1414,7 +1459,9 @@
                 stopAtDownloadedGB={$activeInstance.stopAtDownloadedGB}
                 stopAtSeedTimeEnabled={$activeInstance.stopAtSeedTimeEnabled}
                 stopAtSeedTimeHours={$activeInstance.stopAtSeedTimeHours}
-                stopWhenNoLeechers={$activeInstance.stopWhenNoLeechers}
+                idleWhenNoLeechers={$activeInstance.idleWhenNoLeechers}
+                idleWhenNoSeeders={$activeInstance.idleWhenNoSeeders}
+                completionPercent={$activeInstance.completionPercent}
                 isRunning={$activeInstance.isRunning || false}
                 onUpdate={updates => {
                   instanceActions.updateInstance($activeInstance.id, updates);
