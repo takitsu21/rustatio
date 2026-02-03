@@ -3,7 +3,7 @@
   import Checkbox from '$lib/components/ui/checkbox.svelte';
   import Input from '$lib/components/ui/input.svelte';
   import Label from '$lib/components/ui/label.svelte';
-  import { Target, Percent, Upload, Download, Clock, Users } from '@lucide/svelte';
+  import { Target, Percent, Upload, Download, Clock, Users, Pause } from '@lucide/svelte';
 
   let {
     stopAtRatioEnabled,
@@ -14,7 +14,9 @@
     stopAtDownloadedGB,
     stopAtSeedTimeEnabled,
     stopAtSeedTimeHours,
-    stopWhenNoLeechers,
+    idleWhenNoLeechers,
+    idleWhenNoSeeders,
+    completionPercent = 100,
     isRunning,
     onUpdate,
   } = $props();
@@ -28,11 +30,15 @@
   let localStopAtDownloadedGB = $state();
   let localStopAtSeedTimeEnabled = $state();
   let localStopAtSeedTimeHours = $state();
-  let localStopWhenNoLeechers = $state();
+  let localIdleWhenNoLeechers = $state();
+  let localIdleWhenNoSeeders = $state();
 
   // Track if we're currently editing to prevent external updates from interfering
   let isEditing = $state(false);
   let editTimeout;
+
+  // Check if running in leecher mode (completion < 100%)
+  let isLeecherMode = $derived(completionPercent < 100);
 
   // Update local state when props change (only when not actively editing)
   $effect(() => {
@@ -45,7 +51,8 @@
       localStopAtDownloadedGB = stopAtDownloadedGB;
       localStopAtSeedTimeEnabled = stopAtSeedTimeEnabled;
       localStopAtSeedTimeHours = stopAtSeedTimeHours;
-      localStopWhenNoLeechers = stopWhenNoLeechers;
+      localIdleWhenNoLeechers = idleWhenNoLeechers;
+      localIdleWhenNoSeeders = idleWhenNoSeeders;
     }
   });
 
@@ -70,7 +77,8 @@
       localStopAtUploadedEnabled,
       localStopAtDownloadedEnabled,
       localStopAtSeedTimeEnabled,
-      localStopWhenNoLeechers,
+      localIdleWhenNoLeechers,
+      localIdleWhenNoSeeders,
     ].filter(Boolean).length
   );
 </script>
@@ -248,26 +256,62 @@
       {/if}
     </div>
 
-    <!-- No Leechers -->
-    <div class="flex items-center gap-3 p-3 {localStopWhenNoLeechers ? 'bg-primary/5' : ''}">
+    <!-- Idle when No Leechers (for seeders) -->
+    <div
+      class="flex items-center gap-3 p-3 border-b border-border {localIdleWhenNoLeechers
+        ? 'bg-primary/5'
+        : ''}"
+    >
       <Checkbox
-        id="stop-no-leechers"
-        checked={localStopWhenNoLeechers}
+        id="idle-no-leechers"
+        checked={localIdleWhenNoLeechers}
         disabled={isRunning}
         onchange={checked => {
-          localStopWhenNoLeechers = checked;
-          updateValue('stopWhenNoLeechers', checked);
+          localIdleWhenNoLeechers = checked;
+          updateValue('idleWhenNoLeechers', checked);
+        }}
+      />
+      <Pause
+        size={16}
+        class={localIdleWhenNoLeechers ? 'text-purple-500' : 'text-muted-foreground'}
+      />
+      <Label for="idle-no-leechers" class="flex-1 cursor-pointer text-sm font-medium">
+        Idle when no leechers
+      </Label>
+      {#if localIdleWhenNoLeechers}
+        <span class="text-xs text-purple-500 font-medium">0 KB/s</span>
+      {:else}
+        <span class="text-xs text-muted-foreground">disabled</span>
+      {/if}
+    </div>
+
+    <!-- Idle when No Seeders (for leechers) -->
+    <div class="flex items-center gap-3 p-3 {localIdleWhenNoSeeders ? 'bg-primary/5' : ''}">
+      <Checkbox
+        id="idle-no-seeders"
+        checked={localIdleWhenNoSeeders}
+        disabled={isRunning}
+        onchange={checked => {
+          localIdleWhenNoSeeders = checked;
+          updateValue('idleWhenNoSeeders', checked);
         }}
       />
       <Users
         size={16}
-        class={localStopWhenNoLeechers ? 'text-purple-500' : 'text-muted-foreground'}
+        class={localIdleWhenNoSeeders ? 'text-orange-500' : 'text-muted-foreground'}
       />
-      <Label for="stop-no-leechers" class="flex-1 cursor-pointer text-sm font-medium">
-        No Leechers
+      <Label for="idle-no-seeders" class="flex-1 cursor-pointer text-sm font-medium">
+        Idle when no seeders
       </Label>
-      {#if localStopWhenNoLeechers}
-        <span class="text-xs text-primary font-medium">auto-stop</span>
+      {#if localIdleWhenNoSeeders}
+        {#if !isLeecherMode}
+          <span
+            class="text-xs text-orange-500 font-medium"
+            title="Only works when completion < 100%">0 KB/s</span
+          >
+        {:else}
+          <span class="text-xs text-orange-500 font-medium">0 KB/s</span>
+        {/if}
       {:else}
         <span class="text-xs text-muted-foreground">disabled</span>
       {/if}

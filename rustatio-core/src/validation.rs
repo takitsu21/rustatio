@@ -118,8 +118,6 @@ pub fn validate_percentage(value: f64, field_name: &str) -> Result<f64, Validati
     Ok(value)
 }
 
-// ClientType validation removed - it's an enum so type-safe by design
-
 #[cfg(test)]
 mod tests {
     use super::*;

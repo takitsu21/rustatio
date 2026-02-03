@@ -17,6 +17,7 @@
     FolderOpen,
     Settings,
     Info,
+    Moon,
   } from '@lucide/svelte';
 
   let {
@@ -152,7 +153,9 @@
 
   function getInstanceStatus(instance) {
     if (instance.isRunning) {
-      return instance.isPaused ? 'paused' : 'running';
+      if (instance.isPaused) return 'paused';
+      if (instance.stats?.is_idling) return 'idling';
+      return 'running';
     }
     return 'idle';
   }
@@ -393,11 +396,14 @@
                 'flex-shrink-0',
                 status === 'idle' && 'text-muted-foreground',
                 status === 'running' && 'text-stat-upload animate-pulse-slow',
+                status === 'idling' && 'text-violet-500',
                 status === 'paused' && 'text-stat-ratio'
               )}
             >
               {#if status === 'running'}
                 <Circle size={10} fill="currentColor" />
+              {:else if status === 'idling'}
+                <Moon size={10} fill="currentColor" />
               {:else if status === 'paused'}
                 <Pause size={10} fill="currentColor" />
               {:else}

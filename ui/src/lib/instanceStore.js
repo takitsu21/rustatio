@@ -63,8 +63,10 @@ function createDefaultInstance(id, defaults = {}) {
       defaults.stopAtSeedTimeEnabled !== undefined ? defaults.stopAtSeedTimeEnabled : false,
     stopAtSeedTimeHours:
       defaults.stopAtSeedTimeHours !== undefined ? defaults.stopAtSeedTimeHours : 24,
-    stopWhenNoLeechers:
-      defaults.stopWhenNoLeechers !== undefined ? defaults.stopWhenNoLeechers : false,
+    idleWhenNoLeechers:
+      defaults.idleWhenNoLeechers !== undefined ? defaults.idleWhenNoLeechers : false,
+    idleWhenNoSeeders:
+      defaults.idleWhenNoSeeders !== undefined ? defaults.idleWhenNoSeeders : false,
 
     // Progressive rates
     progressiveRatesEnabled:
@@ -121,7 +123,8 @@ async function saveSession(instances, activeId) {
         stop_at_downloaded_gb: parseFloat(inst.stopAtDownloadedGB),
         stop_at_seed_time_enabled: inst.stopAtSeedTimeEnabled,
         stop_at_seed_time_hours: parseFloat(inst.stopAtSeedTimeHours),
-        stop_when_no_leechers: inst.stopWhenNoLeechers,
+        idle_when_no_leechers: inst.idleWhenNoLeechers,
+        idle_when_no_seeders: inst.idleWhenNoSeeders,
         progressive_rates_enabled: inst.progressiveRatesEnabled,
         target_upload_rate: parseFloat(inst.targetUploadRate),
         target_download_rate: parseFloat(inst.targetDownloadRate),
@@ -157,7 +160,8 @@ async function saveSession(instances, activeId) {
           stop_at_downloaded_gb: parseFloat(inst.stopAtDownloadedGB),
           stop_at_seed_time_enabled: inst.stopAtSeedTimeEnabled,
           stop_at_seed_time_hours: parseFloat(inst.stopAtSeedTimeHours),
-          stop_when_no_leechers: inst.stopWhenNoLeechers,
+          idle_when_no_leechers: inst.idleWhenNoLeechers,
+          idle_when_no_seeders: inst.idleWhenNoSeeders,
           progressive_rates_enabled: inst.progressiveRatesEnabled,
           target_upload_rate: parseFloat(inst.targetUploadRate),
           target_download_rate: parseFloat(inst.targetDownloadRate),
@@ -220,7 +224,8 @@ function loadSessionFromStorage(config = null) {
         stopAtDownloadedGB: inst.stop_at_downloaded_gb,
         stopAtSeedTimeEnabled: inst.stop_at_seed_time_enabled,
         stopAtSeedTimeHours: inst.stop_at_seed_time_hours,
-        stopWhenNoLeechers: inst.stop_when_no_leechers || false,
+        idleWhenNoLeechers: inst.idle_when_no_leechers || false,
+        idleWhenNoSeeders: inst.idle_when_no_seeders || false,
         progressiveRatesEnabled: inst.progressive_rates_enabled,
         targetUploadRate: inst.target_upload_rate,
         targetDownloadRate: inst.target_download_rate,
@@ -301,7 +306,8 @@ export const instanceActions = {
                   (serverInst.config.stop_at_downloaded || 0) / (1024 * 1024 * 1024),
                 stopAtSeedTimeEnabled: serverInst.config.stop_at_seed_time !== null,
                 stopAtSeedTimeHours: (serverInst.config.stop_at_seed_time || 0) / 3600,
-                stopWhenNoLeechers: serverInst.config.stop_when_no_leechers || false,
+                idleWhenNoLeechers: serverInst.config.idle_when_no_leechers || false,
+                idleWhenNoSeeders: serverInst.config.idle_when_no_seeders || false,
                 progressiveRatesEnabled: serverInst.config.progressive_rates || false,
                 targetUploadRate: serverInst.config.target_upload_rate || 100,
                 targetDownloadRate: serverInst.config.target_download_rate || 200,
@@ -604,7 +610,8 @@ export const instanceActions = {
       stopAtDownloadedGB: (serverInst.config.stop_at_downloaded || 0) / (1024 * 1024 * 1024),
       stopAtSeedTimeEnabled: serverInst.config.stop_at_seed_time !== null,
       stopAtSeedTimeHours: (serverInst.config.stop_at_seed_time || 0) / 3600,
-      stopWhenNoLeechers: serverInst.config.stop_when_no_leechers || false,
+      idleWhenNoLeechers: serverInst.config.idle_when_no_leechers || false,
+      idleWhenNoSeeders: serverInst.config.idle_when_no_seeders || false,
       progressiveRatesEnabled: serverInst.config.progressive_rates || false,
       targetUploadRate: serverInst.config.target_upload_rate || 100,
       targetDownloadRate: serverInst.config.target_download_rate || 200,

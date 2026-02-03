@@ -76,9 +76,13 @@ pub enum Commands {
         #[arg(long, value_name = "HOURS")]
         stop_time: Option<f64>,
 
-        /// Stop when there are no leechers
+        /// Idle (0 KB/s) when there are no leechers instead of uploading
         #[arg(long)]
-        stop_when_no_leechers: bool,
+        idle_when_no_leechers: bool,
+
+        /// Idle (0 KB/s) when there are no seeders instead of downloading
+        #[arg(long)]
+        idle_when_no_seeders: bool,
 
         /// Disable rate randomization
         #[arg(long)]
