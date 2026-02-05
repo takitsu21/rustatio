@@ -1,7 +1,7 @@
 #![cfg_attr(all(not(debug_assertions), target_os = "windows"), windows_subsystem = "windows")]
 
 use rustatio_core::validation;
-use rustatio_core::{AppConfig, FakerConfig, FakerState, FakerStats, RatioFaker, TorrentInfo};
+use rustatio_core::{AppConfig, ClientInfo, ClientType, FakerConfig, FakerState, FakerStats, RatioFaker, TorrentInfo};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -487,12 +487,13 @@ async fn resume_faker(instance_id: u32, state: State<'_, AppState>, app: AppHand
 // Tauri command: Get available client types
 #[tauri::command]
 async fn get_client_types() -> Vec<String> {
-    vec![
-        "utorrent".to_string(),
-        "qbittorrent".to_string(),
-        "transmission".to_string(),
-        "deluge".to_string(),
-    ]
+    ClientType::all_ids()
+}
+
+// Tauri command: Get detailed client information
+#[tauri::command]
+async fn get_client_infos() -> Vec<ClientInfo> {
+    ClientType::all_infos()
 }
 
 // Tauri command: Write file to disk (for export functionality)
@@ -542,6 +543,7 @@ fn main() {
             pause_faker,
             resume_faker,
             get_client_types,
+            get_client_infos,
             write_file,
         ])
         .setup(|app| {

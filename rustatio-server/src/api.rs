@@ -9,7 +9,7 @@ use axum::{
     Json, Router,
 };
 use futures::stream::Stream;
-use rustatio_core::{FakerConfig, PresetSettings, TorrentInfo};
+use rustatio_core::{ClientType, FakerConfig, PresetSettings, TorrentInfo};
 use serde::{Deserialize, Serialize};
 use std::convert::Infallible;
 use tokio_stream::wrappers::BroadcastStream;
@@ -82,6 +82,7 @@ impl Modify for SecurityAddon {
         update_stats_only,
         get_stats,
         get_client_types,
+        get_client_infos,
         get_network_status,
         logs_sse,
         instances_sse,
@@ -112,7 +113,8 @@ impl Modify for SecurityAddon {
             WatchedFile,
             WatchedFileStatus,
             LogEvent,
-            InstanceEvent
+            InstanceEvent,
+            ClientInfoResponse
         )
     ),
     modifiers(&SecurityAddon),
@@ -190,6 +192,7 @@ pub fn router() -> Router<ServerState> {
         .route("/faker/{id}/stats-only", post(update_stats_only))
         // Client types
         .route("/clients", get(get_client_types))
+        .route("/clients/info", get(get_client_infos))
         // Network status (VPN detection)
         .route("/network/status", get(get_network_status))
         // SSE streaming
@@ -718,16 +721,59 @@ async fn get_stats(State(state): State<ServerState>, Path(id): Path<String>) -> 
     path = "/clients",
     tag = "clients",
     summary = "Get available client types",
-    description = "Returns a list of BitTorrent client types that can be emulated.",
+    description = "Returns a list of BitTorrent client type IDs that can be emulated.",
     security(("bearer_auth" = [])),
     responses(
-        (status = 200, description = "List of client types", body = ApiSuccess<Vec<String>>),
+        (status = 200, description = "List of client type IDs", body = ApiSuccess<Vec<String>>),
         (status = 401, description = "Unauthorized", body = ApiError)
     )
 )]
 async fn get_client_types() -> Response {
-    let types = vec!["utorrent", "qbittorrent", "transmission", "deluge"];
-    ApiSuccess::response(types)
+    ApiSuccess::response(ClientType::all_ids())
+}
+
+#[utoipa::path(
+    get,
+    path = "/clients/info",
+    tag = "clients",
+    summary = "Get detailed client information",
+    description = "Returns detailed information about all available BitTorrent clients including versions and default ports.",
+    security(("bearer_auth" = [])),
+    responses(
+        (status = 200, description = "List of client information", body = ApiSuccess<Vec<ClientInfoResponse>>),
+        (status = 401, description = "Unauthorized", body = ApiError)
+    )
+)]
+async fn get_client_infos() -> Response {
+    let infos: Vec<ClientInfoResponse> = ClientType::all_infos().into_iter().map(|i| i.into()).collect();
+    ApiSuccess::response(infos)
+}
+
+/// Client information for API responses (mirrors rustatio_core::ClientInfo but with ToSchema)
+#[derive(Serialize, ToSchema)]
+struct ClientInfoResponse {
+    /// Machine-readable ID (e.g., "qbittorrent")
+    id: String,
+    /// Human-readable display name (e.g., "qBittorrent")
+    name: String,
+    /// Default version to use
+    default_version: String,
+    /// Available versions (newest first)
+    versions: Vec<String>,
+    /// Default port
+    default_port: u16,
+}
+
+impl From<rustatio_core::ClientInfo> for ClientInfoResponse {
+    fn from(info: rustatio_core::ClientInfo) -> Self {
+        ClientInfoResponse {
+            id: info.id,
+            name: info.name,
+            default_version: info.default_version,
+            versions: info.versions,
+            default_port: info.default_port,
+        }
+    }
 }
 
 /// Network status response from gluetun

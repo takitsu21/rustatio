@@ -1,5 +1,5 @@
 <script>
-  import { siQbittorrent, siUtorrent, siTransmission, siDeluge } from 'simple-icons';
+  import { siBittorrent, siQbittorrent, siUtorrent, siTransmission, siDeluge } from 'simple-icons';
 
   let { clientId, size = 16, class: className = '' } = $props();
 
@@ -8,6 +8,7 @@
     utorrent: { icon: siUtorrent, color: `#${siUtorrent.hex}` },
     transmission: { icon: siTransmission, color: `#${siTransmission.hex}` },
     deluge: { icon: siDeluge, color: `#${siDeluge.hex}` },
+    bittorrent: { icon: siBittorrent, color: `#${siBittorrent.hex}` },
   };
 
   const currentIcon = $derived(icons[clientId]);

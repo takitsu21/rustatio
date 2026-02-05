@@ -272,6 +272,12 @@ pub async fn scrape_tracker(id: u32) -> Result<JsValue, JsValue> {
 
 #[wasm_bindgen]
 pub fn get_client_types() -> JsValue {
-    let types = vec!["utorrent", "qbittorrent", "transmission", "deluge"];
+    let types = ClientType::all_ids();
     serde_wasm_bindgen::to_value(&types).unwrap()
+}
+
+#[wasm_bindgen]
+pub fn get_client_infos() -> JsValue {
+    let infos = ClientType::all_infos();
+    serde_wasm_bindgen::to_value(&infos).unwrap()
 }

@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use rustatio_core::{FakerState, FakerStats, TorrentInfo};
+use rustatio_core::{ClientType, FakerState, FakerStats, TorrentInfo};
 use serde::Serialize;
 
 /// All JSON output events
@@ -331,41 +331,35 @@ impl From<&TorrentInfo> for TorrentInfoOutput {
 /// Output for the `clients` subcommand
 #[derive(Debug, Serialize)]
 pub struct ClientsOutput {
-    pub clients: Vec<ClientInfo>,
+    pub clients: Vec<ClientInfoOutput>,
 }
 
+/// Client info output (local struct to control serialization)
 #[derive(Debug, Serialize)]
-pub struct ClientInfo {
+pub struct ClientInfoOutput {
     pub id: String,
     pub name: String,
     pub default_version: String,
+    pub versions: Vec<String>,
+    pub default_port: u16,
+}
+
+impl From<rustatio_core::ClientInfo> for ClientInfoOutput {
+    fn from(info: rustatio_core::ClientInfo) -> Self {
+        ClientInfoOutput {
+            id: info.id,
+            name: info.name,
+            default_version: info.default_version,
+            versions: info.versions,
+            default_port: info.default_port,
+        }
+    }
 }
 
 impl ClientsOutput {
     pub fn new() -> Self {
         ClientsOutput {
-            clients: vec![
-                ClientInfo {
-                    id: "qbittorrent".to_string(),
-                    name: "qBittorrent".to_string(),
-                    default_version: "5.1.4".to_string(),
-                },
-                ClientInfo {
-                    id: "utorrent".to_string(),
-                    name: "uTorrent".to_string(),
-                    default_version: "3.5.5".to_string(),
-                },
-                ClientInfo {
-                    id: "transmission".to_string(),
-                    name: "Transmission".to_string(),
-                    default_version: "4.0.5".to_string(),
-                },
-                ClientInfo {
-                    id: "deluge".to_string(),
-                    name: "Deluge".to_string(),
-                    default_version: "2.1.1".to_string(),
-                },
-            ],
+            clients: ClientType::all_infos().into_iter().map(|i| i.into()).collect(),
         }
     }
 }

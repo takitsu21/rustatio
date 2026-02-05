@@ -238,6 +238,7 @@ pub enum ClientArg {
     Utorrent,
     Transmission,
     Deluge,
+    Bittorrent,
 }
 
 impl From<ClientArg> for rustatio_core::ClientType {
@@ -247,6 +248,7 @@ impl From<ClientArg> for rustatio_core::ClientType {
             ClientArg::Utorrent => rustatio_core::ClientType::UTorrent,
             ClientArg::Transmission => rustatio_core::ClientType::Transmission,
             ClientArg::Deluge => rustatio_core::ClientType::Deluge,
+            ClientArg::Bittorrent => rustatio_core::ClientType::BitTorrent,
         }
     }
 }
