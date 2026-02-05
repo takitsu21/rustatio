@@ -1,10 +1,6 @@
-//! Watch folder service for automatic torrent loading
-//!
-//! Watches a directory for .torrent files and automatically loads them as instances.
-//! Optionally auto-starts faking with default configuration.
-
-use crate::persistence::InstanceSource;
-use crate::state::AppState;
+use super::lifecycle::InstanceLifecycle;
+use super::persistence::InstanceSource;
+use super::state::AppState;
 use notify::{Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use rustatio_core::TorrentInfo;
 use serde::Serialize;
@@ -14,28 +10,20 @@ use std::sync::Arc;
 use tokio::sync::{mpsc, RwLock};
 use utoipa::ToSchema;
 
-/// Configuration for the watch folder service
 #[derive(Debug, Clone)]
 pub struct WatchConfig {
-    /// Directory to watch for .torrent files
     pub watch_dir: PathBuf,
-    /// Whether to auto-start faking when a torrent is loaded
     pub auto_start: bool,
-    /// Whether the watch service is enabled
     pub enabled: bool,
 }
 
-/// Reason why watch folder is disabled
 #[derive(Debug, Clone)]
 pub enum WatchDisabledReason {
-    /// Explicitly disabled via WATCH_ENABLED=false
     ExplicitlyDisabled,
-    /// Watch directory does not exist and wasn't explicitly enabled
     DirectoryNotFound,
 }
 
 impl WatchConfig {
-    /// Load configuration from environment variables
     pub fn from_env() -> (Self, Option<WatchDisabledReason>) {
         let watch_dir = std::env::var("WATCH_DIR").unwrap_or_else(|_| "/torrents".to_string());
         let watch_path = PathBuf::from(&watch_dir);
@@ -44,7 +32,6 @@ impl WatchConfig {
             .map(|v| v.to_lowercase() == "true" || v == "1")
             .unwrap_or(false);
 
-        // Determine enabled status with reason tracking
         let (enabled, disabled_reason) = match std::env::var("WATCH_ENABLED") {
             Ok(val) => {
                 let val_lower = val.to_lowercase();
@@ -87,61 +74,38 @@ impl WatchConfig {
     }
 }
 
-/// Status of a torrent file in the watch folder
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct WatchedFile {
-    /// Filename of the torrent file
     pub filename: String,
-    /// Full path to the torrent file
     pub path: String,
-    /// Current status of the file
     pub status: WatchedFileStatus,
-    /// Info hash if successfully parsed (hex string)
     pub info_hash: Option<String>,
-    /// Torrent name if successfully parsed
     pub name: Option<String>,
-    /// File size in bytes
     pub size: u64,
 }
 
-/// Status of a watched torrent file
 #[derive(Debug, Clone, Serialize, PartialEq, ToSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum WatchedFileStatus {
-    /// File detected but not yet processed
     Pending,
-    /// Successfully loaded as an instance
     Loaded,
-    /// Duplicate - another instance with same info_hash exists
-    Duplicate,
-    /// Failed to parse as valid torrent
     Invalid,
 }
 
-/// Watch folder service status
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct WatchStatus {
-    /// Whether the watch service is enabled
     pub enabled: bool,
-    /// Directory being watched
     pub watch_dir: String,
-    /// Whether new torrents are auto-started
     pub auto_start: bool,
-    /// Number of torrent files in the folder
     pub file_count: usize,
-    /// Number of successfully loaded torrents
     pub loaded_count: usize,
 }
 
-/// Watch folder service
 pub struct WatchService {
     config: WatchConfig,
     state: AppState,
-    /// Set of info_hashes that have been loaded (to detect duplicates)
     loaded_hashes: Arc<RwLock<HashSet<[u8; 20]>>>,
-    /// Mapping from file path to info_hash (for handling file deletions)
     path_to_hash: Arc<RwLock<HashMap<PathBuf, [u8; 20]>>>,
-    /// Shutdown signal sender
     shutdown_tx: Option<mpsc::Sender<()>>,
 }
 
@@ -156,18 +120,7 @@ impl WatchService {
         }
     }
 
-    /// Get watch folder configuration
-    pub fn config(&self) -> &WatchConfig {
-        &self.config
-    }
-
-    /// Get the set of loaded info hashes
-    pub fn loaded_hashes(&self) -> Arc<RwLock<HashSet<[u8; 20]>>> {
-        self.loaded_hashes.clone()
-    }
-
-    /// Initialize loaded hashes from existing instances, populate path_to_hash mapping,
-    /// and auto-start watch folder instances
+    /// Initialize loaded hashes from existing instances and auto-start watch folder instances
     pub async fn init_from_state(&self) {
         let instances = self.state.list_instances().await;
         let mut hashes = self.loaded_hashes.write().await;
@@ -190,11 +143,9 @@ impl WatchService {
             tracing::info!("Initialized watch service with {} existing torrents", hashes.len());
         }
 
-        // Drop the write lock before scanning directory
+        // Drop write lock before scanning directory
         drop(hashes);
 
-        // Scan watch directory to populate path_to_hash mapping
-        // This is needed so file deletions can be properly tracked after restart
         self.populate_path_to_hash_mapping().await;
 
         // Auto-start watch folder instances that weren't running
@@ -206,7 +157,6 @@ impl WatchService {
         }
     }
 
-    /// Scan watch directory and populate path_to_hash mapping for existing torrent files
     async fn populate_path_to_hash_mapping(&self) {
         if !self.config.watch_dir.exists() {
             return;
@@ -259,7 +209,6 @@ impl WatchService {
         }
     }
 
-    /// Start the watch service
     pub async fn start(&mut self) -> Result<(), String> {
         if !self.config.enabled {
             tracing::info!("Watch folder service is disabled");
@@ -305,7 +254,6 @@ impl WatchService {
         Ok(())
     }
 
-    /// Stop the watch service
     pub async fn stop(&mut self) {
         if let Some(tx) = self.shutdown_tx.take() {
             let _ = tx.send(()).await;
@@ -313,7 +261,6 @@ impl WatchService {
         }
     }
 
-    /// Scan directory for existing .torrent files
     async fn scan_directory(&self) {
         let entries = match std::fs::read_dir(&self.config.watch_dir) {
             Ok(entries) => entries,
@@ -348,7 +295,6 @@ impl WatchService {
         }
     }
 
-    /// Get status of the watch service
     pub async fn get_status(&self) -> WatchStatus {
         let loaded_count = self.loaded_hashes.read().await.len();
         let file_count = std::fs::read_dir(&self.config.watch_dir)
@@ -368,7 +314,6 @@ impl WatchService {
         }
     }
 
-    /// List all .torrent files in the watch folder with their status
     pub async fn list_files(&self) -> Vec<WatchedFile> {
         let mut files = Vec::new();
         let loaded_hashes = self.loaded_hashes.read().await;
@@ -430,8 +375,7 @@ impl WatchService {
         files
     }
 
-    /// Remove an info_hash from the loaded set, allowing the torrent to be reloaded
-    /// Used when force deleting a watch folder instance
+    /// Remove an info_hash from the loaded set (for force-deleting watch folder instances)
     pub async fn remove_info_hash(&self, info_hash: &[u8; 20]) {
         let removed = self.loaded_hashes.write().await.remove(info_hash);
         if removed {
@@ -442,8 +386,6 @@ impl WatchService {
         }
     }
 
-    /// Reload a single torrent file from the watch folder
-    /// This removes the existing instance and reloads the file
     pub async fn reload_file(&self, filename: &str) -> Result<(), String> {
         let path = self.config.watch_dir.join(filename);
 
@@ -490,8 +432,6 @@ impl WatchService {
         Ok(())
     }
 
-    /// Reload all torrent files from the watch folder
-    /// This rescans the directory and loads any new or previously removed torrents
     pub async fn reload_all(&self) -> Result<u32, String> {
         if !self.config.watch_dir.exists() {
             return Err("Watch directory does not exist".to_string());
@@ -544,7 +484,6 @@ impl WatchService {
         Ok(count)
     }
 
-    /// Delete a torrent file from the watch folder and its corresponding instance
     pub async fn delete_file(&self, filename: &str) -> Result<(), String> {
         let path = self.config.watch_dir.join(filename);
 
@@ -595,12 +534,10 @@ impl WatchService {
     }
 }
 
-/// Check if a path is a .torrent file
 fn is_torrent_file(path: &Path) -> bool {
     path.is_file() && path.extension().map(|e| e == "torrent").unwrap_or(false)
 }
 
-/// Process a torrent file - load it and optionally start faking
 async fn process_torrent_file(
     path: &Path,
     auto_start: bool,
@@ -665,7 +602,6 @@ async fn process_torrent_file(
     Ok(())
 }
 
-/// Run the file watcher in a background task
 async fn run_watcher(
     watch_dir: PathBuf,
     auto_start: bool,

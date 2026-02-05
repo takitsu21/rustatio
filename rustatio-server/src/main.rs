@@ -1,10 +1,6 @@
 mod api;
-mod auth;
-mod log_layer;
-mod persistence;
-mod state;
-mod static_files;
-mod watch;
+mod services;
+mod util;
 
 use axum::{middleware, routing::get, Router};
 use std::net::SocketAddr;
@@ -17,42 +13,25 @@ use tracing_subscriber::layer::SubscriberExt;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
-use crate::api::ApiDoc;
-use crate::log_layer::BroadcastLayer;
-use crate::state::AppState;
-use crate::watch::{WatchConfig, WatchDisabledReason, WatchService};
-
-/// Combined application state for routing
-#[derive(Clone)]
-pub struct ServerState {
-    pub app: AppState,
-    pub watch: Arc<RwLock<WatchService>>,
-}
+use crate::api::{ApiDoc, ServerState};
+use crate::services::{AppState, WatchConfig, WatchDisabledReason, WatchService};
+use crate::util::BroadcastLayer;
 
 #[tokio::main]
 async fn main() {
-    // Bridge log crate to tracing FIRST (before any subscriber)
     tracing_log::LogTracer::init().expect("Failed to set logger");
 
-    // Get data directory from environment or use default
     let data_dir = std::env::var("DATA_DIR").unwrap_or_else(|_| "/data".to_string());
-
-    // Create shared application state
     let state = AppState::new(&data_dir);
 
-    // Initialize tracing subscriber with EnvFilter and broadcast layer
-    // Default: show info for server, trace for rustatio_core/log (for UI filtering)
-    // The "log" target captures all log crate events bridged via tracing-log
     let default_filter = "rustatio_server=info,rustatio_core=trace,log=trace,tower_http=info,hyper=info,reqwest=info";
     let subscriber = tracing_subscriber::registry()
         .with(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| default_filter.into()))
         .with(BroadcastLayer::new(state.log_sender.clone()))
         .with(tracing_subscriber::fmt::layer());
 
-    // Set as global default
     tracing::subscriber::set_global_default(subscriber).expect("Failed to set subscriber");
 
-    // Load saved state and restore instances
     match state.load_saved_state().await {
         Ok(count) => {
             if count > 0 {
@@ -64,10 +43,8 @@ async fn main() {
         }
     }
 
-    // Initialize and start watch folder service
     let (watch_config, disabled_reason) = WatchConfig::from_env();
 
-    // Log appropriate message based on watch folder status
     if let Some(reason) = &disabled_reason {
         match reason {
             WatchDisabledReason::ExplicitlyDisabled => {
@@ -90,23 +67,16 @@ async fn main() {
     }
     let watch_service = Arc::new(RwLock::new(watch_service));
 
-    // Create combined server state
     let server_state = ServerState {
         app: state.clone(),
         watch: watch_service.clone(),
     };
 
-    // Get port from environment or use default
     let port: u16 = std::env::var("PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(8080);
-
-    // Build CORS layer
     let cors = CorsLayer::new().allow_origin(Any).allow_methods(Any).allow_headers(Any);
 
-    // Build router
     let app = Router::new()
-        // Health check (no auth required)
         .route("/health", get(|| async { "OK" }))
-        // OpenAPI documentation with Swagger UI (public - users enter token via Authorize button)
         .merge(
             SwaggerUi::new("/docs")
                 .url("/api-docs/openapi.json", ApiDoc::openapi())
@@ -116,12 +86,12 @@ async fn main() {
                         .try_it_out_enabled(true),
                 ),
         )
-        // Public API routes (no auth required)
         .nest("/api", api::public_router())
-        // Protected API routes (auth required when AUTH_TOKEN is set)
-        .nest("/api", api::router().layer(middleware::from_fn(auth::auth_middleware)))
-        // Static files (web UI) - must be last as it catches all other routes (no auth)
-        .fallback(static_files::static_handler)
+        .nest(
+            "/api",
+            api::router().layer(middleware::from_fn(api::middleware::auth_middleware)),
+        )
+        .fallback(util::static_handler)
         .layer(cors)
         .layer(TraceLayer::new_for_http())
         .with_state(server_state);
@@ -132,31 +102,25 @@ async fn main() {
     tracing::info!("API documentation at http://localhost:{}/docs", port);
     tracing::info!("Data directory: {}", data_dir);
 
-    // Log authentication status
-    if auth::is_auth_enabled() {
+    if api::middleware::is_auth_enabled() {
         tracing::info!("Authentication enabled (AUTH_TOKEN is set)");
     } else {
         tracing::warn!("Authentication disabled - API is open to all. Set AUTH_TOKEN to enable.");
     }
 
-    // Create shutdown signal channel
     let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
     let state_for_shutdown = state.clone();
     let watch_for_shutdown = watch_service.clone();
 
-    // Spawn shutdown handler
     tokio::spawn(async move {
         shutdown_signal().await;
 
-        // Stop watch service first
         tracing::info!("Stopping watch folder service...");
         watch_for_shutdown.write().await.stop().await;
 
-        // Stop all background tasks
         tracing::info!("Stopping background tasks...");
         state_for_shutdown.shutdown_all().await;
 
-        // Save state before shutting down
         tracing::info!("Saving state before shutdown...");
         if let Err(e) = state_for_shutdown.save_state().await {
             tracing::error!("Failed to save state on shutdown: {}", e);

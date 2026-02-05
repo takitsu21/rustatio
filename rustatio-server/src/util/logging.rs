@@ -1,4 +1,4 @@
-use crate::state::LogEvent;
+use crate::services::LogEvent;
 use std::sync::Arc;
 use tokio::sync::broadcast;
 use tracing::field::{Field, Visit};
@@ -6,7 +6,6 @@ use tracing::{Event, Level, Subscriber};
 use tracing_subscriber::layer::Context;
 use tracing_subscriber::Layer;
 
-/// Custom tracing layer that forwards logs to a broadcast channel
 pub struct BroadcastLayer {
     sender: Arc<broadcast::Sender<LogEvent>>,
 }
@@ -19,7 +18,6 @@ impl BroadcastLayer {
     }
 }
 
-/// Visitor to extract the message from a tracing event
 struct MessageVisitor {
     message: String,
 }

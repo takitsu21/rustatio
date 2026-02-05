@@ -5,13 +5,10 @@ use axum::{
 };
 use rust_embed::Embed;
 
-/// Embed the built UI files at compile time
-/// The UI should be built to ../ui/dist before compiling the server
 #[derive(Embed)]
 #[folder = "../ui/dist"]
 struct Assets;
 
-/// Handler for serving static files
 pub async fn static_handler(uri: Uri) -> impl IntoResponse {
     let path = uri.path().trim_start_matches('/');
 
