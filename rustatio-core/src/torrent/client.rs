@@ -11,6 +11,127 @@ pub enum ClientType {
     Transmission,
     #[serde(rename = "deluge")]
     Deluge,
+    #[serde(rename = "bittorrent")]
+    BitTorrent,
+}
+
+/// Metadata about a torrent client for UI/API display
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClientInfo {
+    /// Machine-readable ID (e.g., "qbittorrent")
+    pub id: String,
+    /// Human-readable display name (e.g., "qBittorrent")
+    pub name: String,
+    /// Default version to use
+    pub default_version: String,
+    /// Available versions (newest first)
+    pub versions: Vec<String>,
+    /// Default port
+    pub default_port: u16,
+}
+
+impl ClientType {
+    /// Get all available client types
+    pub fn all() -> Vec<ClientType> {
+        vec![
+            ClientType::UTorrent,
+            ClientType::QBittorrent,
+            ClientType::Transmission,
+            ClientType::Deluge,
+            ClientType::BitTorrent,
+        ]
+    }
+
+    /// Get all client type IDs as strings
+    pub fn all_ids() -> Vec<String> {
+        Self::all().iter().map(|c| c.info().id).collect()
+    }
+
+    /// Get all client infos
+    pub fn all_infos() -> Vec<ClientInfo> {
+        Self::all().iter().map(|c| c.info()).collect()
+    }
+
+    /// Parse a client type from its string ID
+    pub fn from_id(id: &str) -> Option<ClientType> {
+        Self::all().into_iter().find(|c| c.info().id == id)
+    }
+
+    /// Get full metadata for this client type
+    pub fn info(&self) -> ClientInfo {
+        match self {
+            ClientType::UTorrent => ClientInfo {
+                id: "utorrent".to_string(),
+                name: "µTorrent".to_string(),
+                default_version: "3.5.5".to_string(),
+                versions: vec![
+                    "3.5.5".to_string(),
+                    "3.5.4".to_string(),
+                    "3.5.3".to_string(),
+                    "3.4.9".to_string(),
+                    "3.4.8".to_string(),
+                    "2.2.1".to_string(),
+                ],
+                default_port: 6881,
+            },
+            ClientType::QBittorrent => ClientInfo {
+                id: "qbittorrent".to_string(),
+                name: "qBittorrent".to_string(),
+                default_version: "5.1.4".to_string(),
+                versions: vec![
+                    "5.1.4".to_string(),
+                    "5.1.3".to_string(),
+                    "5.0.2".to_string(),
+                    "4.6.7".to_string(),
+                    "4.5.5".to_string(),
+                    "4.4.5".to_string(),
+                ],
+                default_port: 6881,
+            },
+            ClientType::Transmission => ClientInfo {
+                id: "transmission".to_string(),
+                name: "Transmission".to_string(),
+                default_version: "4.0.5".to_string(),
+                versions: vec![
+                    "4.0.5".to_string(),
+                    "4.0.4".to_string(),
+                    "4.0.3".to_string(),
+                    "3.00".to_string(),
+                    "2.94".to_string(),
+                    "2.93".to_string(),
+                ],
+                default_port: 51413,
+            },
+            ClientType::Deluge => ClientInfo {
+                id: "deluge".to_string(),
+                name: "Deluge".to_string(),
+                default_version: "2.1.1".to_string(),
+                versions: vec![
+                    "2.1.1".to_string(),
+                    "2.0.5".to_string(),
+                    "2.0.3".to_string(),
+                    "1.3.15".to_string(),
+                ],
+                default_port: 6881,
+            },
+            ClientType::BitTorrent => ClientInfo {
+                id: "bittorrent".to_string(),
+                name: "BitTorrent".to_string(),
+                default_version: "7.11.0".to_string(),
+                versions: vec![
+                    "7.11.0".to_string(),
+                    "7.10.5".to_string(),
+                    "7.10.4".to_string(),
+                    "7.10.3".to_string(),
+                    "7.10.0".to_string(),
+                    "7.9.9".to_string(),
+                    "7.9.8".to_string(),
+                    "7.9.7".to_string(),
+                ],
+                default_port: 6881,
+            },
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -39,12 +160,14 @@ impl ClientConfig {
             ClientType::QBittorrent => Self::qbittorrent(version),
             ClientType::Transmission => Self::transmission(version),
             ClientType::Deluge => Self::deluge(version),
+            ClientType::BitTorrent => Self::bittorrent(version),
         }
     }
 
     /// uTorrent client configuration
     fn utorrent(version: Option<String>) -> Self {
-        let version = version.unwrap_or_else(|| "3.5.5".to_string());
+        let info = ClientType::UTorrent.info();
+        let version = version.unwrap_or(info.default_version);
         let version_code = version.replace('.', "");
 
         // Pad to exactly 4 characters
@@ -64,7 +187,8 @@ impl ClientConfig {
 
     /// qBittorrent client configuration
     fn qbittorrent(version: Option<String>) -> Self {
-        let version = version.unwrap_or_else(|| "5.1.4".to_string());
+        let info = ClientType::QBittorrent.info();
+        let version = version.unwrap_or(info.default_version);
         let parts: Vec<&str> = version.split('.').collect();
         let version_code = if parts.len() >= 3 {
             format!("{}{}{}", parts[0], parts[1], parts[2])
@@ -89,7 +213,8 @@ impl ClientConfig {
 
     /// Transmission client configuration
     fn transmission(version: Option<String>) -> Self {
-        let version = version.unwrap_or_else(|| "4.0.5".to_string());
+        let info = ClientType::Transmission.info();
+        let version = version.unwrap_or(info.default_version);
         let parts: Vec<&str> = version.split('.').collect();
         let version_code = if parts.len() >= 2 {
             format!("{}{}", parts[0], parts[1].pad_to_width_with_char(2, '0'))
@@ -114,7 +239,8 @@ impl ClientConfig {
 
     /// Deluge client configuration
     fn deluge(version: Option<String>) -> Self {
-        let version = version.unwrap_or_else(|| "2.1.1".to_string());
+        let info = ClientType::Deluge.info();
+        let version = version.unwrap_or(info.default_version);
         let parts: Vec<&str> = version.split('.').collect();
         let version_code = if parts.len() >= 3 {
             format!("{}{}{}", parts[0], parts[1], parts[2])
@@ -130,6 +256,32 @@ impl ClientConfig {
             version: version.clone(),
             peer_id_prefix: format!("-DE{}-", padded_version),
             user_agent: format!("Deluge/{}", version),
+            http_version: HttpVersion::Http11,
+            num_want: 200,
+            supports_compact: true,
+            supports_crypto: true,
+        }
+    }
+
+    /// BitTorrent client configuration
+    fn bittorrent(version: Option<String>) -> Self {
+        let info = ClientType::BitTorrent.info();
+        let version = version.unwrap_or(info.default_version);
+        let parts: Vec<&str> = version.split('.').collect();
+        let version_code = if parts.len() >= 3 {
+            format!("{}{}{}", parts[0], parts[1], parts[2])
+        } else {
+            "7110".to_string()
+        };
+
+        // Pad to exactly 4 characters
+        let padded_version = version_code.pad_to_width_with_char(4, '0');
+
+        ClientConfig {
+            client_type: ClientType::BitTorrent,
+            version: version.clone(),
+            peer_id_prefix: format!("-BT{}-", padded_version),
+            user_agent: format!("BitTorrent/{}", version),
             http_version: HttpVersion::Http11,
             num_want: 200,
             supports_compact: true,
@@ -218,6 +370,19 @@ mod tests {
     }
 
     #[test]
+    fn test_peer_id_generation_bittorrent() {
+        let config = ClientConfig::get(ClientType::BitTorrent, None);
+        let peer_id = config.generate_peer_id();
+        assert_eq!(peer_id.len(), 20);
+        assert!(peer_id.starts_with("-BT"), "BitTorrent peer ID should start with -BT");
+
+        // Test with specific version
+        let config = ClientConfig::get(ClientType::BitTorrent, Some("7.11.0".to_string()));
+        let peer_id = config.generate_peer_id();
+        assert!(peer_id.starts_with("-BT7110-"), "Peer ID should include version 7.11.0");
+    }
+
+    #[test]
     fn test_peer_id_uniqueness() {
         let config = ClientConfig::get(ClientType::QBittorrent, None);
         let peer_id1 = config.generate_peer_id();
@@ -289,6 +454,16 @@ mod tests {
         let config = ClientConfig::get(ClientType::Deluge, None);
         assert_eq!(config.client_type, ClientType::Deluge);
         assert!(config.user_agent.contains("Deluge"));
+    }
+
+    #[test]
+    fn test_client_config_bittorrent() {
+        let config = ClientConfig::get(ClientType::BitTorrent, None);
+        assert_eq!(config.client_type, ClientType::BitTorrent);
+        assert!(config.user_agent.contains("BitTorrent"));
+        assert_eq!(config.http_version, HttpVersion::Http11);
+        assert!(config.supports_compact);
+        assert!(config.supports_crypto);
     }
 
     #[test]

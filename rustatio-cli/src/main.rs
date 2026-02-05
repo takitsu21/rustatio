@@ -198,6 +198,7 @@ async fn main() -> Result<()> {
                 "utorrent" => cli::ClientArg::Utorrent,
                 "transmission" => cli::ClientArg::Transmission,
                 "deluge" => cli::ClientArg::Deluge,
+                "bittorrent" => cli::ClientArg::Bittorrent,
                 _ => cli::ClientArg::Qbittorrent,
             };
 

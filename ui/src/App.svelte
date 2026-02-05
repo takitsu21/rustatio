@@ -60,21 +60,15 @@
   // Flag to prevent store subscriptions from firing during initialization
   let isInitializing = true;
 
-  // Available client versions
-  const clientVersions = {
-    utorrent: ['3.5.5', '3.5.4', '3.5.3', '3.4.9', '3.4.8', '2.2.1'],
-    qbittorrent: ['5.1.4', '5.1.3', '5.0.2', '4.6.7', '4.5.5', '4.4.5'],
-    transmission: ['4.0.5', '4.0.4', '4.0.3', '3.00', '2.94', '2.93'],
-    deluge: ['2.1.1', '2.0.5', '2.0.3', '1.3.15'],
-  };
+  // Client information (populated from API during initialization)
+  let clientInfos = $state([]);
 
-  // Default ports for each client
-  const clientDefaultPorts = {
-    utorrent: 6881,
-    qbittorrent: 6881,
-    transmission: 51413,
-    deluge: 6881,
-  };
+  // Derived lookup objects for client data
+  let clientVersions = $derived(Object.fromEntries(clientInfos.map(c => [c.id, c.versions])));
+  let clientDefaultPorts = $derived(
+    Object.fromEntries(clientInfos.map(c => [c.id, c.default_port]))
+  );
+  let clients = $derived(clientInfos.map(c => ({ id: c.id, name: c.name })));
 
   // Logs
   let logs = $state([]);
@@ -90,14 +84,6 @@
       console[level](...args);
     }
   }
-
-  // Available clients
-  const clients = [
-    { id: 'utorrent', name: 'µTorrent' },
-    { id: 'qbittorrent', name: 'qBittorrent' },
-    { id: 'transmission', name: 'Transmission' },
-    { id: 'deluge', name: 'Deluge' },
-  ];
 
   // Store cleanup functions
   let unsubActiveInstance = null;
@@ -268,6 +254,15 @@
 
   // Continue initialization after authentication (called after auth is verified)
   async function continueInitialization() {
+    // Fetch client information from backend
+    try {
+      clientInfos = await api.getClientInfos();
+    } catch (error) {
+      console.error('Failed to load client infos:', error);
+      // Fallback to empty - UI will be limited but won't crash
+      clientInfos = [];
+    }
+
     // Load config from localStorage
     const storedShowLogs = localStorage.getItem('rustatio-show-logs');
     showLogs = storedShowLogs ? JSON.parse(storedShowLogs) : false;
@@ -768,7 +763,8 @@
         client_type: $activeInstance.selectedClient || 'qbittorrent',
         client_version:
           $activeInstance.selectedClientVersion ||
-          clientVersions[$activeInstance.selectedClient || 'qbittorrent'][0],
+          clientVersions[$activeInstance.selectedClient || 'qbittorrent']?.[0] ||
+          '',
         // Always send the original user-specified values
         // The server will handle using cumulative stats internally for the RatioFaker
         initial_uploaded: parseInt($activeInstance.initialUploaded ?? 0) * 1024 * 1024,
@@ -960,7 +956,8 @@
       client_type: instance.selectedClient || 'qbittorrent',
       client_version:
         instance.selectedClientVersion ||
-        clientVersions[instance.selectedClient || 'qbittorrent'][0],
+        clientVersions[instance.selectedClient || 'qbittorrent']?.[0] ||
+        '',
       initial_uploaded: parseInt(instance.initialUploaded ?? 0) * 1024 * 1024,
       initial_downloaded: parseInt(instance.initialDownloaded ?? 0) * 1024 * 1024,
       completion_percent: parseFloat(instance.completionPercent ?? 0),
@@ -1251,7 +1248,8 @@
           client_type: instance.selectedClient || 'qbittorrent',
           client_version:
             instance.selectedClientVersion ||
-            clientVersions[instance.selectedClient || 'qbittorrent'][0],
+            clientVersions[instance.selectedClient || 'qbittorrent']?.[0] ||
+            '',
           initial_uploaded: parseInt(instance.initialUploaded ?? 0) * 1024 * 1024,
           initial_downloaded: calculatedDownloaded,
           completion_percent: completionPercent,

@@ -460,6 +460,9 @@ const serverApi = {
   getClientTypes: async () => {
     return serverFetch('/clients', { method: 'GET' });
   },
+  getClientInfos: async () => {
+    return serverFetch('/clients/info', { method: 'GET' });
+  },
   getNetworkStatus: async () => {
     return serverFetch('/network/status', { method: 'GET' });
   },
@@ -693,7 +696,12 @@ const tauriApi = {
     return invoke('scrape_tracker', { instanceId: id });
   },
   getClientTypes: async () => {
-    return ['utorrent', 'qbittorrent', 'transmission', 'deluge'];
+    const { invoke } = await import('@tauri-apps/api/core');
+    return invoke('get_client_types');
+  },
+  getClientInfos: async () => {
+    const { invoke } = await import('@tauri-apps/api/core');
+    return invoke('get_client_infos');
   },
   getNetworkStatus: async () => {
     // Use fallback function for desktop
@@ -776,6 +784,9 @@ const wasmApi = {
   },
   getClientTypes: () => {
     return wasm.get_client_types();
+  },
+  getClientInfos: () => {
+    return wasm.get_client_infos();
   },
   getNetworkStatus: async () => {
     // Use fallback function for WASM
