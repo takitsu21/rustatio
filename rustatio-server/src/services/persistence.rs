@@ -26,6 +26,8 @@ pub struct PersistedInstance {
     pub updated_at: u64,
     #[serde(default)]
     pub source: InstanceSource,
+    #[serde(default)]
+    pub tags: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

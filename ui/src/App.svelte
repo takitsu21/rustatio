@@ -14,25 +14,29 @@
   } from './lib/api.js';
 
   // Import instance stores
-  import { instances, activeInstance, instanceActions, saveSession } from './lib/instanceStore.js';
+  import { instances, activeInstance, activeInstanceId, instanceActions, saveSession } from './lib/instanceStore.js';
 
   // Import components
-  import Header from './components/Header.svelte';
-  import Sidebar from './components/Sidebar.svelte';
-  import StatusBar from './components/StatusBar.svelte';
-  import TorrentSelector from './components/TorrentSelector.svelte';
-  import ConfigurationForm from './components/ConfigurationForm.svelte';
-  import StopConditions from './components/StopConditions.svelte';
-  import ProgressBars from './components/ProgressBars.svelte';
-  import SessionStats from './components/SessionStats.svelte';
-  import TotalStats from './components/TotalStats.svelte';
-  import RateGraph from './components/RateGraph.svelte';
-  import Logs from './components/Logs.svelte';
-  import ProxySettings from './components/ProxySettings.svelte';
-  import UpdateChecker from './components/UpdateChecker.svelte';
-  import ThemeIcon from './components/ThemeIcon.svelte';
-  import DownloadButton from './components/DownloadButton.svelte';
-  import AuthPage from './components/AuthPage.svelte';
+  import Header from './components/layout/Header.svelte';
+  import Sidebar from './components/layout/Sidebar.svelte';
+  import StatusBar from './components/layout/StatusBar.svelte';
+  import TorrentSelector from './components/common/TorrentSelector.svelte';
+  import ConfigurationForm from './components/config/ConfigurationForm.svelte';
+  import StopConditions from './components/config/StopConditions.svelte';
+  import ProgressBars from './components/stats/ProgressBars.svelte';
+  import SessionStats from './components/stats/SessionStats.svelte';
+  import TotalStats from './components/stats/TotalStats.svelte';
+  import RateGraph from './components/stats/RateGraph.svelte';
+  import Logs from './components/common/Logs.svelte';
+  import ProxySettings from './components/common/ProxySettings.svelte';
+  import UpdateChecker from './components/common/UpdateChecker.svelte';
+  import ThemeIcon from './components/common/ThemeIcon.svelte';
+  import DownloadButton from './components/common/DownloadButton.svelte';
+  import AuthPage from './components/common/AuthPage.svelte';
+  import GridView from './components/grid/GridView.svelte';
+
+  // Import grid store
+  import { viewMode } from './lib/gridStore.js';
 
   // Import theme store
   import {
@@ -88,6 +92,8 @@
   // Store cleanup functions
   let unsubActiveInstance = null;
   let unsubSessionSave = null;
+  let unsubViewMode = null;
+  let unsubActiveInstanceId = null;
   let instanceEventsCleanup = null;
 
   // Debounce timer for syncing config to server
@@ -224,6 +230,46 @@
       }
     });
 
+    // Re-sync standard store when switching away from grid mode
+    unsubViewMode = viewMode.subscribe(mode => {
+      if (isInitializing) return;
+
+      if (mode === 'grid') {
+        // Entering grid mode: stop live stats (grid has its own polling)
+        stopLiveStats();
+        return;
+      }
+
+      // Leaving grid mode: sync states and restart polling
+      instanceActions.syncAllInstanceStates().then(() => {
+        const currentInstances = get(instances);
+        for (const inst of currentInstances) {
+          if (inst.isRunning && !inst.updateInterval) {
+            startPollingForInstance(inst.id, inst.updateIntervalSeconds ?? 5);
+          }
+        }
+        // Start live stats for the active instance
+        const currentActiveId = get(activeInstanceId);
+        if (currentActiveId) {
+          startLiveStatsForInstance(currentActiveId);
+        }
+      });
+    });
+
+    // Transfer live stats polling when the active instance changes
+    unsubActiveInstanceId = activeInstanceId.subscribe(newActiveId => {
+      if (isInitializing || !newActiveId) return;
+      // Only manage live stats in standard view
+      if (get(viewMode) === 'grid') return;
+
+      const instance = get(instances).find(i => i.id === newActiveId);
+      if (instance && instance.isRunning && !instance.isPaused) {
+        startLiveStatsForInstance(newActiveId);
+      } else {
+        stopLiveStats();
+      }
+    });
+
     // Set up beforeunload warning for WASM mode only
     // In WASM mode, refreshing the page stops all running torrents
     // Server mode persists state, so no warning needed there
@@ -317,7 +363,7 @@
 
             if (newInstance) {
               const wasAdded = instanceActions.mergeServerInstance(newInstance);
-              if (wasAdded && newInstance.stats.state === 'Running') {
+              if (wasAdded && (newInstance.stats.state === 'Running' || newInstance.stats.state === 'Starting')) {
                 // Start polling for the new running instance
                 startPollingForInstance(event.id, newInstance.config.update_interval || 5);
               }
@@ -355,18 +401,15 @@
 
   // Cleanup on unmount
   onDestroy(() => {
-    // Clean up intervals for active instance
+    // Clean up tracker announce interval for active instance
     if ($activeInstance) {
       if ($activeInstance.updateInterval) {
         clearInterval($activeInstance.updateInterval);
       }
-      if ($activeInstance.countdownInterval) {
-        clearInterval($activeInstance.countdownInterval);
-      }
-      if ($activeInstance.liveStatsInterval) {
-        clearInterval($activeInstance.liveStatsInterval);
-      }
     }
+
+    // Clean up active live stats interval
+    stopLiveStats();
 
     // Clean up store subscriptions
     if (unsubActiveInstance) {
@@ -374,6 +417,12 @@
     }
     if (unsubSessionSave) {
       unsubSessionSave();
+    }
+    if (unsubViewMode) {
+      unsubViewMode();
+    }
+    if (unsubActiveInstanceId) {
+      unsubActiveInstanceId();
     }
 
     // Clean up instance events subscription
@@ -425,15 +474,9 @@
         statusType: 'running',
       });
 
-      // In server mode, use loadInstanceTorrent to create a server-side instance
-      // This allows the instance to persist across page refreshes
-      const runMode = getRunMode();
-      let torrent;
-      if (runMode === 'server' && api.loadInstanceTorrent) {
-        torrent = await api.loadInstanceTorrent($activeInstance.id, file);
-      } else {
-        torrent = await api.loadTorrent(file);
-      }
+      // Register the torrent with the backend instance
+      // This ensures the instance appears in grid view's listSummaries
+      const torrent = await api.loadInstanceTorrent($activeInstance.id, file);
       devLog('log', 'Loaded torrent:', torrent);
 
       // For desktop (Tauri): save the full file path
@@ -456,6 +499,7 @@
           instanceActions.updateInstance(instanceId, {
             statusMessage: 'Ready to start faking',
             statusType: 'idle',
+            statusIcon: null,
           });
         }
       }, 2000);
@@ -482,17 +526,24 @@
     const instance = getInstance(instanceId);
     if (instance) {
       if (instance.updateInterval) clearInterval(instance.updateInterval);
-      if (instance.countdownInterval) clearInterval(instance.countdownInterval);
-      if (instance.liveStatsInterval) clearInterval(instance.liveStatsInterval);
+    }
+    // Clear active live stats if this instance owns it
+    if (activeLiveStatsInstanceId === instanceId) {
+      stopLiveStats();
     }
   }
 
   // Handle auto-stop when a stop condition is met
   async function handleAutoStop(instanceId, stats) {
-    try {
-      await api.stopFaker(instanceId);
-    } catch (error) {
-      console.warn('Failed to stop faker on backend:', error);
+    // In server mode, the scheduler already called stop() when the condition was met.
+    // Calling stopFaker again would redundantly re-enter Stopping state (sending
+    // another tracker announce), causing the grid to briefly show "Stopping".
+    if (getRunMode() !== 'server') {
+      try {
+        await api.stopFaker(instanceId);
+      } catch (error) {
+        console.warn('Failed to stop faker on backend:', error);
+      }
     }
 
     clearInstanceIntervals(instanceId);
@@ -503,12 +554,10 @@
 
     instanceActions.updateInstance(instanceId, {
       isRunning: false,
-      nextUpdateIn: 0,
       updateInterval: null,
-      countdownInterval: null,
-      liveStatsInterval: null,
       statusMessage: 'Stopped automatically - condition met',
       statusType: 'success',
+      statusIcon: null,
       cumulativeUploaded,
       cumulativeDownloaded,
     });
@@ -522,16 +571,15 @@
     instanceActions.updateInstance(instanceId, {
       isRunning: false,
       updateInterval: null,
-      countdownInterval: null,
-      liveStatsInterval: null,
       statusMessage: 'Error: ' + error,
       statusType: 'error',
+      statusIcon: null,
     });
   }
 
   // Check if stats indicate the faker should auto-stop
   function shouldAutoStop(stats) {
-    return stats.state === 'Stopped' || stats.state === 'Completed';
+    return stats.state === 'Stopped';
   }
 
   // Derive status message/type/icon from stats (for idling state)
@@ -556,8 +604,12 @@
   // Polling Intervals
   // =============================================================================
 
-  // Create tracker announce interval (sends updates to tracker periodically)
+  // Create tracker announce interval
+  // In server mode, the backend scheduler already calls update() every 5s,
+  // so we only need to read stats. In desktop/WASM, the frontend drives updates.
   function createTrackerAnnounceInterval(instanceId, intervalMs) {
+    const isServer = getRunMode() === 'server';
+
     return setInterval(async () => {
       const instance = getInstance(instanceId);
 
@@ -568,21 +620,25 @@
 
       if (instance.isPaused) {
         devLog('log', 'Update skipped - paused');
-        instanceActions.updateInstance(instanceId, {
-          nextUpdateIn: instance.updateIntervalSeconds ?? 5,
-        });
         return;
       }
 
       try {
-        await api.updateFaker(instanceId);
+        if (!isServer) {
+          await api.updateFaker(instanceId);
+        }
         const stats = await api.getStats(instanceId);
 
-        instanceActions.updateInstance(instanceId, {
+        const updates = {
           stats,
-          nextUpdateIn: instance.updateIntervalSeconds ?? 5,
           ...getStatusFromStats(stats),
-        });
+        };
+
+        if (stats.torrent_completion !== undefined) {
+          updates.completionPercent = stats.torrent_completion;
+        }
+
+        instanceActions.updateInstance(instanceId, updates);
 
         if (shouldAutoStop(stats)) {
           await handleAutoStop(instanceId, stats);
@@ -593,8 +649,12 @@
     }, intervalMs);
   }
 
-  // Create live stats interval (updates UI every second without tracker announce)
+  // Create live stats interval (updates UI every second for the active instance)
+  // In server mode, just reads stats (scheduler advances them).
+  // In desktop/WASM, calls updateStatsOnly to advance stats locally.
   function createLiveStatsInterval(instanceId) {
+    const isServer = getRunMode() === 'server';
+
     return setInterval(async () => {
       const instance = getInstance(instanceId);
 
@@ -603,13 +663,21 @@
       }
 
       try {
-        const stats = await api.updateStatsOnly(instanceId);
+        const stats = isServer
+          ? await api.getStats(instanceId)
+          : await api.updateStatsOnly(instanceId);
 
         if (stats && instance.isRunning) {
-          instanceActions.updateInstance(instanceId, {
+          const updates = {
             stats,
             ...getStatusFromStats(stats),
-          });
+          };
+
+          if (stats.torrent_completion !== undefined) {
+            updates.completionPercent = stats.torrent_completion;
+          }
+
+          instanceActions.updateInstance(instanceId, updates);
 
           if (shouldAutoStop(stats)) {
             await handleAutoStop(instanceId, stats);
@@ -621,41 +689,57 @@
     }, 1000);
   }
 
-  // Create countdown timer interval (decrements nextUpdateIn every second)
-  function createCountdownInterval(instanceId) {
-    return setInterval(() => {
-      const instance = getInstance(instanceId);
-
-      if (instance && !instance.isPaused && instance.nextUpdateIn > 0) {
-        instanceActions.updateInstance(instanceId, {
-          nextUpdateIn: instance.nextUpdateIn - 1,
-        });
-      }
-    }, 1000);
-  }
-
   // =============================================================================
   // Main Polling Entry Point
   // =============================================================================
 
-  // Start all polling intervals for an instance
-  // Used by startFaking() and after page refresh to restore running instances
+  // Track the current live stats interval (only one at a time — the active instance)
+  let activeLiveStatsInstanceId = null;
+  let activeLiveStatsIntervalId = null;
+
+  // Start live stats polling for a specific instance (only call for the active/visible instance)
+  function startLiveStatsForInstance(instanceId) {
+    // Already polling this instance
+    if (activeLiveStatsInstanceId === instanceId && activeLiveStatsIntervalId) return;
+
+    // Clear any existing live stats polling
+    stopLiveStats();
+
+    const instance = getInstance(instanceId);
+    if (!instance || !instance.isRunning || instance.isPaused) return;
+
+    activeLiveStatsInstanceId = instanceId;
+    activeLiveStatsIntervalId = createLiveStatsInterval(instanceId);
+  }
+
+  // Stop live stats polling (when switching instances or entering grid mode)
+  function stopLiveStats() {
+    if (activeLiveStatsIntervalId) {
+      clearInterval(activeLiveStatsIntervalId);
+      activeLiveStatsIntervalId = null;
+    }
+    activeLiveStatsInstanceId = null;
+  }
+
+  // Start tracker announce polling for an instance (created for ALL running instances)
+  // Live stats polling is managed separately — only for the active instance
   function startPollingForInstance(instanceId, intervalSeconds = 5) {
     const intervalMs = intervalSeconds * 1000;
 
     const updateIntervalId = createTrackerAnnounceInterval(instanceId, intervalMs);
-    const liveStatsIntervalId = createLiveStatsInterval(instanceId);
-    const countdownIntervalId = createCountdownInterval(instanceId);
 
-    // Store interval IDs in instance for cleanup
+    // Store interval ID in instance for cleanup
     instanceActions.updateInstance(instanceId, {
       updateInterval: updateIntervalId,
-      liveStatsInterval: liveStatsIntervalId,
-      countdownInterval: countdownIntervalId,
-      nextUpdateIn: intervalSeconds,
     });
 
-    return { updateIntervalId, liveStatsIntervalId, countdownIntervalId };
+    // Start live stats only if this is the currently active instance
+    const currentActiveId = get(activeInstanceId);
+    if (instanceId === currentActiveId && get(viewMode) !== 'grid') {
+      startLiveStatsForInstance(instanceId);
+    }
+
+    return { updateIntervalId };
   }
 
   // Start faking
@@ -852,22 +936,18 @@
       if ($activeInstance.updateInterval) {
         clearInterval($activeInstance.updateInterval);
       }
-      if ($activeInstance.countdownInterval) {
-        clearInterval($activeInstance.countdownInterval);
-      }
-      if ($activeInstance.liveStatsInterval) {
-        clearInterval($activeInstance.liveStatsInterval);
+      // Clear live stats if this instance owns it
+      if (activeLiveStatsInstanceId === $activeInstance.id) {
+        stopLiveStats();
       }
 
       // Save cumulative stats for next session
       const updates = {
         isRunning: false,
-        nextUpdateIn: 0,
         updateInterval: null,
-        countdownInterval: null,
-        liveStatsInterval: null,
         statusMessage: 'Stopped successfully - Stats available for review',
         statusType: 'success',
+        statusIcon: null,
       };
 
       // Update cumulative stats with final totals (convert bytes to MB)
@@ -887,6 +967,7 @@
           instanceActions.updateInstance(instanceId, {
             statusMessage: 'Ready to start a new session',
             statusType: 'idle',
+            statusIcon: null,
           });
         }
       }, 2000);
@@ -894,6 +975,7 @@
       instanceActions.updateInstance($activeInstance.id, {
         statusMessage: 'Failed to stop: ' + error,
         statusType: 'error',
+        statusIcon: null,
       });
       alert('Failed to stop faker: ' + error);
     }
@@ -934,6 +1016,7 @@
       await api.resumeFaker($activeInstance.id);
       const stats = await api.getStats($activeInstance.id);
       instanceActions.updateInstance($activeInstance.id, {
+        isRunning: true,
         isPaused: false,
         stats,
         ...getStatusFromStats(stats),
@@ -1016,17 +1099,17 @@
     await api.stopFaker(instance.id);
 
     if (instance.updateInterval) clearInterval(instance.updateInterval);
-    if (instance.countdownInterval) clearInterval(instance.countdownInterval);
-    if (instance.liveStatsInterval) clearInterval(instance.liveStatsInterval);
+    // Clear live stats if this instance owns it
+    if (activeLiveStatsInstanceId === instance.id) {
+      stopLiveStats();
+    }
 
     const updates = {
       isRunning: false,
-      nextUpdateIn: 0,
       updateInterval: null,
-      countdownInterval: null,
-      liveStatsInterval: null,
       statusMessage: 'Stopped successfully',
       statusType: 'success',
+      statusIcon: null,
     };
 
     if (finalStats) {
@@ -1157,7 +1240,6 @@
 
       instanceActions.updateInstance($activeInstance.id, {
         stats,
-        nextUpdateIn: $activeInstance.updateIntervalSeconds ?? 5,
         statusMessage,
         statusType,
         statusIcon,
@@ -1219,13 +1301,10 @@
   // Sync instance config to server (debounced)
   // This ensures form changes persist across page refreshes in server mode
   function syncConfigToServer(instanceId) {
-    // Only sync in server mode
-    if (getRunMode() !== 'server') return;
-
     const instance = $instances.find(i => i.id === instanceId);
     if (!instance) return;
 
-    // Only sync if instance has a torrent loaded (exists on server) and is not running
+    // Only sync if instance has a torrent loaded (exists on backend) and is not running
     if (!instance.torrent || instance.isRunning) return;
 
     // Clear existing timeout
@@ -1379,7 +1458,8 @@
       <!-- Full-width border separator -->
       <div class="border-b-2 border-primary/20"></div>
 
-      <!-- Status Bar -->
+      <!-- Status Bar (standard mode only) -->
+      {#if $viewMode !== 'grid'}
       <StatusBar
         statusMessage={$activeInstance?.statusMessage || 'Select a torrent file to begin'}
         statusType={$activeInstance?.statusType || 'warning'}
@@ -1392,8 +1472,14 @@
         {resumeFaking}
         {manualUpdate}
       />
+      {/if}
 
       <!-- Scrollable Content Area -->
+      {#if $viewMode === 'grid'}
+        <div class="flex-1 overflow-y-auto p-3">
+          <GridView />
+        </div>
+      {:else}
       <div class="flex-1 overflow-y-auto p-3">
         <div class="max-w-7xl mx-auto">
           <!-- CORS Proxy Settings -->
@@ -1445,7 +1531,8 @@
               $activeInstance.stopAtUploadedEnabled ||
               $activeInstance.stopAtDownloadedEnabled ||
               $activeInstance.stopAtSeedTimeEnabled}
-            {@const showProgressBars = hasActiveStopCondition && $activeInstance?.stats}
+            {@const isLeeching = ($activeInstance.completionPercent ?? 100) < 100}
+            {@const showProgressBars = (hasActiveStopCondition || isLeeching) && $activeInstance?.stats}
 
             <div class="grid grid-cols-1 {showProgressBars ? 'md:grid-cols-2' : ''} gap-3 mb-3">
               <StopConditions
@@ -1471,6 +1558,8 @@
               {#if showProgressBars}
                 <ProgressBars
                   stats={$activeInstance.stats}
+                  completionPercent={$activeInstance.completionPercent ?? 100}
+                  torrentSize={$activeInstance.torrent?.total_size ?? 0}
                   stopAtRatioEnabled={$activeInstance.stopAtRatioEnabled}
                   stopAtRatio={$activeInstance.stopAtRatio}
                   stopAtUploadedEnabled={$activeInstance.stopAtUploadedEnabled}
@@ -1517,6 +1606,7 @@
           />
         </div>
       </div>
+      {/if}
     </div>
   </div>
 {/if}

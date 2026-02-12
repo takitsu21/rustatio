@@ -29,7 +29,7 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 tokio = { version = "1.48", default-features = false, features = ["sync", "time", "macros", "rt"], optional = true }
 
 # Native-only dependencies
-tauri = { version = "2.9", optional = true }
+tauri = { version = "2.10", optional = true }
 
 # WASM-only dependencies
 wasm-bindgen = { version = "0.2", optional = true }

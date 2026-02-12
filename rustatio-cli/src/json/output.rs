@@ -97,7 +97,6 @@ pub struct AnnounceEvent {
 pub enum AnnounceType {
     Started,
     Periodic,
-    Completed,
     Stopped,
 }
 
@@ -177,10 +176,11 @@ impl From<&FakerStats> for StatsEvent {
 fn format_state(state: &FakerState) -> String {
     match state {
         FakerState::Idle => "idle".to_string(),
+        FakerState::Starting => "starting".to_string(),
         FakerState::Running => "running".to_string(),
+        FakerState::Stopping => "stopping".to_string(),
         FakerState::Paused => "paused".to_string(),
         FakerState::Stopped => "stopped".to_string(),
-        FakerState::Completed => "completed".to_string(),
     }
 }
 

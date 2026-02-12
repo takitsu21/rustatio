@@ -4,7 +4,7 @@ use axum::{
     extract::{Multipart, Path, Query, State},
     http::StatusCode,
     response::Response,
-    routing::{delete, get, patch, post},
+    routing::{delete, get, patch},
     Json, Router,
 };
 use rustatio_core::{FakerConfig, TorrentInfo};
@@ -131,13 +131,6 @@ pub async fn load_instance_torrent(
             match field.bytes().await {
                 Ok(bytes) => match TorrentInfo::from_bytes(&bytes) {
                     Ok(torrent) => {
-                        if state.app.instance_exists(&id).await {
-                            return ApiSuccess::response(LoadTorrentResponse {
-                                torrent_id: id,
-                                torrent,
-                            });
-                        }
-
                         if let Err(e) = state.app.create_idle_instance(&id, torrent.clone()).await {
                             return ApiError::response(
                                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -145,10 +138,7 @@ pub async fn load_instance_torrent(
                             );
                         }
 
-                        return ApiSuccess::response(LoadTorrentResponse {
-                            torrent_id: id,
-                            torrent,
-                        });
+                        return ApiSuccess::response(LoadTorrentResponse { torrent });
                     }
                     Err(e) => {
                         return ApiError::response(StatusCode::BAD_REQUEST, format!("Failed to parse torrent: {}", e));
@@ -192,10 +182,35 @@ pub async fn update_instance_config(
     }
 }
 
+#[utoipa::path(
+    get,
+    path = "/instances/{id}/torrent",
+    tag = "instances",
+    summary = "Get torrent info for an instance",
+    security(("bearer_auth" = [])),
+    params(
+        ("id" = String, Path, description = "Instance ID")
+    ),
+    responses(
+        (status = 200, description = "Torrent info", body = Object),
+        (status = 401, description = "Unauthorized", body = ApiError),
+        (status = 404, description = "Instance not found", body = ApiError)
+    )
+)]
+pub async fn get_instance_torrent(State(state): State<ServerState>, Path(id): Path<String>) -> Response {
+    match state.app.get_instance_torrent(&id).await {
+        Ok(torrent) => ApiSuccess::response(torrent),
+        Err(e) => ApiError::response(StatusCode::NOT_FOUND, e),
+    }
+}
+
 pub fn router() -> Router<ServerState> {
     Router::new()
         .route("/instances", get(list_instances).post(create_instance))
         .route("/instances/{id}", delete(delete_instance))
-        .route("/instances/{id}/torrent", post(load_instance_torrent))
+        .route(
+            "/instances/{id}/torrent",
+            get(get_instance_torrent).post(load_instance_torrent),
+        )
         .route("/instances/{id}/config", patch(update_instance_config))
 }

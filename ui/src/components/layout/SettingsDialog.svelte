@@ -1,13 +1,13 @@
 <script>
-  import { instances, activeInstanceId, instanceActions } from '../lib/instanceStore.js';
+  import { instances, activeInstanceId, instanceActions } from '$lib/instanceStore.js';
   import { get } from 'svelte/store';
   import { api } from '$lib/api.js';
   import Button from '$lib/components/ui/button.svelte';
   import { builtInPresets } from '$lib/presets/index.js';
   import { getDefaultPresetId, setDefaultPreset, clearDefaultPreset } from '$lib/defaultPreset.js';
-  import { THEMES, THEME_CATEGORIES, getTheme, selectTheme } from '../lib/themeStore.svelte.js';
+  import { THEMES, THEME_CATEGORIES, getTheme, selectTheme } from '$lib/themeStore.svelte.js';
   import { Settings, X, Check, Trash2, Download, Upload } from '@lucide/svelte';
-  import PresetIcon from './PresetIcon.svelte';
+  import PresetIcon from '../config/PresetIcon.svelte';
 
   let { isOpen = $bindable(false) } = $props();
 

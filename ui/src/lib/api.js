@@ -220,11 +220,27 @@ export async function listenToLogs(callback) {
   }
 }
 
-// Instance events subscription (for real-time sync with watch folder)
-// Only available in server mode
+// Instance events subscription (for real-time sync)
+// Server mode: SSE for watch folder events
+// Tauri mode: listens for instance-restored events during startup
 export function listenToInstanceEvents(callback) {
+  if (isTauri) {
+    let unlisten = null;
+    import('@tauri-apps/api/event').then(({ listen }) => {
+      listen('instance-restored', () => {
+        callback({ type: 'created' });
+      }).then(fn => {
+        unlisten = fn;
+      });
+    }).catch(error => {
+      console.error('Failed to set up Tauri instance event listener:', error);
+    });
+    return () => {
+      if (unlisten) unlisten();
+    };
+  }
+
   if (!isServerMode) {
-    // Not available in WASM or Tauri mode
     return () => {};
   }
 
@@ -510,6 +526,95 @@ const serverApi = {
       body: JSON.stringify(config),
     });
   },
+  // Grid operations (server mode only)
+  gridImport: async (files, config = {}) => {
+    const formData = new FormData();
+    for (const file of files) {
+      formData.append('files', file);
+    }
+    formData.append('config', JSON.stringify(config));
+
+    const token = getAuthToken();
+    const headers = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(`${serverBaseUrl}/api/grid/import`, {
+      method: 'POST',
+      body: formData,
+      headers,
+    });
+
+    const data = await response.json();
+    if (!data.success) {
+      throw new Error(data.error || 'Grid import failed');
+    }
+    return data.data;
+  },
+  gridImportFolder: async (path, config = {}) => {
+    return serverFetch('/grid/import-folder', {
+      method: 'POST',
+      body: JSON.stringify({ path, config }),
+    });
+  },
+  gridStart: async ids => {
+    return serverFetch('/grid/start', {
+      method: 'POST',
+      body: JSON.stringify({ ids }),
+    });
+  },
+  gridStop: async ids => {
+    return serverFetch('/grid/stop', {
+      method: 'POST',
+      body: JSON.stringify({ ids }),
+    });
+  },
+  gridPause: async ids => {
+    return serverFetch('/grid/pause', {
+      method: 'POST',
+      body: JSON.stringify({ ids }),
+    });
+  },
+  gridResume: async ids => {
+    return serverFetch('/grid/resume', {
+      method: 'POST',
+      body: JSON.stringify({ ids }),
+    });
+  },
+  gridDelete: async ids => {
+    return serverFetch('/grid/delete', {
+      method: 'POST',
+      body: JSON.stringify({ ids }),
+    });
+  },
+  gridUpdateConfig: async (ids, config) => {
+    return serverFetch('/grid/update-config', {
+      method: 'POST',
+      body: JSON.stringify({ ids, config }),
+    });
+  },
+  gridTag: async (ids, addTags = [], removeTags = []) => {
+    return serverFetch('/grid/tag', {
+      method: 'POST',
+      body: JSON.stringify({ ids, add_tags: addTags, remove_tags: removeTags }),
+    });
+  },
+  listSummaries: async () => {
+    return serverFetch('/instances/summary', { method: 'GET' });
+  },
+  setInstanceTags: async (id, tags) => {
+    return serverFetch(`/instances/${id}/tags`, {
+      method: 'PUT',
+      body: JSON.stringify({ tags }),
+    });
+  },
+  getInstanceTorrent: async id => {
+    return serverFetch(`/instances/${id}/torrent`, { method: 'GET' });
+  },
+  browseFolders: async (path = '/') => {
+    return serverFetch(`/browse?path=${encodeURIComponent(path)}`, { method: 'GET' });
+  },
 };
 
 // Helper to format bytes for log messages
@@ -643,15 +748,16 @@ async function fetchNetworkStatusWithFallbacks() {
 const tauriApi = {
   createInstance: async () => {
     const { invoke } = await import('@tauri-apps/api/core');
-    return invoke('create_instance');
+    const id = await invoke('create_instance');
+    return String(id);
   },
   deleteInstance: async (id, force = false) => {
     const { invoke } = await import('@tauri-apps/api/core');
-    return invoke('delete_instance', { instanceId: id, force });
+    return invoke('delete_instance', { instanceId: Number(id), force });
   },
   listInstances: async () => {
-    // Tauri doesn't persist state across restarts yet
-    return [];
+    const { invoke } = await import('@tauri-apps/api/core');
+    return invoke('list_instances');
   },
   loadTorrent: async file => {
     const { invoke } = await import('@tauri-apps/api/core');
@@ -659,41 +765,45 @@ const tauriApi = {
     // This will be called from TorrentSelector with file path
     return invoke('load_torrent', { path: file });
   },
+  loadInstanceTorrent: async (id, file) => {
+    const { invoke } = await import('@tauri-apps/api/core');
+    return invoke('load_instance_torrent', { instanceId: Number(id), path: file });
+  },
   startFaker: async (id, torrent, config) => {
     const { invoke } = await import('@tauri-apps/api/core');
     return invoke('start_faker', {
-      instanceId: id,
+      instanceId: Number(id),
       torrent: torrent,
       config: config,
     });
   },
   updateFaker: async id => {
     const { invoke } = await import('@tauri-apps/api/core');
-    return invoke('update_faker', { instanceId: id });
+    return invoke('update_faker', { instanceId: Number(id) });
   },
   stopFaker: async id => {
     const { invoke } = await import('@tauri-apps/api/core');
-    return invoke('stop_faker', { instanceId: id });
+    return invoke('stop_faker', { instanceId: Number(id) });
   },
   pauseFaker: async id => {
     const { invoke } = await import('@tauri-apps/api/core');
-    return invoke('pause_faker', { instanceId: id });
+    return invoke('pause_faker', { instanceId: Number(id) });
   },
   resumeFaker: async id => {
     const { invoke } = await import('@tauri-apps/api/core');
-    return invoke('resume_faker', { instanceId: id });
+    return invoke('resume_faker', { instanceId: Number(id) });
   },
   updateStatsOnly: async id => {
     const { invoke } = await import('@tauri-apps/api/core');
-    return invoke('update_stats_only', { instanceId: id });
+    return invoke('update_stats_only', { instanceId: Number(id) });
   },
   getStats: async id => {
     const { invoke } = await import('@tauri-apps/api/core');
-    return invoke('get_stats', { instanceId: id });
+    return invoke('get_stats', { instanceId: Number(id) });
   },
   scrapeTracker: async id => {
     const { invoke } = await import('@tauri-apps/api/core');
-    return invoke('scrape_tracker', { instanceId: id });
+    return invoke('scrape_tracker', { instanceId: Number(id) });
   },
   getClientTypes: async () => {
     const { invoke } = await import('@tauri-apps/api/core');
@@ -742,14 +852,74 @@ const tauriApi = {
   clearDefaultConfig: async () => {
     // No-op for Tauri - localStorage is managed by defaultPreset.js
   },
-  // Config sync not needed in Tauri (state is in-memory)
-  updateInstanceConfig: async () => {},
+  updateInstanceConfig: async (id, config) => {
+    const { invoke } = await import('@tauri-apps/api/core');
+    await invoke('update_instance_config', { instanceId: Number(id), config });
+  },
+  // Grid operations
+  gridImport: async (files, config = {}) => {
+    // For Tauri desktop, convert File objects to paths via dialog if needed
+    // Files from Tauri's file dialog come with path property
+    const paths = files
+      .map(f => f.path || f.name)
+      .filter(p => p && !p.startsWith('blob:'));
+    if (paths.length === 0) {
+      return { imported: [], errors: ['No valid file paths available. Use folder import or file dialog.'] };
+    }
+    const { invoke } = await import('@tauri-apps/api/core');
+    return invoke('grid_import_files', { paths, config });
+  },
+  gridImportFolder: async (path, config = {}) => {
+    const { invoke } = await import('@tauri-apps/api/core');
+    return invoke('grid_import_folder', { path, config });
+  },
+  gridStart: async ids => {
+    const { invoke } = await import('@tauri-apps/api/core');
+    return invoke('grid_start', { ids: ids.map(Number) });
+  },
+  gridStop: async ids => {
+    const { invoke } = await import('@tauri-apps/api/core');
+    return invoke('grid_stop', { ids: ids.map(Number) });
+  },
+  gridPause: async ids => {
+    const { invoke } = await import('@tauri-apps/api/core');
+    return invoke('grid_pause', { ids: ids.map(Number) });
+  },
+  gridResume: async ids => {
+    const { invoke } = await import('@tauri-apps/api/core');
+    return invoke('grid_resume', { ids: ids.map(Number) });
+  },
+  gridDelete: async ids => {
+    const { invoke } = await import('@tauri-apps/api/core');
+    return invoke('grid_delete', { ids: ids.map(Number) });
+  },
+  gridUpdateConfig: async (ids, config) => {
+    const { invoke } = await import('@tauri-apps/api/core');
+    return invoke('grid_update_config', { ids: ids.map(Number), config });
+  },
+  gridTag: async (ids, addTags, removeTags) => {
+    const { invoke } = await import('@tauri-apps/api/core');
+    return invoke('grid_tag', { ids: ids.map(Number), addTags: addTags || [], removeTags: removeTags || [] });
+  },
+  listSummaries: async () => {
+    const { invoke } = await import('@tauri-apps/api/core');
+    return invoke('list_summaries');
+  },
+  setInstanceTags: async (id, tags) => {
+    const { invoke } = await import('@tauri-apps/api/core');
+    return invoke('set_instance_tags', { instanceId: Number(id), tags });
+  },
+  getInstanceTorrent: async id => {
+    const { invoke } = await import('@tauri-apps/api/core');
+    return invoke('get_instance_torrent', { instanceId: Number(id) });
+  },
+  browseFolders: async () => ({ path: '/', parent: null, entries: [] }),
 };
 
 // WASM API implementation
 const wasmApi = {
-  createInstance: () => wasm.create_instance(),
-  deleteInstance: (id, force = false) => wasm.delete_instance(id, force),
+  createInstance: () => String(wasm.create_instance()),
+  deleteInstance: (id, force = false) => wasm.delete_instance(Number(id), force),
   listInstances: async () => {
     // WASM doesn't persist state
     return [];
@@ -758,34 +928,38 @@ const wasmApi = {
     const bytes = new Uint8Array(await file.arrayBuffer());
     return wasm.load_torrent(bytes);
   },
+  loadInstanceTorrent: async (id, file) => {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    return wasm.load_instance_torrent(Number(id), bytes);
+  },
   startFaker: async (id, torrent, config) => {
-    return wasm.start_faker(id, torrent, config);
+    return wasm.start_faker(Number(id), torrent, config);
   },
   updateFaker: async id => {
-    return wasm.update_faker(id);
+    return wasm.update_faker(Number(id));
   },
   stopFaker: async id => {
-    return wasm.stop_faker(id);
+    return wasm.stop_faker(Number(id));
   },
   pauseFaker: async id => {
-    return wasm.pause_faker(id);
+    return wasm.pause_faker(Number(id));
   },
   resumeFaker: async id => {
-    return wasm.resume_faker(id);
+    return wasm.resume_faker(Number(id));
   },
   updateStatsOnly: async id => {
-    return wasm.update_stats_only(id);
+    return wasm.update_stats_only(Number(id));
   },
   getStats: async id => {
-    return wasm.get_stats(id);
+    return wasm.get_stats(Number(id));
   },
   scrapeTracker: async id => {
-    return wasm.scrape_tracker(id);
+    return wasm.scrape_tracker(Number(id));
   },
-  getClientTypes: () => {
+  getClientTypes: async () => {
     return wasm.get_client_types();
   },
-  getClientInfos: () => {
+  getClientInfos: async () => {
     return wasm.get_client_infos();
   },
   getNetworkStatus: async () => {
@@ -829,8 +1003,30 @@ const wasmApi = {
   clearDefaultConfig: async () => {
     // No-op for WASM - localStorage is managed by defaultPreset.js
   },
-  // Config sync not needed in WASM (state is in-memory)
-  updateInstanceConfig: async () => {},
+  updateInstanceConfig: async (id, config) => {
+    wasm.update_instance_config(Number(id), config);
+  },
+  // Grid operations
+  gridImport: async (files, config = {}) => {
+    const fileBytes = [];
+    for (const file of files) {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      fileBytes.push(Array.from(bytes));
+    }
+    return wasm.grid_import(fileBytes, config);
+  },
+  gridImportFolder: async () => ({ imported: [], errors: ['Folder import not available in WASM mode'] }),
+  gridStart: async ids => wasm.grid_start(ids.map(Number)),
+  gridStop: async ids => wasm.grid_stop(ids.map(Number)),
+  gridPause: async ids => wasm.grid_pause(ids.map(Number)),
+  gridResume: async ids => wasm.grid_resume(ids.map(Number)),
+  gridDelete: async ids => wasm.grid_delete(ids.map(Number)),
+  gridUpdateConfig: async (ids, config) => wasm.grid_update_config(ids.map(Number), config),
+  gridTag: async (ids, addTags, removeTags) => wasm.grid_tag(ids.map(Number), addTags || [], removeTags || []),
+  listSummaries: async () => wasm.list_summaries(),
+  setInstanceTags: async (id, tags) => wasm.set_instance_tags(Number(id), tags),
+  getInstanceTorrent: async id => wasm.get_instance_torrent(Number(id)),
+  browseFolders: async () => ({ path: '/', parent: null, entries: [] }),
 };
 
 // Dynamic API getter that returns the appropriate implementation

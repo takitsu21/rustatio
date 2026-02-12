@@ -18,7 +18,6 @@ use crate::api::{
 
 #[derive(Serialize, ToSchema)]
 pub struct LoadTorrentResponse {
-    pub torrent_id: String,
     #[schema(value_type = Object)]
     pub torrent: TorrentInfo,
 }
@@ -37,20 +36,13 @@ pub struct LoadTorrentResponse {
         (status = 401, description = "Unauthorized", body = ApiError)
     )
 )]
-pub async fn load_torrent(State(state): State<ServerState>, mut multipart: Multipart) -> Response {
+pub async fn load_torrent(State(_state): State<ServerState>, mut multipart: Multipart) -> Response {
     while let Ok(Some(field)) = multipart.next_field().await {
         if field.name() == Some("file") {
             match field.bytes().await {
                 Ok(bytes) => match TorrentInfo::from_bytes(&bytes) {
                     Ok(torrent) => {
-                        let torrent_id = uuid::Uuid::new_v4().to_string();
-                        let torrent_data = torrent.clone();
-                        state.app.store_torrent(&torrent_id, torrent).await;
-
-                        return ApiSuccess::response(LoadTorrentResponse {
-                            torrent_id,
-                            torrent: torrent_data,
-                        });
+                        return ApiSuccess::response(LoadTorrentResponse { torrent });
                     }
                     Err(e) => {
                         return ApiError::response(StatusCode::BAD_REQUEST, format!("Failed to parse torrent: {}", e));

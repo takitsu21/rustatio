@@ -37,6 +37,8 @@ pub struct AppConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InstanceConfig {
     pub torrent_path: Option<String>,
+    #[serde(default)]
+    pub torrent_name: Option<String>,
     pub selected_client: ClientType,
     pub selected_client_version: Option<String>,
     pub upload_rate: f64,
@@ -45,6 +47,10 @@ pub struct InstanceConfig {
     pub completion_percent: f64,
     pub initial_uploaded: u64,
     pub initial_downloaded: u64,
+    #[serde(default)]
+    pub cumulative_uploaded: u64,
+    #[serde(default)]
+    pub cumulative_downloaded: u64,
     pub randomize_rates: bool,
     pub random_range_percent: f64,
     pub update_interval_seconds: u64,

@@ -8,9 +8,9 @@ backend = "github:WebAssembly/binaryen"
 "platforms.windows-x64" = { checksum = "sha256:7d20f9f22ee1d1a195aecccb21390f8c599b5025219520c7c9f04673b39d2c20", url = "https://github.com/WebAssembly/binaryen/releases/download/version_125/binaryen-version_125-x86_64-windows.tar.gz", url_api = "https://api.github.com/repos/WebAssembly/binaryen/releases/assets/318554378"}
 
 [[tools.node]]
-version = "25.4.0"
+version = "25.6.1"
 backend = "core:node"
-"platforms.linux-x64" = { checksum = "sha256:5951a889ab65b3a73cc88e6d412d70499f523a89fe553b5349471af7586f2be2", url = "https://nodejs.org/dist/v25.4.0/node-v25.4.0-linux-x64.tar.gz"}
+"platforms.linux-x64" = { checksum = "sha256:3809fdbfd54829bad363b9db8e96ca3600509e2ff20ede74181cfc1ca8451ce3", url = "https://nodejs.org/dist/v25.6.1/node-v25.6.1-linux-x64.tar.gz"}
 
 [[tools.rust]]
 version = "1.93.0"

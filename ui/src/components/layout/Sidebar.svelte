@@ -1,5 +1,6 @@
 <script>
-  import { instances, activeInstanceId, instanceActions } from '../lib/instanceStore.js';
+  import { instances, activeInstanceId, instanceActions } from '$lib/instanceStore.js';
+  import { viewMode, gridInstances, selectedIds, gridFilters } from '$lib/gridStore.js';
   import { cn } from '$lib/utils.js';
   import Button from '$lib/components/ui/button.svelte';
   import AboutDialog from './AboutDialog.svelte';
@@ -18,6 +19,10 @@
     Settings,
     Info,
     Moon,
+    List,
+    LayoutGrid,
+    CheckCircle,
+    LoaderCircle,
   } from '@lucide/svelte';
 
   let {
@@ -31,6 +36,7 @@
 
   let showAbout = $state(false);
   let showSettings = $state(false);
+  let isGridMode = $derived($viewMode === 'grid');
 
   // Derived state
   let hasMultipleInstancesWithTorrents = $derived(
@@ -48,6 +54,92 @@
   let hasUnpausedRunningInstances = $derived(
     $instances.some(inst => inst.isRunning && !inst.isPaused)
   );
+
+  // Grid mode aggregate stats
+  let gridStats = $derived(() => {
+    let totalUploaded = 0;
+    let totalDownloaded = 0;
+    let totalSize = 0;
+    let totalUploadRate = 0;
+    let totalDownloadRate = 0;
+    let downloadingCount = 0;
+    const stateCounts = {};
+
+    for (const inst of $gridInstances) {
+      totalUploaded += inst.uploaded || 0;
+      totalDownloaded += inst.downloaded || 0;
+      totalSize += inst.totalSize || 0;
+      totalUploadRate += inst.currentUploadRate || 0;
+      totalDownloadRate += inst.currentDownloadRate || 0;
+      if ((inst.torrentCompletion ?? 100) < 100) downloadingCount++;
+      const s = inst.state || 'stopped';
+      stateCounts[s] = (stateCounts[s] || 0) + 1;
+    }
+
+    const ratio = totalDownloaded > 0 ? totalUploaded / totalDownloaded : 0;
+    return {
+      totalUploaded,
+      totalDownloaded,
+      totalSize,
+      totalUploadRate,
+      totalDownloadRate,
+      ratio,
+      stateCounts,
+      total: $gridInstances.length,
+      downloadingCount,
+    };
+  });
+
+  // Grid selection aggregate stats
+  let selectionStats = $derived(() => {
+    const ids = $selectedIds;
+    if (ids.size === 0) return null;
+    let uploaded = 0;
+    let downloaded = 0;
+    let size = 0;
+    for (const inst of $gridInstances) {
+      if (ids.has(inst.id)) {
+        uploaded += inst.uploaded || 0;
+        downloaded += inst.downloaded || 0;
+        size += inst.totalSize || 0;
+      }
+    }
+    return { count: ids.size, uploaded, downloaded, size };
+  });
+
+  let activeStateFilter = $derived($gridFilters.stateFilter);
+
+  const stateConfig = [
+    { key: 'running', label: 'Running', icon: Circle, color: 'text-stat-upload' },
+    { key: 'paused', label: 'Paused', icon: Pause, color: 'text-stat-ratio' },
+    { key: 'idle', label: 'Idle', icon: Moon, color: 'text-violet-500' },
+    { key: 'stopped', label: 'Stopped', icon: Square, color: 'text-muted-foreground' },
+    { key: 'starting', label: 'Starting', icon: LoaderCircle, color: 'text-primary' },
+    { key: 'stopping', label: 'Stopping', icon: LoaderCircle, color: 'text-stat-danger' },
+  ];
+
+  const quickFilters = [
+    { key: 'all', label: 'All' },
+    { key: 'running', label: 'Running' },
+    { key: 'stopped', label: 'Stopped' },
+    { key: 'paused', label: 'Paused' },
+  ];
+
+  function setStateFilter(state) {
+    gridFilters.update(f => ({ ...f, stateFilter: state }));
+  }
+
+  function formatRate(rate) {
+    if (!rate || rate === 0) return '0 KB/s';
+    if (rate >= 1000) return (rate / 1024).toFixed(1) + ' MB/s';
+    return rate.toFixed(1) + ' KB/s';
+  }
+
+  function formatRateCompact(rate) {
+    if (!rate || rate === 0) return '0';
+    if (rate >= 1000) return (rate / 1024).toFixed(0) + 'M';
+    return rate.toFixed(0) + 'K';
+  }
 
   // Total stats across all instances
   let totalStats = $derived(() => {
@@ -251,7 +343,7 @@
           isCollapsed && 'lg:opacity-0 lg:w-0 lg:overflow-hidden'
         )}
       >
-        Instances
+        {isGridMode ? 'Grid Mode' : 'Instances'}
       </h2>
 
       <!-- Desktop Toggle Button -->
@@ -266,6 +358,40 @@
       </button>
     </div>
 
+    <!-- View Mode Toggle -->
+    {#if !isCollapsed}
+      <div class="flex gap-1 bg-muted/50 rounded-lg p-1 mb-3">
+        <button
+          class={cn(
+            'flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-colors border-0 cursor-pointer',
+            !isGridMode
+              ? 'bg-background text-foreground shadow-sm'
+              : 'text-muted-foreground hover:text-foreground bg-transparent'
+          )}
+          onclick={() => viewMode.set('standard')}
+          title="Standard view - manage individual instances"
+        >
+          <List size={12} />
+          Standard
+        </button>
+        <button
+          class={cn(
+            'flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-colors border-0 cursor-pointer',
+            isGridMode
+              ? 'bg-background text-foreground shadow-sm'
+              : 'text-muted-foreground hover:text-foreground bg-transparent'
+          )}
+          onclick={() => viewMode.set('grid')}
+          title="Grid view - manage many instances at once"
+        >
+          <LayoutGrid size={12} />
+          Grid
+        </button>
+      </div>
+    {/if}
+
+    <!-- Standard Mode Content -->
+    {#if !isGridMode}
     <!-- Total Stats Summary -->
     {#if !isCollapsed && (totalStats().uploaded > 0 || totalStats().downloaded > 0)}
       <div class="mb-3 p-2 bg-muted/50 rounded-lg text-xs">
@@ -365,9 +491,11 @@
         <span class={cn(isCollapsed && 'lg:hidden')}>New Instance</span>
       {/snippet}
     </Button>
+    {/if}
   </div>
 
-  <!-- Instance List -->
+  <!-- Instance List (standard mode only) -->
+  {#if !isGridMode}
   <div class="flex-1 overflow-y-auto min-h-0">
     {#each $instances as instance (instance.id)}
       {@const status = getInstanceStatus(instance)}
@@ -515,6 +643,158 @@
       </div>
     {/each}
   </div>
+  {:else}
+    <!-- Grid Mode Sidebar Content -->
+    <div class="flex-1 overflow-y-auto min-h-0">
+      {#if isCollapsed}
+        <!-- Collapsed: compact aggregate rates -->
+        <div class="flex flex-col items-center gap-1 py-3 px-1">
+          <span class="text-stat-upload text-[10px] font-bold" title="Total upload rate">
+            ↑{formatRateCompact(gridStats().totalUploadRate)}
+          </span>
+          <span class="text-stat-leecher text-[10px] font-bold" title="Total download rate">
+            ↓{formatRateCompact(gridStats().totalDownloadRate)}
+          </span>
+          {#if gridStats().total > 0}
+            <span class="text-muted-foreground text-[10px] mt-1" title="{gridStats().total} instances">
+              {gridStats().total}
+            </span>
+          {/if}
+        </div>
+      {:else}
+        <div class="p-3 space-y-3">
+
+          <!-- Aggregate Rate Display -->
+          <div class="p-3 bg-muted/50 rounded-lg">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Live Rates</span>
+              {#if gridStats().stateCounts['running'] > 0}
+                <span class="flex items-center gap-1 text-[10px] text-stat-upload">
+                  <Circle size={6} fill="currentColor" class="animate-pulse-slow" />
+                  {gridStats().stateCounts['running']} active
+                </span>
+              {/if}
+            </div>
+            <div class="flex items-baseline gap-2">
+              <span class="text-lg font-bold text-stat-upload">↑ {formatRate(gridStats().totalUploadRate)}</span>
+            </div>
+            <div class="flex items-baseline gap-2 mt-0.5">
+              <span class="text-lg font-bold text-stat-leecher">↓ {formatRate(gridStats().totalDownloadRate)}</span>
+            </div>
+          </div>
+
+          <!-- Aggregate Stats Summary -->
+          {#if gridStats().total > 0}
+            <div class="p-2.5 bg-muted/50 rounded-lg text-xs space-y-1.5">
+              <div class="flex justify-between text-muted-foreground">
+                <span>Uploaded</span>
+                <span class="font-semibold text-stat-upload">↑ {formatBytes(gridStats().totalUploaded)}</span>
+              </div>
+              <div class="flex justify-between text-muted-foreground">
+                <span>Downloaded</span>
+                <span class="font-semibold text-stat-leecher">↓ {formatBytes(gridStats().totalDownloaded)}</span>
+              </div>
+              <div class="flex justify-between text-muted-foreground">
+                <span>Ratio</span>
+                <span class={cn(
+                  'font-bold',
+                  gridStats().ratio >= 1 ? 'text-stat-upload' : 'text-stat-ratio'
+                )}>
+                  {gridStats().ratio.toFixed(2)}x
+                </span>
+              </div>
+              <div class="flex justify-between text-muted-foreground">
+                <span>Total Size</span>
+                <span class="font-semibold text-foreground">{formatBytes(gridStats().totalSize)}</span>
+              </div>
+              <div class="flex justify-between text-muted-foreground">
+                <span>Instances</span>
+                <span class="font-semibold text-foreground">{gridStats().total}</span>
+              </div>
+              {#if gridStats().downloadingCount > 0}
+                <div class="flex justify-between text-muted-foreground">
+                  <span>Downloading</span>
+                  <span class="font-semibold text-stat-leecher">{gridStats().downloadingCount}</span>
+                </div>
+              {/if}
+            </div>
+          {/if}
+
+          <!-- State Breakdown -->
+          {#if gridStats().total > 0}
+            <div class="space-y-0.5">
+              <span class="text-[10px] font-medium text-muted-foreground uppercase tracking-wider px-1">States</span>
+              {#each stateConfig as sc (sc.key)}
+                {@const count = gridStats().stateCounts[sc.key] || 0}
+                {#if count > 0}
+                  {@const StateIcon = sc.icon}
+                  <button
+                    class={cn(
+                      'w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors border-0 cursor-pointer',
+                      activeStateFilter === sc.key
+                        ? 'bg-primary/10 text-foreground font-medium'
+                        : 'text-muted-foreground hover:bg-muted hover:text-foreground bg-transparent'
+                    )}
+                    onclick={() => setStateFilter(activeStateFilter === sc.key ? 'all' : sc.key)}
+                    title="Filter by {sc.label}"
+                  >
+                    <span class={sc.color}>
+                      <StateIcon size={12} fill={sc.key === 'running' || sc.key === 'idle' ? 'currentColor' : 'none'} />
+                    </span>
+                    <span class="flex-1 text-left">{sc.label}</span>
+                    <span class="font-mono font-semibold tabular-nums">{count}</span>
+                  </button>
+                {/if}
+              {/each}
+            </div>
+          {/if}
+
+          <!-- Quick State Filters -->
+          <div class="space-y-1">
+            <span class="text-[10px] font-medium text-muted-foreground uppercase tracking-wider px-1">Filter</span>
+            <div class="flex flex-wrap gap-1">
+              {#each quickFilters as qf (qf.key)}
+                <button
+                  class={cn(
+                    'px-2 py-1 rounded-md text-[11px] font-medium transition-colors border-0 cursor-pointer',
+                    activeStateFilter === qf.key
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-muted/70 text-muted-foreground hover:bg-muted hover:text-foreground'
+                  )}
+                  onclick={() => setStateFilter(qf.key)}
+                >
+                  {qf.label}
+                </button>
+              {/each}
+            </div>
+          </div>
+
+          <!-- Selection Summary -->
+          {#if selectionStats()}
+            <div class="p-2.5 bg-primary/5 border border-primary/20 rounded-lg text-xs space-y-1.5">
+              <div class="flex items-center gap-1.5 text-primary font-semibold text-[11px]">
+                <CheckCircle size={12} />
+                {selectionStats().count} selected
+              </div>
+              <div class="flex justify-between text-muted-foreground">
+                <span>Size</span>
+                <span class="font-semibold text-foreground">{formatBytes(selectionStats().size)}</span>
+              </div>
+              <div class="flex justify-between text-muted-foreground">
+                <span>Uploaded</span>
+                <span class="font-semibold text-stat-upload">↑ {formatBytes(selectionStats().uploaded)}</span>
+              </div>
+              <div class="flex justify-between text-muted-foreground">
+                <span>Downloaded</span>
+                <span class="font-semibold text-stat-leecher">↓ {formatBytes(selectionStats().downloaded)}</span>
+              </div>
+            </div>
+          {/if}
+
+        </div>
+      {/if}
+    </div>
+  {/if}
 
   <!-- Footer with Network Status and About Button -->
   <div class="border-t border-border p-3 space-y-2">
