@@ -4,6 +4,8 @@
 
   let {
     stats,
+    completionPercent = 100,
+    torrentSize = 0,
     stopAtRatioEnabled,
     stopAtRatio,
     stopAtUploadedEnabled,
@@ -15,6 +17,10 @@
     formatBytes,
     formatDuration,
   } = $props();
+
+  const isLeeching = $derived(completionPercent < 100);
+  const torrentCompletion = $derived(stats?.torrent_completion ?? completionPercent);
+  const torrentDownloaded = $derived(torrentSize > 0 ? torrentSize - (stats?.left ?? 0) : 0);
 </script>
 
 <Card class="p-3">
@@ -22,6 +28,37 @@
     <BarChart3 size={20} /> Progress
   </h2>
   <div class="flex flex-col gap-3">
+    {#if isLeeching}
+      <div>
+        <div class="flex justify-between items-center mb-2 flex-wrap gap-2">
+          <span class="font-semibold text-stat-leecher text-sm">Torrent Download</span>
+          <span class="text-xs text-muted-foreground"
+            >{formatBytes(torrentDownloaded)} / {formatBytes(torrentSize)}</span
+          >
+          {#if stats.eta_download_completion}
+            <span class="text-xs text-muted-foreground italic"
+              >ETA {formatDuration(stats.eta_download_completion.secs)}</span
+            >
+          {/if}
+        </div>
+        <div class="w-full h-5 bg-muted rounded-full overflow-hidden border border-border">
+          <div
+            class="h-full bg-stat-leecher transition-all duration-300 flex items-center justify-end pr-2"
+            style="width: {torrentCompletion}%"
+          >
+            {#if torrentCompletion >= 10}
+              <span class="text-[0.7rem] text-white font-semibold pr-1"
+                >{torrentCompletion.toFixed(1)}%</span
+              >
+            {/if}
+          </div>
+        </div>
+        {#if torrentCompletion >= 100}
+          <p class="text-xs text-stat-upload mt-1">Download complete — now seeding</p>
+        {/if}
+      </div>
+    {/if}
+
     {#if stopAtRatioEnabled && stats.ratio_progress >= 0}
       <div>
         <div class="flex justify-between items-center mb-2 flex-wrap gap-2">

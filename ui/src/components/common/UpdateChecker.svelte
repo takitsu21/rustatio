@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import Button from '$lib/components/ui/button.svelte';
-  import { devLog } from '../lib/devLog.js';
+  import { devLog } from '$lib/devLog.js';
   import { X } from '@lucide/svelte';
 
   let updateAvailable = $state(false);
@@ -31,7 +31,7 @@
 
       // On Linux, check the executable path to determine install method
       const { invoke } = await import('@tauri-apps/api/core');
-      const exePath = await invoke('plugin:process|current_dir').catch(() => '');
+      const exePath = String(await invoke('plugin:process|current_dir').catch(() => ''));
 
       // Check common installation paths
       if (exePath.includes('tmp/.mount_') || exePath.includes('AppImage')) {
@@ -103,8 +103,8 @@
       const data = await response.json();
 
       if (data.version) {
-        const { version } = await import('@tauri-apps/api/app');
-        const current = await version();
+        const { getVersion } = await import('@tauri-apps/api/app');
+        const current = await getVersion();
 
         if (data.version !== current) {
           updateAvailable = true;
@@ -165,8 +165,10 @@
       if (update?.available) {
         devLog('log', 'Downloading update...');
 
-        await update.downloadAndInstall(progress => {
-          devLog('log', `Download progress: ${progress.downloaded}/${progress.total} bytes`);
+        await update.downloadAndInstall((progress) => {
+          if (progress.event === 'Progress') {
+            devLog('log', `Download progress: ${progress.data.chunkLength} bytes received`);
+          }
         });
 
         devLog('log', 'Update downloaded and installed, relaunching...');

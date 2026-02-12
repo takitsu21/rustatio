@@ -2,8 +2,7 @@ use super::persistence::InstanceSource;
 use rustatio_core::{FakerConfig, FakerStats, RatioFaker, TorrentInfo};
 use serde::Serialize;
 use std::sync::Arc;
-use tokio::sync::{mpsc, RwLock};
-use tokio::task::JoinHandle;
+use tokio::sync::RwLock;
 use utoipa::ToSchema;
 
 pub struct FakerInstance {
@@ -15,8 +14,7 @@ pub struct FakerInstance {
     pub cumulative_downloaded: u64,
     pub created_at: u64,
     pub source: InstanceSource,
-    pub task_handle: Option<JoinHandle<()>>,
-    pub shutdown_tx: Option<mpsc::Sender<()>>,
+    pub tags: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
@@ -30,4 +28,5 @@ pub struct InstanceInfo {
     pub stats: FakerStats,
     pub created_at: u64,
     pub source: InstanceSource,
+    pub tags: Vec<String>,
 }

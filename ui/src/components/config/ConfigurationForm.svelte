@@ -2,11 +2,8 @@
   import Card from '$lib/components/ui/card.svelte';
   import Label from '$lib/components/ui/label.svelte';
   import Input from '$lib/components/ui/input.svelte';
-  import Checkbox from '$lib/components/ui/checkbox.svelte';
   import {
     Settings,
-    Shuffle,
-    TrendingUp,
     ArrowUpDown,
     Clock,
     Upload,
@@ -15,6 +12,8 @@
   import ClientIcon from './ClientIcon.svelte';
   import ClientSelect from './ClientSelect.svelte';
   import VersionSelect from './VersionSelect.svelte';
+  import RandomizationSettings from './RandomizationSettings.svelte';
+  import ProgressiveRateSettings from './ProgressiveRateSettings.svelte';
 
   let {
     clients,
@@ -37,21 +36,21 @@
     onUpdate,
   } = $props();
 
-  // Local state for form values
-  let localSelectedClient = $state();
-  let localSelectedClientVersion = $state();
-  let localPort = $state();
-  let localUploadRate = $state();
-  let localDownloadRate = $state();
-  let localCompletionPercent = $state();
-  let localInitialUploaded = $state();
-  let localUpdateIntervalSeconds = $state();
-  let localRandomizeRates = $state();
-  let localRandomRangePercent = $state();
-  let localProgressiveRatesEnabled = $state();
-  let localTargetUploadRate = $state();
-  let localTargetDownloadRate = $state();
-  let localProgressiveDurationHours = $state();
+  // Local state for form values (defaults match createDefaultInstance)
+  let localSelectedClient = $state('qbittorrent');
+  let localSelectedClientVersion = $state(null);
+  let localPort = $state(6881);
+  let localUploadRate = $state(50);
+  let localDownloadRate = $state(100);
+  let localCompletionPercent = $state(0);
+  let localInitialUploaded = $state(0);
+  let localUpdateIntervalSeconds = $state(5);
+  let localRandomizeRates = $state(true);
+  let localRandomRangePercent = $state(20);
+  let localProgressiveRatesEnabled = $state(false);
+  let localTargetUploadRate = $state(100);
+  let localTargetDownloadRate = $state(200);
+  let localProgressiveDurationHours = $state(1);
 
   // Track if we're currently editing to prevent external updates from interfering
   let isEditing = $state(false);
@@ -260,6 +259,9 @@
             />
             <span class="text-sm text-muted-foreground">KB/s</span>
           </div>
+          {#if localDownloadRate > 0 && localCompletionPercent >= 100}
+            <p class="text-[10px] text-orange-500 mt-1">No effect at 100% completion</p>
+          {/if}
         </div>
       </div>
     </div>
@@ -340,201 +342,31 @@
 
   <!-- Randomization -->
   <div class="mb-3">
-    <div class="flex items-center gap-3 mb-3">
-      <Checkbox
-        id="randomize"
-        checked={localRandomizeRates}
-        disabled={isRunning}
-        onchange={checked => {
-          localRandomizeRates = checked;
-          updateValue('randomizeRates', checked);
-        }}
-      />
-      <Label for="randomize" class="cursor-pointer font-medium flex items-center gap-2">
-        <Shuffle size={16} class="text-muted-foreground" />
-        Randomize rates for realistic behavior
-      </Label>
-    </div>
-
-    {#if localRandomizeRates}
-      <div class="bg-muted/50 rounded-lg border border-border overflow-hidden">
-        <!-- Slider row -->
-        <div class="p-4 flex items-center gap-4">
-          <span class="text-sm text-muted-foreground whitespace-nowrap">Variance</span>
-          <input
-            id="randomRange"
-            type="range"
-            bind:value={localRandomRangePercent}
-            disabled={isRunning}
-            min="1"
-            max="50"
-            step="1"
-            class="flex-1 h-2 rounded-lg cursor-pointer accent-primary"
-            style="background: linear-gradient(to right, hsl(var(--primary)) {((localRandomRangePercent -
-              1) /
-              49) *
-              100}%, hsl(var(--muted)) {((localRandomRangePercent - 1) / 49) * 100}%);"
-            onfocus={handleFocus}
-            onblur={handleBlur}
-            oninput={() => updateValue('randomRangePercent', localRandomRangePercent)}
-          />
-          <span class="text-lg font-bold text-primary min-w-[4ch] text-right"
-            >±{localRandomRangePercent}%</span
-          >
-        </div>
-
-        <!-- Resulting ranges -->
-        <div class="grid grid-cols-2 border-t border-border">
-          <div class="p-3 border-r border-border">
-            <div class="text-xs text-muted-foreground mb-1">↑ Upload Range</div>
-            <div class="font-medium">
-              <span class="text-muted-foreground"
-                >{(localUploadRate * (1 - localRandomRangePercent / 100)).toFixed(1)}</span
-              >
-              <span class="text-muted-foreground mx-1">—</span>
-              <span class="text-primary"
-                >{(localUploadRate * (1 + localRandomRangePercent / 100)).toFixed(1)}</span
-              >
-              <span class="text-xs text-muted-foreground ml-1">KB/s</span>
-            </div>
-          </div>
-          <div class="p-3">
-            <div class="text-xs text-muted-foreground mb-1">↓ Download Range</div>
-            <div class="font-medium">
-              <span class="text-muted-foreground"
-                >{(localDownloadRate * (1 - localRandomRangePercent / 100)).toFixed(1)}</span
-              >
-              <span class="text-muted-foreground mx-1">—</span>
-              <span class="text-primary"
-                >{(localDownloadRate * (1 + localRandomRangePercent / 100)).toFixed(1)}</span
-              >
-              <span class="text-xs text-muted-foreground ml-1">KB/s</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    {/if}
+    <RandomizationSettings
+      bind:enabled={localRandomizeRates}
+      bind:rangePercent={localRandomRangePercent}
+      uploadRate={localUploadRate}
+      downloadRate={localDownloadRate}
+      disabled={isRunning}
+      onchange={updates => {
+        for (const [key, value] of Object.entries(updates)) updateValue(key, value);
+      }}
+    />
   </div>
 
   <!-- Progressive Rates -->
   <div class="mb-0">
-    <div class="flex items-center gap-3 mb-3">
-      <Checkbox
-        id="progressive-enabled"
-        checked={localProgressiveRatesEnabled}
-        disabled={isRunning}
-        onchange={checked => {
-          localProgressiveRatesEnabled = checked;
-          updateValue('progressiveRatesEnabled', checked);
-        }}
-      />
-      <Label for="progressive-enabled" class="cursor-pointer font-medium flex items-center gap-2">
-        <TrendingUp size={16} class="text-muted-foreground" />
-        Progressive rate adjustment
-      </Label>
-    </div>
-
-    {#if localProgressiveRatesEnabled}
-      <div class="bg-muted/50 rounded-lg border border-border overflow-hidden">
-        <!-- Duration slider -->
-        <div class="p-4 flex items-center gap-4">
-          <span class="text-sm text-muted-foreground whitespace-nowrap">Duration</span>
-          <input
-            id="progressiveDuration"
-            type="range"
-            bind:value={localProgressiveDurationHours}
-            disabled={isRunning}
-            min="0.5"
-            max="24"
-            step="0.5"
-            class="flex-1 h-2 rounded-lg cursor-pointer accent-primary"
-            style="background: linear-gradient(to right, hsl(var(--primary)) {((localProgressiveDurationHours -
-              0.5) /
-              23.5) *
-              100}%, hsl(var(--muted)) {((localProgressiveDurationHours - 0.5) / 23.5) * 100}%);"
-            onfocus={handleFocus}
-            onblur={handleBlur}
-            oninput={() => updateValue('progressiveDurationHours', localProgressiveDurationHours)}
-          />
-          <div class="flex items-center gap-1 min-w-[5ch]">
-            <span class="text-lg font-bold text-primary">{localProgressiveDurationHours}</span>
-            <span class="text-sm text-muted-foreground">hrs</span>
-          </div>
-        </div>
-
-        <!-- Rate progression visualization -->
-        <div class="grid grid-cols-2 border-t border-border">
-          <!-- Upload progression -->
-          <div class="p-3 border-r border-border">
-            <div class="text-xs text-muted-foreground mb-2">↑ Upload</div>
-            <div class="flex items-center gap-2">
-              <div class="text-center">
-                <div class="text-xs text-muted-foreground mb-0.5">Start</div>
-                <div class="font-medium text-muted-foreground">{localUploadRate}</div>
-              </div>
-              <div class="flex-1 flex items-center gap-1 px-2">
-                <div class="h-px flex-1 bg-border"></div>
-                <TrendingUp size={14} class="text-primary" />
-                <div class="h-px flex-1 bg-border"></div>
-              </div>
-              <div class="text-center">
-                <div class="text-xs text-muted-foreground mb-0.5">Target</div>
-                <Input
-                  id="targetUpload"
-                  type="number"
-                  bind:value={localTargetUploadRate}
-                  disabled={isRunning}
-                  min="0"
-                  step="0.1"
-                  class="w-20 h-8 text-center font-medium"
-                  onfocus={handleFocus}
-                  onblur={handleBlur}
-                  oninput={() => updateValue('targetUploadRate', localTargetUploadRate)}
-                />
-              </div>
-            </div>
-          </div>
-
-          <!-- Download progression -->
-          <div class="p-3">
-            <div class="text-xs text-muted-foreground mb-2">↓ Download</div>
-            <div class="flex items-center gap-2">
-              <div class="text-center">
-                <div class="text-xs text-muted-foreground mb-0.5">Start</div>
-                <div class="font-medium text-muted-foreground">{localDownloadRate}</div>
-              </div>
-              <div class="flex-1 flex items-center gap-1 px-2">
-                <div class="h-px flex-1 bg-border"></div>
-                <TrendingUp size={14} class="text-primary" />
-                <div class="h-px flex-1 bg-border"></div>
-              </div>
-              <div class="text-center">
-                <div class="text-xs text-muted-foreground mb-0.5">Target</div>
-                <Input
-                  id="targetDownload"
-                  type="number"
-                  bind:value={localTargetDownloadRate}
-                  disabled={isRunning}
-                  min="0"
-                  step="0.1"
-                  class="w-20 h-8 text-center font-medium"
-                  onfocus={handleFocus}
-                  onblur={handleBlur}
-                  oninput={() => updateValue('targetDownloadRate', localTargetDownloadRate)}
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Summary -->
-        <div
-          class="px-4 py-2 bg-muted/50 border-t border-border text-xs text-muted-foreground text-center"
-        >
-          Rates will gradually adjust from starting values to targets over {localProgressiveDurationHours}
-          hour{localProgressiveDurationHours !== 1 ? 's' : ''}
-        </div>
-      </div>
-    {/if}
+    <ProgressiveRateSettings
+      bind:enabled={localProgressiveRatesEnabled}
+      bind:durationHours={localProgressiveDurationHours}
+      bind:targetUploadRate={localTargetUploadRate}
+      bind:targetDownloadRate={localTargetDownloadRate}
+      uploadRate={localUploadRate}
+      downloadRate={localDownloadRate}
+      disabled={isRunning}
+      onchange={updates => {
+        for (const [key, value] of Object.entries(updates)) updateValue(key, value);
+      }}
+    />
   </div>
 </Card>

@@ -133,7 +133,12 @@ impl WatchService {
             // Collect watch folder instances that need to be auto-started
             if self.config.auto_start
                 && instance.source == InstanceSource::WatchFolder
-                && !matches!(instance.stats.state, rustatio_core::FakerState::Running)
+                && !matches!(
+                    instance.stats.state,
+                    rustatio_core::FakerState::Starting
+                        | rustatio_core::FakerState::Running
+                        | rustatio_core::FakerState::Stopping
+                )
             {
                 watch_folder_to_start.push((instance.id.clone(), instance.torrent.name.clone()));
             }

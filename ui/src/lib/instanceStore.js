@@ -25,8 +25,6 @@ function createDefaultInstance(id, defaults = {}) {
 
     // Intervals
     updateInterval: null,
-    liveStatsInterval: null,
-    countdownInterval: null,
 
     // Cumulative stats (preserved across sessions, not editable by user)
     cumulativeUploaded: defaults.cumulativeUploaded !== undefined ? defaults.cumulativeUploaded : 0,
@@ -80,7 +78,6 @@ function createDefaultInstance(id, defaults = {}) {
     // Status
     statusMessage: 'Select a torrent file to begin',
     statusType: 'warning',
-    nextUpdateIn: 0,
   };
 }
 
@@ -102,6 +99,7 @@ async function saveSession(instances, activeId) {
 
       config.instances = instances.map(inst => ({
         torrent_path: inst.torrentPath || null,
+        torrent_name: inst.torrent?.name || null,
         selected_client: inst.selectedClient,
         selected_client_version: inst.selectedClientVersion,
         upload_rate: parseFloat(inst.uploadRate),
@@ -138,6 +136,7 @@ async function saveSession(instances, activeId) {
       const sessionData = {
         instances: instances.map(inst => ({
           torrent_path: inst.torrentPath || null,
+          torrent_name: inst.torrent?.name || null,
           torrent_data: inst.torrent || null, // Save the actual torrent object for web
           selected_client: inst.selectedClient,
           selected_client_version: inst.selectedClientVersion,
@@ -202,6 +201,7 @@ function loadSessionFromStorage(config = null) {
     return {
       instances: sessionData.instances.map(inst => ({
         torrentPath: inst.torrent_path,
+        torrentName: inst.torrent_name || null,
         torrent: inst.torrent_data || null, // Restore torrent data for web
         selectedClient: inst.selected_client,
         selectedClientVersion: inst.selected_client_version,
@@ -255,11 +255,15 @@ export const activeInstance = writable(null);
 export { saveSession };
 
 // Helper function to update activeInstance store
+// Only fires set() if the active instance reference actually changed,
+// preventing unnecessary subscription notifications.
 function updateActiveInstanceStore() {
   const $instances = get(instances);
   const $activeInstanceId = get(activeInstanceId);
   const active = $instances.find(inst => inst.id === $activeInstanceId) || $instances[0] || null;
-  activeInstance.set(active);
+  if (active !== get(activeInstance)) {
+    activeInstance.set(active);
+  }
 }
 
 // Actions
@@ -274,8 +278,8 @@ export const instanceActions = {
         globalConfig.set(config);
       }
 
-      // For server mode, try to fetch existing instances from backend first
-      // This handles the case where instances are running and user refreshes or opens new tab
+      // For server mode, try to fetch existing instances from backend first.
+      // Server's listInstances returns full data (config, torrent, stats).
       const isServerMode = !isTauri && typeof api.listInstances === 'function';
       if (isServerMode) {
         try {
@@ -352,7 +356,123 @@ export const instanceActions = {
         }
       }
 
-      // Fall back to localStorage/config restoration
+      // For Tauri desktop, try to restore instances from the backend.
+      // The backend restores instances from desktop-state.json on startup (async spawn),
+      // so we may need to retry if the frontend loads before restoration completes.
+      if (isTauri) {
+        try {
+          let summaries = null;
+          const savedSession = loadSessionFromStorage(config);
+          const expectInstances =
+            savedSession && savedSession.instances && savedSession.instances.length > 0;
+
+          const maxRetries = expectInstances ? 5 : 1;
+          for (let attempt = 0; attempt < maxRetries; attempt++) {
+            summaries = await api.listSummaries();
+            if (summaries && summaries.length > 0) break;
+
+            if (attempt < maxRetries - 1) {
+              await new Promise(r => setTimeout(r, 300));
+            }
+          }
+
+          if (summaries && summaries.length > 0) {
+            // Match saved config to backend instances by torrent name
+            const savedInstances = savedSession?.instances ? [...savedSession.instances] : [];
+
+            const restoredInstances = [];
+            for (const summary of summaries) {
+              const instanceId = String(summary.id);
+
+              // Get full torrent data from backend
+              let torrent = null;
+              try {
+                torrent = await api.getInstanceTorrent(instanceId);
+              } catch {
+                // Instance may have been partially restored
+              }
+
+              // Match saved config by torrent name for user settings
+              let savedConfig = null;
+              if (savedInstances.length > 0) {
+                const nameMatch = savedInstances.find(
+                  s => s.torrentName && s.torrentName === summary.name
+                );
+                if (nameMatch) {
+                  savedConfig = nameMatch;
+                  savedInstances.splice(savedInstances.indexOf(nameMatch), 1);
+                }
+              }
+
+              const defaults = savedConfig || (getDefaultPreset()?.settings ?? {});
+
+              const instance = createDefaultInstance(instanceId, {
+                ...defaults,
+                cumulativeUploaded: bytesToMB(summary.uploaded),
+                cumulativeDownloaded: bytesToMB(summary.downloaded),
+              });
+
+              if (torrent) {
+                instance.torrent = torrent;
+                instance.torrentPath = summary.name || torrent.name;
+                instance.statusMessage = 'Ready to start faking';
+                instance.statusType = 'idle';
+              } else {
+                instance.torrentPath = summary.name || '';
+                instance.statusMessage = 'Torrent data unavailable';
+                instance.statusType = 'warning';
+              }
+
+              // Set running state from backend
+              const state = summary.state?.toLowerCase();
+              instance.isRunning = state === 'running' || state === 'starting' || state === 'idle' || state === 'paused';
+              instance.isPaused = state === 'paused';
+
+              if (instance.isPaused) {
+                instance.statusMessage = 'Paused';
+                instance.statusType = 'idle';
+                instance.statusIcon = 'pause';
+              } else if (state === 'idle') {
+                instance.statusMessage = 'Idling - No peers available';
+                instance.statusType = 'idling';
+                instance.statusIcon = 'moon';
+              } else if (instance.isRunning) {
+                instance.statusMessage = 'Actively faking ratio...';
+                instance.statusType = 'running';
+                instance.statusIcon = 'rocket';
+              }
+
+              restoredInstances.push(instance);
+            }
+
+            if (restoredInstances.length > 0) {
+              instances.set(restoredInstances);
+
+              const savedActiveIndex = savedSession?.activeInstanceIndex;
+              if (
+                savedActiveIndex !== null &&
+                savedActiveIndex !== undefined &&
+                savedActiveIndex >= 0 &&
+                savedActiveIndex < restoredInstances.length
+              ) {
+                activeInstanceId.set(restoredInstances[savedActiveIndex].id);
+              } else {
+                activeInstanceId.set(restoredInstances[0].id);
+              }
+
+              updateActiveInstanceStore();
+              return restoredInstances[0].id;
+            }
+          }
+        } catch (error) {
+          console.warn(
+            'Failed to restore instances from Tauri backend, falling back to config:',
+            error
+          );
+        }
+      }
+
+      // Fall back to localStorage/config restoration (web/WASM mode, or backend had no instances)
       const savedSession = loadSessionFromStorage(config);
 
       if (savedSession && savedSession.instances && savedSession.instances.length > 0) {
@@ -368,9 +488,9 @@ export const instanceActions = {
           // Try to restore torrent file
           if (savedInst.torrentPath) {
             if (isTauri) {
-              // Desktop: Try to reload from path
+              // Desktop: Try to reload from path and register with backend
               try {
-                const torrent = await api.loadTorrent(savedInst.torrentPath);
+                const torrent = await api.loadInstanceTorrent(instanceId, savedInst.torrentPath);
                 instance.torrent = torrent;
                 instance.torrentPath = savedInst.torrentPath;
                 instance.statusMessage = 'Ready to start faking';
@@ -554,7 +674,11 @@ export const instanceActions = {
         return inst;
       });
     });
-    updateActiveInstanceStore();
+
+    // Only update active instance store if the modified instance is the active one
+    if (id === get(activeInstanceId)) {
+      updateActiveInstanceStore();
+    }
   },
 
   // Update the currently active instance
@@ -646,31 +770,259 @@ export const instanceActions = {
     return true;
   },
 
-  // Remove instance from frontend (used when server sends delete event)
-  removeInstanceFromStore: id => {
+  // Ensure an instance exists in the standard store (used when switching from grid to standard view)
+  // If the instance doesn't exist, fetch it from the server or create a default entry.
+  // Returns the instance ID if successfully ensured.
+  ensureInstance: async (id, gridSummary = null) => {
     const currentInstances = get(instances);
-    const stringId = String(id); // Ensure string comparison
+    const existing = currentInstances.find(inst => inst.id === id);
 
-    // Don't remove if it's the last instance
-    if (currentInstances.length <= 1) {
-      console.warn('Cannot remove the last instance');
-      return false;
+    // Try to fetch actual config from backend and update or create the instance
+    try {
+      const serverInstances = await api.listInstances();
+      if (serverInstances && serverInstances.length > 0) {
+        const serverInst = serverInstances.find(inst => String(inst.id) === String(id));
+        if (serverInst) {
+          if (existing) {
+            // Update existing instance with actual backend config
+            instanceActions.updateInstance(id, {
+              selectedClient: serverInst.config.client_type,
+              selectedClientVersion: serverInst.config.client_version,
+              uploadRate: serverInst.config.upload_rate,
+              downloadRate: serverInst.config.download_rate,
+              port: serverInst.config.port,
+              completionPercent: serverInst.config.completion_percent,
+              randomizeRates: serverInst.config.randomize_rates,
+              randomRangePercent: serverInst.config.random_range_percent,
+              progressiveRatesEnabled: serverInst.config.progressive_rates || false,
+              targetUploadRate: serverInst.config.target_upload_rate || 100,
+              targetDownloadRate: serverInst.config.target_download_rate || 200,
+              progressiveDurationHours: (serverInst.config.progressive_duration || 3600) / 3600,
+              stopAtRatioEnabled: serverInst.config.stop_at_ratio != null,
+              stopAtRatio: serverInst.config.stop_at_ratio || 2.0,
+              stopAtUploadedEnabled: serverInst.config.stop_at_uploaded != null,
+              stopAtUploadedGB: (serverInst.config.stop_at_uploaded || 0) / (1024 * 1024 * 1024),
+              stopAtDownloadedEnabled: serverInst.config.stop_at_downloaded != null,
+              stopAtDownloadedGB: (serverInst.config.stop_at_downloaded || 0) / (1024 * 1024 * 1024),
+              stopAtSeedTimeEnabled: serverInst.config.stop_at_seed_time != null,
+              stopAtSeedTimeHours: (serverInst.config.stop_at_seed_time || 0) / 3600,
+              idleWhenNoLeechers: serverInst.config.idle_when_no_leechers || false,
+              idleWhenNoSeeders: serverInst.config.idle_when_no_seeders || false,
+            });
+            return existing.id;
+          }
+          instanceActions.mergeServerInstance(serverInst);
+          return String(serverInst.id);
+        }
+      }
+    } catch {
+      // listInstances may not be available or may return [] (Tauri/WASM)
     }
 
-    const exists = currentInstances.some(inst => inst.id === stringId);
+    if (existing) return existing.id;
+
+    // Fallback: create a frontend instance and hydrate torrent from backend
+    if (gridSummary) {
+      const defaultPreset = getDefaultPreset();
+      const defaults = defaultPreset ? defaultPreset.settings : {};
+      const instance = createDefaultInstance(id, defaults);
+      instance.torrentPath = gridSummary.name || '';
+
+      // Apply backend state from grid summary
+      const summaryState = gridSummary.state?.toLowerCase();
+      if (summaryState === 'running' || summaryState === 'starting' || summaryState === 'idle') {
+        instance.isRunning = true;
+        instance.isPaused = false;
+      } else if (summaryState === 'paused') {
+        instance.isRunning = true;
+        instance.isPaused = true;
+      }
+
+      try {
+        const torrent = await api.getInstanceTorrent(id);
+        if (torrent) {
+          instance.torrent = torrent;
+          instance.torrentPath = gridSummary.name || torrent.name || '';
+        }
+      } catch {
+        instance.torrentPath = gridSummary.name || '';
+      }
+
+      if (instance.isPaused) {
+        instance.statusMessage = 'Paused';
+        instance.statusType = 'idle';
+        instance.statusIcon = 'pause';
+      } else if (summaryState === 'idle') {
+        instance.statusMessage = 'Idling - No peers available';
+        instance.statusType = 'idling';
+        instance.statusIcon = 'moon';
+      } else if (instance.isRunning) {
+        instance.statusMessage = 'Actively faking ratio...';
+        instance.statusType = 'running';
+        instance.statusIcon = 'rocket';
+      } else if (instance.torrent) {
+        instance.statusMessage = 'Ready to start faking';
+        instance.statusType = 'idle';
+      } else {
+        instance.statusMessage = gridSummary.name ? 'Loaded from grid view' : 'Select a torrent file to begin';
+        instance.statusType = gridSummary.name ? 'idle' : 'warning';
+      }
+
+      instances.update(insts => [...insts, instance]);
+      updateActiveInstanceStore();
+      return instance.id;
+    }
+
+    return null;
+  },
+
+  // Add an instance to the standard store from grid import data
+  addInstanceToStore: async (id, name, importDefaults = {}) => {
+    const currentInstances = get(instances);
+    if (currentInstances.some(inst => inst.id === id)) return;
+
+    const defaultPreset = getDefaultPreset();
+    const presetDefaults = defaultPreset ? defaultPreset.settings : {};
+    const defaults = { ...presetDefaults, ...importDefaults };
+    const instance = createDefaultInstance(id, defaults);
+
+    try {
+      const torrent = await api.getInstanceTorrent(id);
+      if (torrent) {
+        instance.torrent = torrent;
+        instance.torrentPath = name || torrent.name || '';
+        instance.statusMessage = 'Ready to start faking';
+        instance.statusType = 'idle';
+      }
+    } catch {
+      instance.torrentPath = name || '';
+      instance.statusMessage = name ? 'Loaded from grid view' : 'Select a torrent file to begin';
+      instance.statusType = name ? 'idle' : 'warning';
+    }
+
+    // If the import auto-started the instance, reflect that in the standard view
+    if (importDefaults.autoStart) {
+      instance.isRunning = true;
+      instance.statusMessage = 'Actively faking ratio...';
+      instance.statusType = 'running';
+    }
+
+    instances.update(insts => [...insts, instance]);
+    updateActiveInstanceStore();
+  },
+
+  // Sync runtime state (isRunning, isPaused, stats) for a single instance from the backend.
+  // Used by grid actions to propagate state changes to the standard view store.
+  syncInstanceState: async (id, { isRunning, isPaused, stats } = {}) => {
+    const currentInstances = get(instances);
+    const existing = currentInstances.find(inst => inst.id === id);
+    if (!existing) return;
+
+    const updates = {};
+    if (isRunning !== undefined) updates.isRunning = isRunning;
+    if (isPaused !== undefined) updates.isPaused = isPaused;
+    if (stats !== undefined) updates.stats = stats;
+
+    if (isPaused) {
+      updates.statusMessage = 'Paused';
+      updates.statusType = 'idle';
+      updates.statusIcon = 'pause';
+    } else if (isRunning) {
+      updates.statusMessage = 'Actively faking ratio...';
+      updates.statusType = 'running';
+      updates.statusIcon = 'rocket';
+    } else if (isRunning === false) {
+      updates.statusMessage = 'Ready to start faking';
+      updates.statusType = 'idle';
+      updates.statusIcon = null;
+    }
+
+    instanceActions.updateInstance(id, updates);
+  },
+
+  // Sync all instance states from the backend summaries.
+  // Fetches listSummaries and updates isRunning/isPaused for every instance in the standard store.
+  syncAllInstanceStates: async () => {
+    try {
+      const summaries = await api.listSummaries();
+      if (!summaries) return;
+
+      const summaryMap = new Map(summaries.map(s => [s.id, s]));
+      const currentInstances = get(instances);
+
+      let hasAnyChanges = false;
+      const updatedInstances = currentInstances.map(inst => {
+        const summary = summaryMap.get(inst.id);
+        if (!summary) return inst;
+
+        const state = summary.state?.toLowerCase();
+        const isRunning = state === 'running' || state === 'starting' || state === 'paused' || state === 'idle';
+        const isPaused = state === 'paused';
+
+        if (inst.isRunning === isRunning && inst.isPaused === isPaused) return inst;
+
+        hasAnyChanges = true;
+        const updates = { isRunning, isPaused };
+
+        if (isPaused) {
+          updates.statusMessage = 'Paused';
+          updates.statusType = 'idle';
+          updates.statusIcon = 'pause';
+        } else if (state === 'idle') {
+          updates.statusMessage = 'Idling - No peers available';
+          updates.statusType = 'idling';
+          updates.statusIcon = 'moon';
+        } else if (isRunning) {
+          updates.statusMessage = 'Actively faking ratio...';
+          updates.statusType = 'running';
+          updates.statusIcon = 'rocket';
+        } else {
+          updates.statusMessage = 'Ready to start faking';
+          updates.statusType = 'idle';
+          updates.statusIcon = null;
+        }
+
+        return { ...inst, ...updates };
+      });
+
+      if (hasAnyChanges) {
+        instances.set(updatedInstances);
+        updateActiveInstanceStore();
+      }
+    } catch (error) {
+      console.warn('Failed to sync instance states:', error);
+    }
+  },
+
+  // Remove instance from frontend (used when server sends delete event)
+  removeInstanceFromStore: async id => {
+    const currentInstances = get(instances);
+
+    const exists = currentInstances.some(inst => inst.id === id);
     if (!exists) {
       return false;
     }
 
-    instances.update(insts => {
-      const filtered = insts.filter(inst => inst.id !== stringId);
+    // If this is the last instance, create a new empty replacement first
+    let newInstance = null;
+    if (currentInstances.length === 1) {
+      const newId = await api.createInstance();
+      const defaultPreset = getDefaultPreset();
+      const defaults = defaultPreset ? { ...defaultPreset.settings } : {};
+      newInstance = createDefaultInstance(newId, defaults);
+    }
 
-      // If we're removing the active instance, switch to the first one
+    instances.update(insts => {
+      const filtered = insts.filter(inst => inst.id !== id);
+
       const currentActiveId = get(activeInstanceId);
-      if (currentActiveId === stringId) {
-        activeInstanceId.set(filtered[0]?.id || null);
+      if (currentActiveId === id) {
+        activeInstanceId.set(newInstance?.id || filtered[0]?.id || null);
       }
 
+      if (newInstance) {
+        return [...filtered, newInstance];
+      }
       return filtered;
     });
 

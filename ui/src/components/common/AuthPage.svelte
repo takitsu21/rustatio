@@ -1,6 +1,6 @@
 <script>
   import { onMount } from 'svelte';
-  import { getAuthToken, setAuthToken, verifyAuthToken, clearAuthToken } from '../lib/api.js';
+  import { getAuthToken, setAuthToken, verifyAuthToken, clearAuthToken } from '$lib/api.js';
   import Button from '$lib/components/ui/button.svelte';
   import ThemeIcon from './ThemeIcon.svelte';
   import {
@@ -13,7 +13,7 @@
     initializeTheme,
     handleClickOutside,
     getThemeName,
-  } from '../lib/themeStore.svelte.js';
+  } from '$lib/themeStore.svelte.js';
   import { ChevronDown, Check, Lock, KeyRound, AlertCircle, Loader2, LogIn } from '@lucide/svelte';
 
   let { onAuthenticated = () => {} } = $props();

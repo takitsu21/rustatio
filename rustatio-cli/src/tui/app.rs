@@ -249,13 +249,9 @@ pub async fn run_tui_mode(config: RunnerConfig) -> Result<()> {
         }
 
         // Check if stopped by stop condition
-        if matches!(stats.state, FakerState::Stopped | FakerState::Completed) {
+        if matches!(stats.state, FakerState::Stopped) {
             app.update_stats(stats);
-            app.set_status(if matches!(app.stats.as_ref().unwrap().state, FakerState::Completed) {
-                "Completed!"
-            } else {
-                "Stopped"
-            });
+            app.set_status("Stopped");
             terminal.draw(|f| ui(f, &app))?;
 
             // Wait a moment then exit
@@ -268,10 +264,7 @@ pub async fn run_tui_mode(config: RunnerConfig) -> Result<()> {
     }
 
     // Stop faker gracefully if not already stopped
-    if !matches!(
-        app.stats.as_ref().map(|s| &s.state),
-        Some(FakerState::Stopped) | Some(FakerState::Completed)
-    ) {
+    if !matches!(app.stats.as_ref().map(|s| &s.state), Some(FakerState::Stopped)) {
         app.set_status("Stopping...");
         terminal.draw(|f| ui(f, &app))?;
         let _ = faker.stop().await;
@@ -456,9 +449,10 @@ fn render_status_bar(frame: &mut Frame, app: &App, area: Rect) {
     let (status_text, status_color) = if let Some(ref stats) = app.stats {
         match stats.state {
             FakerState::Running => ("● Running", Color::Green),
+            FakerState::Starting => ("◌ Starting", Color::Yellow),
+            FakerState::Stopping => ("◼ Stopping", Color::Yellow),
             FakerState::Paused => ("⏸ Paused", Color::Yellow),
             FakerState::Stopped => ("■ Stopped", Color::Red),
-            FakerState::Completed => ("✓ Completed", Color::Cyan),
             FakerState::Idle => ("○ Idle", Color::Gray),
         }
     } else {

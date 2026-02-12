@@ -16,7 +16,6 @@
   $effect(() => {
     if (versions.length > 0 && (!value || !versions.includes(value))) {
       value = versions[0];
-      onchange?.();
     }
   });
 

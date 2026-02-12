@@ -270,10 +270,11 @@ impl Default for FakerConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum FakerState {
     Idle,
+    Starting,
     Running,
+    Stopping,
     Paused,
     Stopped,
-    Completed,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -284,9 +285,10 @@ pub struct FakerStats {
     pub ratio: f64,      // Cumulative ratio: uploaded / torrent_size
 
     // === TORRENT STATE ===
-    pub left: u64,     // Bytes left to download for THIS torrent
-    pub seeders: i64,  // Seeders from tracker
-    pub leechers: i64, // Leechers from tracker
+    pub left: u64,               // Bytes left to download for THIS torrent
+    pub torrent_completion: f64, // 0-100% of torrent downloaded
+    pub seeders: i64,            // Seeders from tracker
+    pub leechers: i64,           // Leechers from tracker
     pub state: FakerState,
 
     // === IDLE STATE ===
@@ -315,6 +317,7 @@ pub struct FakerStats {
     pub eta_ratio: Option<Duration>,
     pub eta_uploaded: Option<Duration>,
     pub eta_seed_time: Option<Duration>,
+    pub eta_download_completion: Option<Duration>,
 
     // === HISTORY (for graphs) ===
     pub upload_rate_history: Vec<f64>,
@@ -424,9 +427,14 @@ impl RatioFaker {
 
             // Torrent state
             left,
+            torrent_completion: if torrent.total_size > 0 {
+                ((torrent.total_size - left) as f64 / torrent.total_size as f64) * 100.0
+            } else {
+                100.0
+            },
             seeders: 0,
             leechers: 0,
-            state: FakerState::Idle,
+            state: FakerState::Stopped,
 
             // Idle state
             is_idling: false,
@@ -454,6 +462,7 @@ impl RatioFaker {
             eta_ratio: None,
             eta_uploaded: None,
             eta_seed_time: None,
+            eta_download_completion: None,
 
             // History
             upload_rate_history: Vec::new(),
@@ -473,7 +482,7 @@ impl RatioFaker {
                 torrent,
                 config,
                 tracker_client,
-                state: Arc::new(RwLock::new(FakerState::Idle)),
+                state: Arc::new(RwLock::new(FakerState::Stopped)),
                 stats: Arc::new(RwLock::new(stats)),
                 peer_id,
                 key,
@@ -492,7 +501,7 @@ impl RatioFaker {
                 torrent,
                 config,
                 tracker_client,
-                state: RefCell::new(FakerState::Idle),
+                state: RefCell::new(FakerState::Stopped),
                 stats: RefCell::new(stats),
                 peer_id,
                 key,
@@ -510,53 +519,80 @@ impl RatioFaker {
     pub async fn start(&mut self) -> Result<()> {
         log_info!("Starting ratio faker for torrent: {}", self.torrent.name);
 
-        // Update state
-        *write_lock!(self.state) = FakerState::Running;
+        // Set transitional Starting state before first announce
+        *write_lock!(self.state) = FakerState::Starting;
+        write_lock!(self.stats).state = FakerState::Starting;
         self.start_time = Instant::now();
         self.last_update = Instant::now();
 
-        // Send started event
-        let response = self.announce(TrackerEvent::Started).await?;
+        // Send started event — best-effort, don't fail if tracker is unreachable
+        match self.announce(TrackerEvent::Started).await {
+            Ok(response) => {
+                self.announce_interval = Duration::from_secs(response.interval as u64);
+                self.tracker_id = response.tracker_id;
 
-        // Update announce interval
-        self.announce_interval = Duration::from_secs(response.interval as u64);
+                let mut stats = write_lock!(self.stats);
+                stats.seeders = response.complete;
+                stats.leechers = response.incomplete;
+                stats.last_announce = Some(Instant::now());
+                stats.next_announce = Some(Instant::now() + self.announce_interval);
+                stats.announce_count += 1;
 
-        // Store tracker ID if provided
-        self.tracker_id = response.tracker_id;
+                log_info!(
+                    "Started successfully. Seeders: {}, Leechers: {}, Interval: {}s",
+                    response.complete,
+                    response.incomplete,
+                    response.interval
+                );
+            }
+            Err(e) => {
+                log_warn!("Initial announce failed, will retry on next cycle: {}", e);
+                // Schedule a retry announce soon (30s) instead of waiting the full default interval
+                let mut stats = write_lock!(self.stats);
+                stats.next_announce = Some(Instant::now() + Duration::from_secs(30));
+            }
+        }
 
-        // Update stats with tracker response
-        let mut stats = write_lock!(self.stats);
-        stats.state = FakerState::Running; // Ensure state is synced
-        stats.seeders = response.complete;
-        stats.leechers = response.incomplete;
-        stats.last_announce = Some(Instant::now());
-        stats.next_announce = Some(Instant::now() + self.announce_interval);
-        stats.announce_count += 1;
-
-        log_info!(
-            "Started successfully. Seeders: {}, Leechers: {}, Interval: {}s",
-            response.complete,
-            response.incomplete,
-            response.interval
-        );
+        // ALWAYS transition to Running regardless of announce result
+        *write_lock!(self.state) = FakerState::Running;
+        write_lock!(self.stats).state = FakerState::Running;
 
         Ok(())
     }
 
     /// Stop the ratio faking session
     pub async fn stop(&mut self) -> Result<()> {
+        // Guard: no-op if already stopped (prevents redundant stop announces
+        // when the scheduler auto-stops via stop conditions and the frontend
+        // subsequently calls stop again after observing the Stopped state)
+        if matches!(*read_lock!(self.state), FakerState::Stopped) {
+            log_debug!("Already stopped, skipping stop");
+            return Ok(());
+        }
+
         log_info!("Stopping ratio faker");
 
-        // Send stopped event
-        self.announce(TrackerEvent::Stopped).await?;
+        // Set transitional Stopping state before tracker announce
+        *write_lock!(self.state) = FakerState::Stopping;
+        write_lock!(self.stats).state = FakerState::Stopping;
 
-        // Update state
+        // Send stopped event — best-effort, tracker will time out the peer anyway
+        match self.announce(TrackerEvent::Stopped).await {
+            Ok(_) => {
+                write_lock!(self.stats).announce_count += 1;
+                log_info!("Stop announce sent successfully");
+            }
+            Err(e) => {
+                log_warn!("Stop announce failed (tracker will time out peer): {}", e);
+            }
+        }
+
+        // ALWAYS transition to Stopped regardless of announce result
         *write_lock!(self.state) = FakerState::Stopped;
-
-        // CRITICAL: Also update the state in stats so frontend can detect the stop
         let mut stats = write_lock!(self.stats);
         stats.state = FakerState::Stopped;
-        stats.announce_count += 1;
+        stats.is_idling = false;
+        stats.idling_reason = None;
 
         Ok(())
     }
@@ -589,7 +625,9 @@ impl RatioFaker {
 
         if completed {
             drop(stats);
-            self.on_completed().await?;
+            if let Err(e) = self.on_completed().await {
+                log_warn!("Completion announce failed, continuing: {}", e);
+            }
             stats = write_lock!(self.stats);
         }
 
@@ -608,7 +646,12 @@ impl RatioFaker {
         if let Some(next_announce) = stats.next_announce {
             if now >= next_announce {
                 drop(stats);
-                self.periodic_announce().await?;
+                if let Err(e) = self.periodic_announce().await {
+                    log_warn!("Periodic announce failed, will retry next cycle: {}", e);
+                    // Schedule a retry in 30s instead of waiting the full interval
+                    let mut stats = write_lock!(self.stats);
+                    stats.next_announce = Some(Instant::now() + Duration::from_secs(30));
+                }
             }
         }
 
@@ -656,7 +699,9 @@ impl RatioFaker {
 
         if completed {
             drop(stats);
-            self.on_completed().await?;
+            if let Err(e) = self.on_completed().await {
+                log_warn!("Completion announce failed, continuing: {}", e);
+            }
             stats = write_lock!(self.stats);
         }
 
@@ -756,12 +801,8 @@ impl RatioFaker {
 
         let response = self.announce(TrackerEvent::Completed).await?;
 
-        // Update state
-        *write_lock!(self.state) = FakerState::Completed;
-
-        // Update stats
+        // Update stats (state stays Running — faker continues seeding after completion)
         let mut stats = write_lock!(self.stats);
-        stats.state = FakerState::Completed; // CRITICAL: Update state in stats too
         stats.seeders = response.complete;
         stats.leechers = response.incomplete;
         stats.announce_count += 1;
@@ -792,7 +833,10 @@ impl RatioFaker {
     pub async fn pause(&mut self) -> Result<()> {
         log_info!("Pausing ratio faker");
         *write_lock!(self.state) = FakerState::Paused;
-        write_lock!(self.stats).state = FakerState::Paused;
+        let mut stats = write_lock!(self.stats);
+        stats.state = FakerState::Paused;
+        stats.is_idling = false;
+        stats.idling_reason = None;
         Ok(())
     }
 
@@ -873,12 +917,6 @@ impl RatioFaker {
             }
         }
 
-        // Can't download if there are no seeders (and we still have data left to download)
-        // This is the original behavior, separate from idle_when_no_seeders
-        if stats.seeders <= 0 && stats.left > 0 {
-            download_rate = 0.0;
-        }
-
         (upload_rate, download_rate)
     }
 
@@ -943,6 +981,13 @@ impl RatioFaker {
         };
 
         stats.elapsed_time = now.duration_since(self.start_time);
+
+        // Torrent completion percentage
+        stats.torrent_completion = if self.torrent.total_size > 0 {
+            ((self.torrent.total_size - stats.left) as f64 / self.torrent.total_size as f64) * 100.0
+        } else {
+            100.0
+        };
 
         let elapsed_secs = stats.elapsed_time.as_secs_f64();
         if elapsed_secs > 0.0 {
@@ -1103,6 +1148,14 @@ impl RatioFaker {
         } else {
             stats.seed_time_progress = 0.0;
             stats.eta_seed_time = None;
+        }
+
+        // Download completion ETA (time until torrent fully downloaded)
+        if stats.left > 0 && stats.average_download_rate > 0.0 {
+            let eta_secs = (stats.left as f64 / 1024.0) / stats.average_download_rate;
+            stats.eta_download_completion = Some(Duration::from_secs_f64(eta_secs));
+        } else {
+            stats.eta_download_completion = None;
         }
     }
 }

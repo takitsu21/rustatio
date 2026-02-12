@@ -14,7 +14,7 @@ use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
 use crate::api::{ApiDoc, ServerState};
-use crate::services::{AppState, WatchConfig, WatchDisabledReason, WatchService};
+use crate::services::{AppState, Scheduler, WatchConfig, WatchDisabledReason, WatchService};
 use crate::util::BroadcastLayer;
 
 #[tokio::main]
@@ -42,6 +42,10 @@ async fn main() {
             tracing::error!("Failed to load saved state: {}", e);
         }
     }
+
+    let mut scheduler = Scheduler::new();
+    scheduler.start(state.clone(), state.instances.clone());
+    let scheduler = Arc::new(tokio::sync::Mutex::new(scheduler));
 
     let (watch_config, disabled_reason) = WatchConfig::from_env();
 
@@ -111,14 +115,18 @@ async fn main() {
     let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
     let state_for_shutdown = state.clone();
     let watch_for_shutdown = watch_service.clone();
+    let scheduler_for_shutdown = scheduler.clone();
 
     tokio::spawn(async move {
         shutdown_signal().await;
 
+        tracing::info!("Stopping scheduler...");
+        scheduler_for_shutdown.lock().await.shutdown().await;
+
         tracing::info!("Stopping watch folder service...");
         watch_for_shutdown.write().await.stop().await;
 
-        tracing::info!("Stopping background tasks...");
+        tracing::info!("Stopping running instances...");
         state_for_shutdown.shutdown_all().await;
 
         tracing::info!("Saving state before shutdown...");

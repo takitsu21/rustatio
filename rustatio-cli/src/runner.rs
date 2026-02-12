@@ -239,7 +239,7 @@ pub async fn run_json_mode(config: RunnerConfig) -> Result<()> {
         session.upload_rate = config.upload_rate;
         session.download_rate = config.download_rate;
         session.port = config.port;
-        session.completion_percent = config.completion;
+        session.completion_percent = final_stats.torrent_completion;
         session.stop_at_ratio = config.stop_ratio;
         session.stop_at_uploaded_gb = config.stop_uploaded;
         session.update(
