@@ -40,6 +40,12 @@ pub async fn get_client_infos() -> Vec<ClientInfo> {
 }
 
 #[tauri::command]
+pub fn set_log_level(level: String) {
+    rustatio_core::logger::set_max_emit_level(&level);
+    log::info!("IPC log level set to: {}", level);
+}
+
+#[tauri::command]
 pub async fn write_file(path: String, contents: String) -> Result<(), String> {
     std::fs::write(&path, contents).map_err(|e| format!("Failed to write file: {}", e))?;
     log::info!("File written to: {}", path);

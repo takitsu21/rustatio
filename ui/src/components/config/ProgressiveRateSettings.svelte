@@ -46,7 +46,9 @@
           max="24"
           step="0.5"
           class="flex-1 h-2 rounded-lg cursor-pointer accent-primary"
-          style="background: linear-gradient(to right, hsl(var(--primary)) {((durationHours - 0.5) / 23.5) * 100}%, hsl(var(--muted)) {((durationHours - 0.5) / 23.5) * 100}%);"
+          style="background: linear-gradient(to right, hsl(var(--primary)) {((durationHours - 0.5) /
+            23.5) *
+            100}%, hsl(var(--muted)) {((durationHours - 0.5) / 23.5) * 100}%);"
           oninput={() => onchange?.({ progressiveDurationHours: durationHours })}
         />
         <div class="flex items-center gap-1 min-w-[5ch]">
@@ -113,7 +115,9 @@
         </div>
       </div>
 
-      <div class="px-4 py-2 bg-muted/50 border-t border-border text-xs text-muted-foreground text-center">
+      <div
+        class="px-4 py-2 bg-muted/50 border-t border-border text-xs text-muted-foreground text-center"
+      >
         Rates will gradually adjust from starting values to targets over {durationHours}
         hour{durationHours !== 1 ? 's' : ''}
       </div>

@@ -31,6 +31,7 @@
   function saveLogLevel(level) {
     logLevel = level;
     localStorage.setItem(LOG_LEVEL_KEY, level);
+    api.setLogLevel(level);
   }
 
   // Custom presets stored in localStorage
@@ -250,6 +251,7 @@
         randomizeRates: instance.randomizeRates,
         randomRangePercent: instance.randomRangePercent,
         updateIntervalSeconds: instance.updateIntervalSeconds,
+        scrapeInterval: instance.scrapeInterval,
         progressiveRatesEnabled: instance.progressiveRatesEnabled,
         targetUploadRate: instance.targetUploadRate,
         targetDownloadRate: instance.targetDownloadRate,

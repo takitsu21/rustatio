@@ -45,6 +45,8 @@
   let autoStart = $state(false);
   let staggerSecs = $state(5);
   let tagsInput = $state('');
+  let updateIntervalSeconds = $state(5);
+  let scrapeInterval = $state(60);
 
   // Client selection
   let clientTypes = $state([]);
@@ -86,7 +88,9 @@
     try {
       const stored = localStorage.getItem(CUSTOM_PRESETS_KEY);
       return stored ? JSON.parse(stored) : [];
-    } catch { return []; }
+    } catch {
+      return [];
+    }
   }
 
   let allPresets = $derived([...builtInPresets, ...loadCustomPresets()]);
@@ -98,9 +102,7 @@
   // Folder import uses browser webkitdirectory in WASM and server local modes
   let useLocalFolderPicker = $derived(isWasm || (isServer && folderSource === 'local'));
 
-  let clientVersions = $derived(
-    clientTypes.find(c => c.id === selectedClient)?.versions || []
-  );
+  let clientVersions = $derived(clientTypes.find(c => c.id === selectedClient)?.versions || []);
 
   let advancedActiveCount = $derived(
     [
@@ -118,9 +120,12 @@
   // Fetch client types and apply default preset on open
   $effect(() => {
     if (isOpen && clientTypes.length === 0) {
-      api.getClientInfos().then(infos => {
-        clientTypes = infos || [];
-      }).catch(() => {});
+      api
+        .getClientInfos()
+        .then(infos => {
+          clientTypes = infos || [];
+        })
+        .catch(() => {});
     }
     if (isOpen) {
       const defaultPreset = getDefaultPreset();
@@ -143,7 +148,10 @@
     if (s.completionPercent != null) {
       if (s.completionPercent === 100) mode = 'seed';
       else if (s.completionPercent === 0) mode = 'leech';
-      else { mode = 'custom'; customPercent = s.completionPercent; }
+      else {
+        mode = 'custom';
+        customPercent = s.completionPercent;
+      }
     }
 
     if (s.randomizeRates != null) randomizeRates = s.randomizeRates;
@@ -162,6 +170,8 @@
     if (s.stopAtSeedTimeHours != null) stopAtSeedTimeHours = s.stopAtSeedTimeHours;
     if (s.idleWhenNoLeechers != null) idleWhenNoLeechers = s.idleWhenNoLeechers;
     if (s.idleWhenNoSeeders != null) idleWhenNoSeeders = s.idleWhenNoSeeders;
+    if (s.updateIntervalSeconds != null) updateIntervalSeconds = s.updateIntervalSeconds;
+    if (s.scrapeInterval != null) scrapeInterval = s.scrapeInterval;
   }
 
   function handlePresetChange() {
@@ -198,7 +208,10 @@
       });
       if (selected) {
         const paths = Array.isArray(selected) ? selected : [selected];
-        selectedFiles = [...selectedFiles, ...paths.map(p => ({ name: p.split(/[/\\]/).pop(), path: p }))];
+        selectedFiles = [
+          ...selectedFiles,
+          ...paths.map(p => ({ name: p.split(/[/\\]/).pop(), path: p })),
+        ];
       }
     } else {
       const files = Array.from(e?.target?.files || []);
@@ -250,7 +263,12 @@
     const config = {
       tags,
       autoStart,
-      mode: mode === 'seed' ? 'seed' : mode === 'leech' ? 'leech' : { custom: parseFloat(customPercent) },
+      mode:
+        mode === 'seed'
+          ? 'seed'
+          : mode === 'leech'
+            ? 'leech'
+            : { custom: parseFloat(customPercent) },
     };
 
     if (autoStart && staggerSecs > 0) {
@@ -285,7 +303,11 @@
       progressiveRatesEnabled,
       targetUploadRate: progressiveRatesEnabled ? parseFloat(targetUploadRate) : undefined,
       targetDownloadRate: progressiveRatesEnabled ? parseFloat(targetDownloadRate) : undefined,
-      progressiveDurationHours: progressiveRatesEnabled ? parseFloat(progressiveDurationHours) : undefined,
+      progressiveDurationHours: progressiveRatesEnabled
+        ? parseFloat(progressiveDurationHours)
+        : undefined,
+      updateIntervalSeconds: parseInt(updateIntervalSeconds) || 5,
+      scrapeInterval: parseInt(scrapeInterval) || 60,
     };
 
     return config;
@@ -366,7 +388,36 @@
     stopAtSeedTimeHours = 24;
     idleWhenNoLeechers = false;
     idleWhenNoSeeders = false;
+    updateIntervalSeconds = 5;
+    scrapeInterval = 60;
     advancedOpen = false;
+  }
+
+  const REFRESH_INTERVAL_MIN = 1;
+  const REFRESH_INTERVAL_MAX = 300;
+  const SCRAPE_INTERVAL_MIN = 10;
+  const SCRAPE_INTERVAL_MAX = 3600;
+
+  function handleRefreshIntervalBlur() {
+    const parsed = parseInt(updateIntervalSeconds, 10);
+    if (isNaN(parsed) || parsed < REFRESH_INTERVAL_MIN) {
+      updateIntervalSeconds = REFRESH_INTERVAL_MIN;
+    } else if (parsed > REFRESH_INTERVAL_MAX) {
+      updateIntervalSeconds = REFRESH_INTERVAL_MAX;
+    } else {
+      updateIntervalSeconds = parsed;
+    }
+  }
+
+  function handleScrapeIntervalBlur() {
+    const parsed = parseInt(scrapeInterval, 10);
+    if (isNaN(parsed) || parsed < SCRAPE_INTERVAL_MIN) {
+      scrapeInterval = SCRAPE_INTERVAL_MIN;
+    } else if (parsed > SCRAPE_INTERVAL_MAX) {
+      scrapeInterval = SCRAPE_INTERVAL_MAX;
+    } else {
+      scrapeInterval = parsed;
+    }
   }
 
   function handleBackdropClick(event) {
@@ -447,7 +498,9 @@
           >
             <Upload size={24} class="mx-auto mb-2 text-muted-foreground" />
             <p class="text-sm text-muted-foreground mb-2">
-              {isTauri ? 'Click to browse for .torrent files' : 'Drag & drop .torrent files here, or click to browse'}
+              {isTauri
+                ? 'Click to browse for .torrent files'
+                : 'Drag & drop .torrent files here, or click to browse'}
             </p>
             {#if !isTauri}
               <input
@@ -459,7 +512,14 @@
                 id="grid-file-input"
               />
             {/if}
-            <Button size="sm" variant="secondary" class="cursor-pointer" onclick={isTauri ? handleFileSelect : () => document.getElementById('grid-file-input')?.click()}>
+            <Button
+              size="sm"
+              variant="secondary"
+              class="cursor-pointer"
+              onclick={isTauri
+                ? handleFileSelect
+                : () => document.getElementById('grid-file-input')?.click()}
+            >
               {#snippet children()}
                 Browse Files
               {/snippet}
@@ -469,7 +529,9 @@
           {#if selectedFiles.length > 0}
             <div class="max-h-32 overflow-y-auto space-y-1">
               {#each selectedFiles as file, i (file.name + i)}
-                <div class="flex items-center justify-between px-2 py-1 bg-muted/50 rounded text-xs">
+                <div
+                  class="flex items-center justify-between px-2 py-1 bg-muted/50 rounded text-xs"
+                >
                   <span class="flex items-center gap-1.5 truncate">
                     <FileText size={12} class="text-muted-foreground flex-shrink-0" />
                     {file.name}
@@ -522,9 +584,7 @@
               class="border-2 border-dashed border-border rounded-lg p-6 text-center hover:border-primary/50 transition-colors"
             >
               <FolderOpen size={24} class="mx-auto mb-2 text-muted-foreground" />
-              <p class="text-sm text-muted-foreground mb-2">
-                Select a folder from your computer
-              </p>
+              <p class="text-sm text-muted-foreground mb-2">Select a folder from your computer</p>
               <input
                 type="file"
                 webkitdirectory
@@ -533,7 +593,12 @@
                 class="hidden"
                 id="grid-local-folder-input"
               />
-              <Button size="sm" variant="secondary" class="cursor-pointer" onclick={() => document.getElementById('grid-local-folder-input')?.click()}>
+              <Button
+                size="sm"
+                variant="secondary"
+                class="cursor-pointer"
+                onclick={() => document.getElementById('grid-local-folder-input')?.click()}
+              >
                 {#snippet children()}
                   Browse Folder
                 {/snippet}
@@ -548,7 +613,9 @@
                     <span class="truncate">{file.name}</span>
                   </div>
                 {/each}
-                <p class="text-xs text-muted-foreground">{localFolderFiles.length} .torrent file(s) found</p>
+                <p class="text-xs text-muted-foreground">
+                  {localFolderFiles.length} .torrent file(s) found
+                </p>
               </div>
             {/if}
           {:else}
@@ -556,11 +623,7 @@
             <div>
               <Label>Folder Path</Label>
               <div class="flex gap-2 mt-1">
-                <Input
-                  bind:value={folderPath}
-                  placeholder="/path/to/torrents"
-                  class="flex-1"
-                />
+                <Input bind:value={folderPath} placeholder="/path/to/torrents" class="flex-1" />
                 {#if isTauri || isServer}
                   <Button size="sm" variant="secondary" onclick={handleBrowseFolder}>
                     {#snippet children()}
@@ -599,16 +662,22 @@
                 </span>
                 <ChevronDown
                   size={16}
-                  class="text-muted-foreground transition-transform {presetDropdownOpen ? 'rotate-180' : ''}"
+                  class="text-muted-foreground transition-transform {presetDropdownOpen
+                    ? 'rotate-180'
+                    : ''}"
                 />
               </button>
 
               {#if presetDropdownOpen}
-                <div class="absolute z-50 mt-1 w-full rounded-md border border-border bg-popover shadow-md max-h-48 overflow-y-auto">
+                <div
+                  class="absolute z-50 mt-1 w-full rounded-md border border-border bg-popover shadow-md max-h-48 overflow-y-auto"
+                >
                   <button
                     type="button"
                     onclick={() => selectPreset('')}
-                    class="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-muted transition-colors first:rounded-t-md {!selectedPresetId ? 'bg-muted' : ''}"
+                    class="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-muted transition-colors first:rounded-t-md {!selectedPresetId
+                      ? 'bg-muted'
+                      : ''}"
                   >
                     <span class="text-muted-foreground">None (manual config)</span>
                   </button>
@@ -616,7 +685,10 @@
                     <button
                       type="button"
                       onclick={() => selectPreset(preset.id)}
-                      class="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-muted transition-colors last:rounded-b-md {preset.id === selectedPresetId ? 'bg-muted' : ''}"
+                      class="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-muted transition-colors last:rounded-b-md {preset.id ===
+                      selectedPresetId
+                        ? 'bg-muted'
+                        : ''}"
                     >
                       <PresetIcon icon={preset.icon} size={16} class="text-primary flex-shrink-0" />
                       <span>{preset.name}</span>
@@ -664,6 +736,34 @@
           </div>
         </div>
 
+        <!-- Timing -->
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <Label>Refresh Interval (sec)</Label>
+            <Input
+              type="number"
+              bind:value={updateIntervalSeconds}
+              min="1"
+              max="300"
+              step="1"
+              class="mt-1 text-xs"
+              onblur={handleRefreshIntervalBlur}
+            />
+          </div>
+          <div>
+            <Label>Scrape Interval (sec)</Label>
+            <Input
+              type="number"
+              bind:value={scrapeInterval}
+              min="10"
+              max="3600"
+              step="1"
+              class="mt-1 text-xs"
+              onblur={handleScrapeIntervalBlur}
+            />
+          </div>
+        </div>
+
         <!-- Client Selection -->
         <div>
           <div class="flex items-center gap-2 mb-2">
@@ -671,15 +771,9 @@
             <Label>Client</Label>
           </div>
           <div class="grid grid-cols-3 gap-3">
-            <ClientSelect
-              clients={clientTypes}
-              bind:value={selectedClient}
-            />
+            <ClientSelect clients={clientTypes} bind:value={selectedClient} />
             {#if selectedClient && clientVersions.length > 0}
-              <VersionSelect
-                versions={clientVersions}
-                bind:value={selectedVersion}
-              />
+              <VersionSelect versions={clientVersions} bind:value={selectedVersion} />
             {/if}
             <div>
               <Input
@@ -697,11 +791,7 @@
         <!-- Tags -->
         <div>
           <Label>Tags (comma-separated)</Label>
-          <Input
-            bind:value={tagsInput}
-            placeholder="tag1, tag2, tag3"
-            class="mt-1"
-          />
+          <Input bind:value={tagsInput} placeholder="tag1, tag2, tag3" class="mt-1" />
         </div>
 
         <!-- Auto Start -->
@@ -713,7 +803,13 @@
           {#if autoStart}
             <div class="flex items-center gap-2">
               <Label>Stagger (sec)</Label>
-              <Input type="number" bind:value={staggerSecs} min="0" max="300" class="h-8 w-20 text-xs" />
+              <Input
+                type="number"
+                bind:value={staggerSecs}
+                min="0"
+                max="300"
+                class="h-8 w-20 text-xs"
+              />
             </div>
           {/if}
         </div>
@@ -779,12 +875,14 @@
 
         <!-- Import Result -->
         {#if importResult}
-          <div class={cn(
-            'p-3 rounded-lg text-sm',
-            importResult.error
-              ? 'bg-destructive/10 text-destructive'
-              : 'bg-stat-upload/10 text-stat-upload'
-          )}>
+          <div
+            class={cn(
+              'p-3 rounded-lg text-sm',
+              importResult.error
+                ? 'bg-destructive/10 text-destructive'
+                : 'bg-stat-upload/10 text-stat-upload'
+            )}
+          >
             {#if importResult.error}
               {importResult.error}
             {:else}
@@ -815,10 +913,10 @@
         <Button
           onclick={handleImport}
           size="sm"
-          disabled={importing
-            || (importMode === 'files' && selectedFiles.length === 0)
-            || (importMode === 'folder' && useLocalFolderPicker && localFolderFiles.length === 0)
-            || (importMode === 'folder' && !useLocalFolderPicker && !folderPath.trim())}
+          disabled={importing ||
+            (importMode === 'files' && selectedFiles.length === 0) ||
+            (importMode === 'folder' && useLocalFolderPicker && localFolderFiles.length === 0) ||
+            (importMode === 'folder' && !useLocalFolderPicker && !folderPath.trim())}
         >
           {#snippet children()}
             {#if importing}

@@ -1,6 +1,8 @@
 use rustatio_core::validation;
 use rustatio_core::{FakerConfig, FakerState, RatioFaker, TorrentInfo};
+use std::sync::Arc;
 use tauri::{AppHandle, State};
+use tokio::sync::RwLock;
 
 use crate::logging::log_and_emit;
 use crate::state::{AppState, FakerInstance, InstanceInfo};
@@ -26,7 +28,7 @@ pub async fn update_instance_config(
         .get_mut(&instance_id)
         .ok_or_else(|| format!("Instance {} not found", instance_id))?;
 
-    let stats = instance.faker.get_stats().await;
+    let stats = instance.faker.read().await.get_stats().await;
     if matches!(
         stats.state,
         FakerState::Running | FakerState::Starting | FakerState::Paused
@@ -36,22 +38,23 @@ pub async fn update_instance_config(
 
     instance.config = config;
 
-    // Recreate the faker so stats reflect the new config
     let faker = RatioFaker::new(instance.torrent.clone(), instance.config.clone())
         .map_err(|e| format!("Failed to create faker: {}", e))?;
-    instance.faker = faker;
+    instance.faker = Arc::new(RwLock::new(faker));
 
-    drop(fakers);
-    state.save_state().await;
     Ok(())
 }
 
 #[tauri::command]
 pub async fn delete_instance(instance_id: u32, state: State<'_, AppState>, app: AppHandle) -> Result<(), String> {
-    let mut fakers = state.fakers.write().await;
+    // Remove from HashMap first, then stop — HTTP happens after lock is released
+    let removed = {
+        let mut fakers = state.fakers.write().await;
+        fakers.remove(&instance_id)
+    };
 
-    if let Some(mut instance) = fakers.remove(&instance_id) {
-        if let Err(e) = instance.faker.stop().await {
+    if let Some(instance) = removed {
+        if let Err(e) = instance.faker.write().await.stop().await {
             log_and_emit!(&app, warn, "Error stopping faker on delete: {}", e);
         }
         log_and_emit!(&app, info, "Deleted instance {}", instance_id);
@@ -59,8 +62,6 @@ pub async fn delete_instance(instance_id: u32, state: State<'_, AppState>, app: 
         log::info!("Deleted instance {} (was not started)", instance_id);
     }
 
-    drop(fakers);
-    state.save_state().await;
     Ok(())
 }
 
@@ -70,7 +71,7 @@ pub async fn list_instances(state: State<'_, AppState>) -> Result<Vec<InstanceIn
 
     let mut instances: Vec<InstanceInfo> = vec![];
     for (id, instance) in fakers.iter() {
-        let stats = instance.faker.get_stats().await;
+        let stats = instance.faker.read().await.get_stats().await;
         instances.push(InstanceInfo {
             id: *id,
             torrent_name: Some(instance.torrent.name.clone()),
@@ -153,7 +154,7 @@ pub async fn load_instance_torrent(
             let now = crate::state::now_secs();
 
             entry.insert(FakerInstance {
-                faker,
+                faker: Arc::new(RwLock::new(faker)),
                 torrent: torrent.clone(),
                 config,
                 cumulative_uploaded: 0,
@@ -168,12 +169,9 @@ pub async fn load_instance_torrent(
             let faker =
                 RatioFaker::new(torrent.clone(), config).map_err(|e| format!("Failed to create faker: {}", e))?;
             instance.torrent = torrent.clone();
-            instance.faker = faker;
+            instance.faker = Arc::new(RwLock::new(faker));
         }
     }
-    drop(fakers);
-
-    state.save_state().await;
     Ok(torrent)
 }
 

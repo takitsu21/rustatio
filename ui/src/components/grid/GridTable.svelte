@@ -90,8 +90,18 @@
     }
 
     items.push(null); // separator
-    items.push({ id: 'edit', label: 'Edit in Standard View', icon: Pencil, color: 'text-foreground' });
-    items.push({ id: 'copy_hash', label: 'Copy Info Hash', icon: Copy, color: 'text-muted-foreground' });
+    items.push({
+      id: 'edit',
+      label: 'Edit in Standard View',
+      icon: Pencil,
+      color: 'text-foreground',
+    });
+    items.push({
+      id: 'copy_hash',
+      label: 'Copy Info Hash',
+      icon: Copy,
+      color: 'text-muted-foreground',
+    });
     items.push(null); // separator
     items.push({ id: 'delete', label: 'Delete', icon: Trash2, color: 'text-stat-danger' });
 
@@ -304,8 +314,8 @@
               isSelected ? 'bg-primary/10' : 'hover:bg-muted/30'
             )}
             style="height: {ROW_HEIGHT}px"
-            onclick={(e) => handleRowClick(e, instance)}
-            oncontextmenu={(e) => openContextMenu(e, instance)}
+            onclick={e => handleRowClick(e, instance)}
+            oncontextmenu={e => openContextMenu(e, instance)}
           >
             <!-- Select -->
             <td class="px-2 py-1 whitespace-nowrap">
@@ -332,7 +342,10 @@
 
             <!-- Progress -->
             <td class="px-0.5 py-1 whitespace-nowrap">
-              <div class="relative h-4 bg-muted rounded overflow-hidden" title="{completionPct.toFixed(1)}%">
+              <div
+                class="relative h-4 bg-muted rounded overflow-hidden"
+                title="{completionPct.toFixed(1)}%"
+              >
                 <div
                   class={cn(
                     'absolute inset-y-0 left-0 rounded transition-all',
@@ -340,7 +353,9 @@
                   )}
                   style="width: {Math.min(completionPct, 100)}%"
                 ></div>
-                <span class="absolute inset-0 flex items-center justify-center text-[10px] font-semibold text-foreground">
+                <span
+                  class="absolute inset-0 flex items-center justify-center text-[10px] font-semibold text-foreground"
+                >
                   {completionPct.toFixed(1)}%
                 </span>
               </div>
@@ -412,7 +427,10 @@
         {/each}
 
         <!-- Bottom spacer for remaining rows -->
-        <tr style="height: {totalHeight - offsetY - visibleData.length * ROW_HEIGHT}px" aria-hidden="true">
+        <tr
+          style="height: {totalHeight - offsetY - visibleData.length * ROW_HEIGHT}px"
+          aria-hidden="true"
+        >
           <td colspan={columns.length}></td>
         </tr>
       {/if}
@@ -428,10 +446,13 @@
     style={ctxStyle}
     role="menu"
     tabindex="-1"
-    onmousedown={(e) => e.stopPropagation()}
+    onmousedown={e => e.stopPropagation()}
   >
     <div class="px-3 py-1.5 border-b border-border/50 mb-1">
-      <span class="text-xs text-muted-foreground font-medium truncate block max-w-[160px]" title={ctxInstance.name}>
+      <span
+        class="text-xs text-muted-foreground font-medium truncate block max-w-[160px]"
+        title={ctxInstance.name}
+      >
         {ctxInstance.name}
       </span>
     </div>
@@ -471,16 +492,20 @@
   >
     <div
       class="bg-card text-card-foreground rounded-xl shadow-2xl max-w-sm w-full p-5 border border-border"
-      onclick={(e) => e.stopPropagation()}
-      onkeydown={(e) => e.stopPropagation()}
+      onclick={e => e.stopPropagation()}
+      onkeydown={e => e.stopPropagation()}
       role="presentation"
     >
       <div class="flex items-center gap-3 mb-3">
-        <div class="w-10 h-10 bg-stat-danger/10 rounded-lg flex items-center justify-center shrink-0">
+        <div
+          class="w-10 h-10 bg-stat-danger/10 rounded-lg flex items-center justify-center shrink-0"
+        >
           <AlertTriangle size={20} class="text-stat-danger" />
         </div>
         <div>
-          <h3 id="delete-confirm-title" class="text-sm font-semibold text-foreground">Delete Instance</h3>
+          <h3 id="delete-confirm-title" class="text-sm font-semibold text-foreground">
+            Delete Instance
+          </h3>
           <p class="text-xs text-muted-foreground mt-0.5 break-all">
             {deleteTarget.name}
           </p>

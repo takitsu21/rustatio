@@ -1,7 +1,7 @@
 //! Torrent file upload endpoint.
 
 use axum::{
-    extract::{Multipart, State},
+    extract::{DefaultBodyLimit, Multipart, State},
     http::StatusCode,
     response::Response,
     routing::post,
@@ -37,20 +37,31 @@ pub struct LoadTorrentResponse {
     )
 )]
 pub async fn load_torrent(State(_state): State<ServerState>, mut multipart: Multipart) -> Response {
-    while let Ok(Some(field)) = multipart.next_field().await {
-        if field.name() == Some("file") {
-            match field.bytes().await {
-                Ok(bytes) => match TorrentInfo::from_bytes(&bytes) {
-                    Ok(torrent) => {
-                        return ApiSuccess::response(LoadTorrentResponse { torrent });
+    loop {
+        match multipart.next_field().await {
+            Ok(Some(field)) => {
+                if field.name() == Some("file") {
+                    match field.bytes().await {
+                        Ok(bytes) => match TorrentInfo::from_bytes(&bytes) {
+                            Ok(torrent) => {
+                                return ApiSuccess::response(LoadTorrentResponse { torrent });
+                            }
+                            Err(e) => {
+                                return ApiError::response(
+                                    StatusCode::BAD_REQUEST,
+                                    format!("Failed to parse torrent: {}", e),
+                                );
+                            }
+                        },
+                        Err(e) => {
+                            return ApiError::response(StatusCode::BAD_REQUEST, format!("Failed to read file: {}", e));
+                        }
                     }
-                    Err(e) => {
-                        return ApiError::response(StatusCode::BAD_REQUEST, format!("Failed to parse torrent: {}", e));
-                    }
-                },
-                Err(e) => {
-                    return ApiError::response(StatusCode::BAD_REQUEST, format!("Failed to read file: {}", e));
                 }
+            }
+            Ok(None) => break,
+            Err(e) => {
+                return ApiError::response(StatusCode::BAD_REQUEST, format!("Failed to parse upload: {}", e));
             }
         }
     }
@@ -59,5 +70,7 @@ pub async fn load_torrent(State(_state): State<ServerState>, mut multipart: Mult
 }
 
 pub fn router() -> Router<ServerState> {
-    Router::new().route("/torrent/load", post(load_torrent))
+    Router::new()
+        .route("/torrent/load", post(load_torrent))
+        .layer(DefaultBodyLimit::max(50 * 1024 * 1024))
 }

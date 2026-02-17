@@ -14,7 +14,13 @@
   } from './lib/api.js';
 
   // Import instance stores
-  import { instances, activeInstance, activeInstanceId, instanceActions, saveSession } from './lib/instanceStore.js';
+  import {
+    instances,
+    activeInstance,
+    activeInstanceId,
+    instanceActions,
+    saveSession,
+  } from './lib/instanceStore.js';
 
   // Import components
   import Header from './components/layout/Header.svelte';
@@ -77,6 +83,10 @@
   // Logs
   let logs = $state([]);
   let showLogs = $state(false);
+
+  // RAF batching for log events — accumulate in plain array, flush once per frame
+  let logBuffer = [];
+  let logRafId = null;
 
   // Sidebar state
   let sidebarOpen = $state(false);
@@ -316,23 +326,33 @@
     // Log level priority for filtering
     const LOG_LEVELS = { error: 0, warn: 1, info: 2, debug: 3, trace: 4 };
 
-    // Set up log listener (works for both Tauri and web)
+    // Sync initial log level to backend (gates IPC emission on the Rust side)
+    const initialLogLevel = localStorage.getItem('rustatio-log-level') || 'info';
+    api.setLogLevel(initialLogLevel);
+
+    // Set up log listener with RAF batching
     await listenToLogs(logEvent => {
       // Filter logs based on configured log level
       const configuredLevel = localStorage.getItem('rustatio-log-level') || 'info';
       const eventPriority = LOG_LEVELS[logEvent.level] ?? 2;
       const configuredPriority = LOG_LEVELS[configuredLevel] ?? 2;
 
-      // Only show logs at or below the configured level
       if (eventPriority > configuredPriority) {
         return;
       }
 
-      logs = [...logs, logEvent];
+      logBuffer.push(logEvent);
 
-      // Limit logs to prevent memory issues (keep last 500)
-      if (logs.length > 500) {
-        logs = logs.slice(-500);
+      // Schedule a single RAF flush if not already pending
+      if (logRafId === null) {
+        logRafId = requestAnimationFrame(() => {
+          logRafId = null;
+          if (logBuffer.length === 0) return;
+
+          const newLogs = logs.concat(logBuffer);
+          logBuffer = [];
+          logs = newLogs.length > 500 ? newLogs.slice(-500) : newLogs;
+        });
       }
     });
 
@@ -363,7 +383,10 @@
 
             if (newInstance) {
               const wasAdded = instanceActions.mergeServerInstance(newInstance);
-              if (wasAdded && (newInstance.stats.state === 'Running' || newInstance.stats.state === 'Starting')) {
+              if (
+                wasAdded &&
+                (newInstance.stats.state === 'Running' || newInstance.stats.state === 'Starting')
+              ) {
                 // Start polling for the new running instance
                 startPollingForInstance(event.id, newInstance.config.update_interval || 5);
               }
@@ -441,6 +464,11 @@
     // Clean up config sync timeout
     if (configSyncTimeout) {
       clearTimeout(configSyncTimeout);
+    }
+
+    // Clean up log RAF batching
+    if (logRafId !== null) {
+      cancelAnimationFrame(logRafId);
     }
   });
 
@@ -879,6 +907,7 @@
           ? parseFloat($activeInstance.targetDownloadRate ?? 200)
           : null,
         progressive_duration: parseFloat($activeInstance.progressiveDurationHours ?? 1) * 3600,
+        scrape_interval: parseInt($activeInstance.scrapeInterval ?? 60),
       };
 
       await api.startFaker($activeInstance.id, $activeInstance.torrent, fakerConfig);
@@ -1030,9 +1059,9 @@
     }
   }
 
-  // Helper to start a single instance by ID (for bulk operations)
-  async function startInstanceById(instance) {
-    const fakerConfig = {
+  // Build a FakerConfig object from instance UI state
+  function buildFakerConfig(instance) {
+    return {
       upload_rate: parseFloat(instance.uploadRate ?? 50),
       download_rate: parseFloat(instance.downloadRate ?? 100),
       port: parseInt(instance.port ?? 6881),
@@ -1067,93 +1096,84 @@
         ? parseFloat(instance.targetDownloadRate ?? 200)
         : null,
       progressive_duration: parseFloat(instance.progressiveDurationHours ?? 1) * 3600,
+      scrape_interval: parseInt(instance.scrapeInterval ?? 60),
     };
-
-    await api.startFaker(instance.id, instance.torrent, fakerConfig);
-
-    instanceActions.updateInstance(instance.id, {
-      isRunning: true,
-      isPaused: false,
-      statusMessage: 'Actively faking ratio...',
-      statusType: 'running',
-      statusIcon: 'rocket',
-    });
-
-    const intervalSeconds = instance.updateIntervalSeconds ?? 5;
-    startPollingForInstance(instance.id, intervalSeconds);
-
-    const initialStats = await api.getStats(instance.id);
-    instanceActions.updateInstance(instance.id, { stats: initialStats });
   }
 
-  // Helper to stop a single instance by ID (for bulk operations)
-  async function stopInstanceById(instance) {
-    let finalStats = null;
-    try {
-      finalStats = await api.getStats(instance.id);
-    } catch (error) {
-      console.warn('Failed to get final stats before stopping:', error);
-      finalStats = instance.stats;
-    }
-
-    await api.stopFaker(instance.id);
-
-    if (instance.updateInterval) clearInterval(instance.updateInterval);
-    // Clear live stats if this instance owns it
-    if (activeLiveStatsInstanceId === instance.id) {
-      stopLiveStats();
-    }
-
-    const updates = {
-      isRunning: false,
-      updateInterval: null,
-      statusMessage: 'Stopped successfully',
-      statusType: 'success',
-      statusIcon: null,
-    };
-
-    if (finalStats) {
-      updates.cumulativeUploaded = Math.round(finalStats.uploaded / (1024 * 1024));
-      updates.cumulativeDownloaded = Math.round(finalStats.downloaded / (1024 * 1024));
-    }
-
-    instanceActions.updateInstance(instance.id, updates);
-  }
-
-  // Start all instances with torrents loaded (parallel)
+  // Start all instances with torrents loaded (bulk)
   async function startAllInstances() {
     const currentInstances = get(instances);
     const instancesToStart = currentInstances.filter(inst => inst.torrent && !inst.isRunning);
 
     if (instancesToStart.length === 0) return;
 
-    const results = await Promise.allSettled(
-      instancesToStart.map(instance => startInstanceById(instance))
-    );
+    // Build per-instance configs and sync to backend
+    const configEntries = instancesToStart.map(instance => ({
+      id: instance.id,
+      config: buildFakerConfig(instance),
+    }));
 
-    results.forEach((result, index) => {
-      if (result.status === 'rejected') {
-        console.error(`Failed to start instance ${instancesToStart[index].id}:`, result.reason);
-      }
-    });
+    try {
+      await api.bulkUpdateConfigs(configEntries);
+    } catch (error) {
+      console.error('Failed to sync configs before bulk start:', error);
+      return;
+    }
+
+    // Start all instances via single bulk command
+    const ids = instancesToStart.map(inst => inst.id);
+    try {
+      await api.gridStart(ids);
+    } catch (error) {
+      console.error('Failed to bulk start instances:', error);
+      return;
+    }
+
+    // Update UI state and start polling for each
+    for (const instance of instancesToStart) {
+      instanceActions.updateInstance(instance.id, {
+        isRunning: true,
+        isPaused: false,
+        statusMessage: 'Actively faking ratio...',
+        statusType: 'running',
+        statusIcon: 'rocket',
+      });
+
+      const intervalSeconds = instance.updateIntervalSeconds ?? 5;
+      startPollingForInstance(instance.id, intervalSeconds);
+    }
   }
 
-  // Stop all running instances (parallel)
+  // Stop all running instances (bulk)
   async function stopAllInstances() {
     const currentInstances = get(instances);
     const instancesToStop = currentInstances.filter(inst => inst.isRunning);
 
     if (instancesToStop.length === 0) return;
 
-    const results = await Promise.allSettled(
-      instancesToStop.map(instance => stopInstanceById(instance))
-    );
+    const ids = instancesToStop.map(inst => inst.id);
+    try {
+      await api.gridStop(ids);
+    } catch (error) {
+      console.error('Failed to bulk stop instances:', error);
+      return;
+    }
 
-    results.forEach((result, index) => {
-      if (result.status === 'rejected') {
-        console.error(`Failed to stop instance ${instancesToStop[index].id}:`, result.reason);
+    // Update UI state and stop polling for each
+    for (const instance of instancesToStop) {
+      if (instance.updateInterval) clearInterval(instance.updateInterval);
+      if (activeLiveStatsInstanceId === instance.id) {
+        stopLiveStats();
       }
-    });
+
+      instanceActions.updateInstance(instance.id, {
+        isRunning: false,
+        updateInterval: null,
+        statusMessage: 'Stopped successfully',
+        statusType: 'success',
+        statusIcon: null,
+      });
+    }
   }
 
   // Pause all running instances (parallel)
@@ -1357,6 +1377,7 @@
             ? parseFloat(instance.targetDownloadRate ?? 200)
             : null,
           progressive_duration: parseFloat(instance.progressiveDurationHours ?? 1) * 3600,
+          scrape_interval: parseInt(instance.scrapeInterval ?? 60),
         };
 
         await api.updateInstanceConfig(instanceId, config);
@@ -1460,18 +1481,18 @@
 
       <!-- Status Bar (standard mode only) -->
       {#if $viewMode !== 'grid'}
-      <StatusBar
-        statusMessage={$activeInstance?.statusMessage || 'Select a torrent file to begin'}
-        statusType={$activeInstance?.statusType || 'warning'}
-        statusIcon={$activeInstance?.statusIcon || null}
-        isRunning={$activeInstance?.isRunning || false}
-        isPaused={$activeInstance?.isPaused || false}
-        {startFaking}
-        {stopFaking}
-        {pauseFaking}
-        {resumeFaking}
-        {manualUpdate}
-      />
+        <StatusBar
+          statusMessage={$activeInstance?.statusMessage || 'Select a torrent file to begin'}
+          statusType={$activeInstance?.statusType || 'warning'}
+          statusIcon={$activeInstance?.statusIcon || null}
+          isRunning={$activeInstance?.isRunning || false}
+          isPaused={$activeInstance?.isPaused || false}
+          {startFaking}
+          {stopFaking}
+          {pauseFaking}
+          {resumeFaking}
+          {manualUpdate}
+        />
       {/if}
 
       <!-- Scrollable Content Area -->
@@ -1480,86 +1501,64 @@
           <GridView />
         </div>
       {:else}
-      <div class="flex-1 overflow-y-auto p-3">
-        <div class="max-w-7xl mx-auto">
-          <!-- CORS Proxy Settings -->
-          <ProxySettings />
-          <!-- Torrent Selection & Configuration -->
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
-            <TorrentSelector torrent={$activeInstance?.torrent} {selectTorrent} {formatBytes} />
+        <div class="flex-1 overflow-y-auto p-3">
+          <div class="max-w-7xl mx-auto">
+            <!-- CORS Proxy Settings -->
+            <ProxySettings />
+            <!-- Torrent Selection & Configuration -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+              <TorrentSelector torrent={$activeInstance?.torrent} {selectTorrent} {formatBytes} />
 
+              {#if $activeInstance}
+                <ConfigurationForm
+                  {clients}
+                  {clientVersions}
+                  selectedClient={$activeInstance.selectedClient}
+                  selectedClientVersion={$activeInstance.selectedClientVersion}
+                  port={$activeInstance.port}
+                  uploadRate={$activeInstance.uploadRate}
+                  downloadRate={$activeInstance.downloadRate}
+                  completionPercent={$activeInstance.completionPercent}
+                  initialUploaded={$activeInstance.initialUploaded}
+                  updateIntervalSeconds={$activeInstance.updateIntervalSeconds}
+                  scrapeInterval={$activeInstance.scrapeInterval}
+                  randomizeRates={$activeInstance.randomizeRates}
+                  randomRangePercent={$activeInstance.randomRangePercent}
+                  progressiveRatesEnabled={$activeInstance.progressiveRatesEnabled}
+                  targetUploadRate={$activeInstance.targetUploadRate}
+                  targetDownloadRate={$activeInstance.targetDownloadRate}
+                  progressiveDurationHours={$activeInstance.progressiveDurationHours}
+                  isRunning={$activeInstance.isRunning || false}
+                  onUpdate={updates => {
+                    // Reset cumulative stats if user changes initial values
+                    if (
+                      updates.initialUploaded !== undefined ||
+                      updates.completionPercent !== undefined
+                    ) {
+                      updates.cumulativeUploaded = 0;
+                      updates.cumulativeDownloaded = 0;
+                    }
+                    instanceActions.updateInstance($activeInstance.id, updates);
+                    // Sync config to server (debounced) so it persists across page refreshes
+                    syncConfigToServer($activeInstance.id);
+                  }}
+                />
+              {/if}
+            </div>
+
+            <!-- Stop Conditions & Progress Bars -->
             {#if $activeInstance}
-              <ConfigurationForm
-                {clients}
-                {clientVersions}
-                selectedClient={$activeInstance.selectedClient}
-                selectedClientVersion={$activeInstance.selectedClientVersion}
-                port={$activeInstance.port}
-                uploadRate={$activeInstance.uploadRate}
-                downloadRate={$activeInstance.downloadRate}
-                completionPercent={$activeInstance.completionPercent}
-                initialUploaded={$activeInstance.initialUploaded}
-                updateIntervalSeconds={$activeInstance.updateIntervalSeconds}
-                randomizeRates={$activeInstance.randomizeRates}
-                randomRangePercent={$activeInstance.randomRangePercent}
-                progressiveRatesEnabled={$activeInstance.progressiveRatesEnabled}
-                targetUploadRate={$activeInstance.targetUploadRate}
-                targetDownloadRate={$activeInstance.targetDownloadRate}
-                progressiveDurationHours={$activeInstance.progressiveDurationHours}
-                isRunning={$activeInstance.isRunning || false}
-                onUpdate={updates => {
-                  // Reset cumulative stats if user changes initial values
-                  if (
-                    updates.initialUploaded !== undefined ||
-                    updates.completionPercent !== undefined
-                  ) {
-                    updates.cumulativeUploaded = 0;
-                    updates.cumulativeDownloaded = 0;
-                  }
-                  instanceActions.updateInstance($activeInstance.id, updates);
-                  // Sync config to server (debounced) so it persists across page refreshes
-                  syncConfigToServer($activeInstance.id);
-                }}
-              />
-            {/if}
-          </div>
+              {@const hasActiveStopCondition =
+                $activeInstance.stopAtRatioEnabled ||
+                $activeInstance.stopAtUploadedEnabled ||
+                $activeInstance.stopAtDownloadedEnabled ||
+                $activeInstance.stopAtSeedTimeEnabled}
+              {@const isLeeching = ($activeInstance.completionPercent ?? 100) < 100}
+              {@const showProgressBars =
+                (hasActiveStopCondition || isLeeching) && $activeInstance?.stats}
 
-          <!-- Stop Conditions & Progress Bars -->
-          {#if $activeInstance}
-            {@const hasActiveStopCondition =
-              $activeInstance.stopAtRatioEnabled ||
-              $activeInstance.stopAtUploadedEnabled ||
-              $activeInstance.stopAtDownloadedEnabled ||
-              $activeInstance.stopAtSeedTimeEnabled}
-            {@const isLeeching = ($activeInstance.completionPercent ?? 100) < 100}
-            {@const showProgressBars = (hasActiveStopCondition || isLeeching) && $activeInstance?.stats}
-
-            <div class="grid grid-cols-1 {showProgressBars ? 'md:grid-cols-2' : ''} gap-3 mb-3">
-              <StopConditions
-                stopAtRatioEnabled={$activeInstance.stopAtRatioEnabled}
-                stopAtRatio={$activeInstance.stopAtRatio}
-                stopAtUploadedEnabled={$activeInstance.stopAtUploadedEnabled}
-                stopAtUploadedGB={$activeInstance.stopAtUploadedGB}
-                stopAtDownloadedEnabled={$activeInstance.stopAtDownloadedEnabled}
-                stopAtDownloadedGB={$activeInstance.stopAtDownloadedGB}
-                stopAtSeedTimeEnabled={$activeInstance.stopAtSeedTimeEnabled}
-                stopAtSeedTimeHours={$activeInstance.stopAtSeedTimeHours}
-                idleWhenNoLeechers={$activeInstance.idleWhenNoLeechers}
-                idleWhenNoSeeders={$activeInstance.idleWhenNoSeeders}
-                completionPercent={$activeInstance.completionPercent}
-                isRunning={$activeInstance.isRunning || false}
-                onUpdate={updates => {
-                  instanceActions.updateInstance($activeInstance.id, updates);
-                  // Sync config to server (debounced) so it persists across page refreshes
-                  syncConfigToServer($activeInstance.id);
-                }}
-              />
-
-              {#if showProgressBars}
-                <ProgressBars
-                  stats={$activeInstance.stats}
-                  completionPercent={$activeInstance.completionPercent ?? 100}
-                  torrentSize={$activeInstance.torrent?.total_size ?? 0}
+              <div class="grid grid-cols-1 {showProgressBars ? 'md:grid-cols-2' : ''} gap-3 mb-3">
+                <StopConditions
                   stopAtRatioEnabled={$activeInstance.stopAtRatioEnabled}
                   stopAtRatio={$activeInstance.stopAtRatio}
                   stopAtUploadedEnabled={$activeInstance.stopAtUploadedEnabled}
@@ -1568,44 +1567,68 @@
                   stopAtDownloadedGB={$activeInstance.stopAtDownloadedGB}
                   stopAtSeedTimeEnabled={$activeInstance.stopAtSeedTimeEnabled}
                   stopAtSeedTimeHours={$activeInstance.stopAtSeedTimeHours}
-                  {formatBytes}
-                  {formatDuration}
+                  idleWhenNoLeechers={$activeInstance.idleWhenNoLeechers}
+                  idleWhenNoSeeders={$activeInstance.idleWhenNoSeeders}
+                  completionPercent={$activeInstance.completionPercent}
+                  isRunning={$activeInstance.isRunning || false}
+                  onUpdate={updates => {
+                    instanceActions.updateInstance($activeInstance.id, updates);
+                    // Sync config to server (debounced) so it persists across page refreshes
+                    syncConfigToServer($activeInstance.id);
+                  }}
                 />
-              {/if}
-            </div>
-          {/if}
 
-          <!-- Stats -->
-          {#if $activeInstance?.stats}
-            <!-- Session & Total Stats -->
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
-              <SessionStats stats={$activeInstance.stats} {formatBytes} {formatDuration} />
-              <TotalStats
-                stats={$activeInstance.stats}
-                torrent={$activeInstance.torrent}
-                {formatBytes}
-              />
-            </div>
+                {#if showProgressBars}
+                  <ProgressBars
+                    stats={$activeInstance.stats}
+                    completionPercent={$activeInstance.completionPercent ?? 100}
+                    torrentSize={$activeInstance.torrent?.total_size ?? 0}
+                    stopAtRatioEnabled={$activeInstance.stopAtRatioEnabled}
+                    stopAtRatio={$activeInstance.stopAtRatio}
+                    stopAtUploadedEnabled={$activeInstance.stopAtUploadedEnabled}
+                    stopAtUploadedGB={$activeInstance.stopAtUploadedGB}
+                    stopAtDownloadedEnabled={$activeInstance.stopAtDownloadedEnabled}
+                    stopAtDownloadedGB={$activeInstance.stopAtDownloadedGB}
+                    stopAtSeedTimeEnabled={$activeInstance.stopAtSeedTimeEnabled}
+                    stopAtSeedTimeHours={$activeInstance.stopAtSeedTimeHours}
+                    {formatBytes}
+                    {formatDuration}
+                  />
+                {/if}
+              </div>
+            {/if}
 
-            <!-- Performance & Peer Analytics (merged) -->
-            <div class="mb-3">
-              <RateGraph stats={$activeInstance.stats} {formatDuration} />
-            </div>
-          {/if}
+            <!-- Stats -->
+            {#if $activeInstance?.stats}
+              <!-- Session & Total Stats -->
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                <SessionStats stats={$activeInstance.stats} {formatBytes} {formatDuration} />
+                <TotalStats
+                  stats={$activeInstance.stats}
+                  torrent={$activeInstance.torrent}
+                  {formatBytes}
+                />
+              </div>
 
-          <!-- Logs Section -->
-          <Logs
-            bind:logs
-            bind:showLogs
-            onUpdate={async updates => {
-              if (updates.showLogs !== undefined) {
-                showLogs = updates.showLogs;
-                localStorage.setItem('rustatio-show-logs', JSON.stringify(updates.showLogs));
-              }
-            }}
-          />
+              <!-- Performance & Peer Analytics (merged) -->
+              <div class="mb-3">
+                <RateGraph stats={$activeInstance.stats} {formatDuration} />
+              </div>
+            {/if}
+
+            <!-- Logs Section -->
+            <Logs
+              bind:logs
+              bind:showLogs
+              onUpdate={async updates => {
+                if (updates.showLogs !== undefined) {
+                  showLogs = updates.showLogs;
+                  localStorage.setItem('rustatio-show-logs', JSON.stringify(updates.showLogs));
+                }
+              }}
+            />
+          </div>
         </div>
-      </div>
       {/if}
     </div>
   </div>

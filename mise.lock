@@ -1,17 +1,17 @@
 [[tools."github:WebAssembly/binaryen"]]
-version = "ersion_125"
+version = "ersion_126"
 backend = "github:WebAssembly/binaryen"
-"platforms.linux-arm64" = { checksum = "sha256:d0382de3c189a7cbb9fdda93e2966f4557f6a00f201e2c4937c27ca01cead4fc", url = "https://github.com/WebAssembly/binaryen/releases/download/version_125/binaryen-version_125-aarch64-linux.tar.gz", url_api = "https://api.github.com/repos/WebAssembly/binaryen/releases/assets/318550647"}
-"platforms.linux-x64" = { checksum = "sha256:7c3bc16599c8274a04d34a504fe4be2047884f900e0e2da2f6fb9cd667183be4", url = "https://github.com/WebAssembly/binaryen/releases/download/version_125/binaryen-version_125-x86_64-linux.tar.gz", url_api = "https://api.github.com/repos/WebAssembly/binaryen/releases/assets/318551992"}
-"platforms.macos-arm64" = { checksum = "sha256:28bab047c4ce845c5c1da111222ffee5fafcec0bbedd046ad8b3dcae0fd57076", url = "https://github.com/WebAssembly/binaryen/releases/download/version_125/binaryen-version_125-arm64-macos.tar.gz", url_api = "https://api.github.com/repos/WebAssembly/binaryen/releases/assets/318550675"}
-"platforms.macos-x64" = { checksum = "sha256:72a98df1bfb81dd1e241d2b022e15c72edbd49e29d84abc6a1129c7d083072dd", url = "https://github.com/WebAssembly/binaryen/releases/download/version_125/binaryen-version_125-x86_64-macos.tar.gz", url_api = "https://api.github.com/repos/WebAssembly/binaryen/releases/assets/318550676"}
-"platforms.windows-x64" = { checksum = "sha256:7d20f9f22ee1d1a195aecccb21390f8c599b5025219520c7c9f04673b39d2c20", url = "https://github.com/WebAssembly/binaryen/releases/download/version_125/binaryen-version_125-x86_64-windows.tar.gz", url_api = "https://api.github.com/repos/WebAssembly/binaryen/releases/assets/318554378"}
+"platforms.linux-x64" = { checksum = "sha256:e487e0eac1f02a6739816c617270b033e5d3f8ca90439301fd0286460322fd76", url = "https://github.com/WebAssembly/binaryen/releases/download/version_126/binaryen-version_126-x86_64-linux.tar.gz", url_api = "https://api.github.com/repos/WebAssembly/binaryen/releases/assets/355563725"}
 
 [[tools.node]]
 version = "25.6.1"
 backend = "core:node"
+"platforms.linux-arm64" = { checksum = "sha256:90fea701897ecb424aafa2824539476598437ad9f21e649732a85cc2d955d845", url = "https://nodejs.org/dist/v25.6.1/node-v25.6.1-linux-arm64.tar.gz"}
 "platforms.linux-x64" = { checksum = "sha256:3809fdbfd54829bad363b9db8e96ca3600509e2ff20ede74181cfc1ca8451ce3", url = "https://nodejs.org/dist/v25.6.1/node-v25.6.1-linux-x64.tar.gz"}
+"platforms.macos-arm64" = { checksum = "sha256:a80cb252d170a4730f78f5950cf19a46106f156e5886e5c1cc8c5602aea60243", url = "https://nodejs.org/dist/v25.6.1/node-v25.6.1-darwin-arm64.tar.gz"}
+"platforms.macos-x64" = { checksum = "sha256:3b68f847d9d8861c7c8bfef32c540d14f6ca18bfcbf5f6495a595b9529063a9b", url = "https://nodejs.org/dist/v25.6.1/node-v25.6.1-darwin-x64.tar.gz"}
+"platforms.windows-x64" = { checksum = "sha256:0ae2300cdf44c399b5b351edbefb3534d1342a6fabd64302ca8c8e2fb86b0445", url = "https://nodejs.org/dist/v25.6.1/node-v25.6.1-win-x64.zip"}
 
 [[tools.rust]]
-version = "1.93.0"
+version = "1.93.1"
 backend = "core:rust"

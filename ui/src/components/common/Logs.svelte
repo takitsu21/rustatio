@@ -72,12 +72,15 @@
   }
 
   // Count logs by level
-  let logCounts = $derived({
-    error: logs.filter(l => l.level === 'error').length,
-    warn: logs.filter(l => l.level === 'warn').length,
-    info: logs.filter(l => l.level === 'info').length,
-    debug: logs.filter(l => l.level === 'debug').length,
-  });
+  let logCounts = $derived(
+    logs.reduce(
+      (acc, l) => {
+        if (l.level in acc) acc[l.level]++;
+        return acc;
+      },
+      { error: 0, warn: 0, info: 0, debug: 0 }
+    )
+  );
 </script>
 
 <Card class="p-3">

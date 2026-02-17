@@ -642,6 +642,29 @@ impl RatioFaker {
             return Ok(());
         }
 
+        // Periodic scrape for peer counts (if supported and enough time has passed)
+        if self.scrape_supported && now.duration_since(self.last_scrape).as_secs() >= self.config.scrape_interval {
+            drop(stats);
+            match self.scrape().await {
+                Ok(scrape_response) => {
+                    let mut stats = write_lock!(self.stats);
+                    stats.seeders = scrape_response.complete;
+                    stats.leechers = scrape_response.incomplete;
+                    self.last_scrape = now;
+                    log_debug!(
+                        "Scrape updated peer counts: seeders={}, leechers={}",
+                        scrape_response.complete,
+                        scrape_response.incomplete
+                    );
+                }
+                Err(e) => {
+                    log_warn!("Scrape failed, disabling periodic scrape: {}", e);
+                    self.scrape_supported = false;
+                }
+            }
+            stats = write_lock!(self.stats);
+        }
+
         // Check if we need to announce
         if let Some(next_announce) = stats.next_announce {
             if now >= next_announce {
@@ -724,6 +747,12 @@ impl RatioFaker {
     /// Get current stats
     pub async fn get_stats(&self) -> FakerStats {
         read_lock!(self.stats).clone()
+    }
+
+    /// Non-async stats snapshot (for synchronous exit-save contexts)
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn stats_snapshot(&self) -> Option<FakerStats> {
+        self.stats.try_read().ok().map(|s| s.clone())
     }
 
     /// Get torrent info

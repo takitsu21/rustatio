@@ -8,11 +8,62 @@ mod state;
 use rustatio_core::{AppConfig, FakerState, RatioFaker};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tauri::{Emitter, Manager};
+use tauri::{Emitter, Manager, RunEvent};
 use tokio::sync::RwLock;
 
 use logging::log_and_emit;
 use state::{AppState, FakerInstance};
+
+/// Synchronous save for the exit handler (tokio runtime may be winding down)
+fn save_state_sync(fakers: &Arc<RwLock<HashMap<u32, FakerInstance>>>, next_instance_id: &Arc<RwLock<u32>>) {
+    let Some(fakers) = fakers.try_read().ok() else {
+        log::warn!("Could not acquire fakers lock for exit save");
+        return;
+    };
+    let Some(next_id) = next_instance_id.try_read().ok() else {
+        log::warn!("Could not acquire next_id lock for exit save");
+        return;
+    };
+    let now = persistence::now_timestamp();
+
+    let mut instances = HashMap::new();
+    for (id, instance) in fakers.iter() {
+        let Some(faker) = instance.faker.try_read().ok() else {
+            continue;
+        };
+        let Some(stats) = faker.stats_snapshot() else {
+            continue;
+        };
+        let mut config = instance.config.clone();
+        config.completion_percent = stats.torrent_completion;
+        instances.insert(
+            *id,
+            persistence::PersistedInstance {
+                id: *id,
+                torrent: instance.torrent.clone(),
+                config,
+                cumulative_uploaded: stats.uploaded,
+                cumulative_downloaded: stats.downloaded,
+                state: stats.state,
+                created_at: instance.created_at,
+                updated_at: now,
+                tags: instance.tags.clone(),
+            },
+        );
+    }
+
+    let persisted = persistence::PersistedState {
+        instances,
+        next_instance_id: *next_id,
+        version: 1,
+    };
+
+    if let Err(e) = persistence::save_state(&persisted) {
+        log::error!("Exit save failed: {}", e);
+    } else {
+        log::info!("Final state saved successfully");
+    }
+}
 
 fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
@@ -25,13 +76,17 @@ fn main() {
     let next_id = saved_state.next_instance_id.max(1);
     let saved_instances = saved_state.instances;
 
+    // Keep references for exit handler
+    let fakers_for_exit = Arc::new(RwLock::new(HashMap::new()));
+    let next_id_for_exit = Arc::new(RwLock::new(next_id));
+
     let app_state = AppState {
-        fakers: Arc::new(RwLock::new(HashMap::new())),
-        next_instance_id: Arc::new(RwLock::new(next_id)),
+        fakers: fakers_for_exit.clone(),
+        next_instance_id: next_id_for_exit.clone(),
         config: Arc::new(RwLock::new(config)),
     };
 
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
@@ -59,6 +114,7 @@ fn main() {
             commands::get_client_types,
             commands::get_client_infos,
             commands::write_file,
+            commands::set_log_level,
             commands::grid_import_folder,
             commands::grid_import_files,
             commands::grid_start,
@@ -67,6 +123,7 @@ fn main() {
             commands::grid_resume,
             commands::grid_delete,
             commands::grid_update_config,
+            commands::bulk_update_configs,
             commands::grid_tag,
             commands::set_instance_tags,
             commands::list_summaries,
@@ -95,7 +152,7 @@ fn main() {
                             fakers_arc.write().await.insert(
                                 *id,
                                 FakerInstance {
-                                    faker,
+                                    faker: Arc::new(RwLock::new(faker)),
                                     torrent: persisted.torrent.clone(),
                                     config: persisted.config.clone(),
                                     cumulative_uploaded: persisted.cumulative_uploaded,
@@ -130,17 +187,22 @@ fn main() {
                 }
 
                 for id in &auto_start_ids {
-                    let mut fakers = fakers_arc.write().await;
-                    if let Some(instance) = fakers.get_mut(id) {
-                        match instance.faker.start().await {
-                            Ok(_) => {
-                                log_and_emit!(&app_handle, *id, info, "Auto-started (was running before shutdown)");
-                            }
-                            Err(e) => {
-                                log_and_emit!(&app_handle, *id, error, "Auto-start failed: {}", e);
-                            }
+                    let faker = {
+                        let fakers = fakers_arc.read().await;
+                        match fakers.get(id) {
+                            Some(instance) => instance.faker.clone(),
+                            None => continue,
                         }
-                    }
+                    };
+
+                    match faker.write().await.start().await {
+                        Ok(_) => {
+                            log_and_emit!(&app_handle, *id, info, "Auto-started (was running before shutdown)");
+                        }
+                        Err(e) => {
+                            log_and_emit!(&app_handle, *id, error, "Auto-start failed: {}", e);
+                        }
+                    };
                 }
             });
 
@@ -159,7 +221,7 @@ fn main() {
 
                     let mut instances = HashMap::new();
                     for (id, instance) in fakers.iter() {
-                        let stats = instance.faker.get_stats().await;
+                        let stats = instance.faker.read().await.get_stats().await;
                         let mut config = instance.config.clone();
                         config.completion_percent = stats.torrent_completion;
                         instances.insert(
@@ -185,14 +247,24 @@ fn main() {
                         version: 1,
                     };
 
-                    if let Err(e) = persistence::save_state(&persisted) {
-                        log::error!("Periodic save failed: {}", e);
-                    }
+                    let _ = tokio::task::spawn_blocking(move || {
+                        if let Err(e) = persistence::save_state(&persisted) {
+                            log::error!("Periodic save failed: {}", e);
+                        }
+                    })
+                    .await;
                 }
             });
 
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application");
+
+    app.run(move |_app_handle, event| {
+        if let RunEvent::Exit = event {
+            log::info!("Application exiting, saving final state...");
+            save_state_sync(&fakers_for_exit, &next_id_for_exit);
+        }
+    });
 }

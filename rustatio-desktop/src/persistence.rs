@@ -2,6 +2,7 @@ use rustatio_core::{FakerConfig, FakerState, TorrentInfo};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PersistedInstance {
@@ -80,6 +81,8 @@ pub fn load_state() -> PersistedState {
 }
 
 pub fn save_state(state: &PersistedState) -> Result<(), String> {
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+
     let path = state_file_path();
 
     if let Some(parent) = path.parent() {
@@ -88,9 +91,8 @@ pub fn save_state(state: &PersistedState) -> Result<(), String> {
 
     let json = serde_json::to_string_pretty(state).map_err(|e| format!("Failed to serialize state: {}", e))?;
 
-    // Use a unique temp file to avoid races between concurrent save_state calls
-    let unique_id = std::process::id();
-    let temp_name = format!("desktop-state.json.{}.tmp", unique_id);
+    let unique_id = COUNTER.fetch_add(1, Ordering::Relaxed);
+    let temp_name = format!("desktop-state.json.{}.{}.tmp", std::process::id(), unique_id);
     let temp_path = path.with_file_name(temp_name);
 
     std::fs::write(&temp_path, json.as_bytes()).map_err(|e| format!("Failed to write temp file: {}", e))?;

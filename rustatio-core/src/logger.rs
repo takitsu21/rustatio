@@ -36,6 +36,7 @@ fn get_instance_prefix() -> String {
 #[cfg(all(not(target_arch = "wasm32"), feature = "desktop"))]
 pub mod native {
     use serde::Serialize;
+    use std::sync::atomic::{AtomicU8, Ordering};
     use std::sync::OnceLock;
     use tauri::Emitter;
 
@@ -50,6 +51,10 @@ pub mod native {
     // Global app handle storage
     static APP_HANDLE: OnceLock<AppHandleWrapper> = OnceLock::new();
 
+    // Maximum log level to emit via IPC (0=error, 1=warn, 2=info, 3=debug, 4=trace)
+    // Defaults to info (2) — matches the frontend default
+    static MAX_EMIT_LEVEL: AtomicU8 = AtomicU8::new(2);
+
     // Wrapper to make AppHandle Send + Sync
     struct AppHandleWrapper {
         handle: tauri::AppHandle,
@@ -58,13 +63,36 @@ pub mod native {
     unsafe impl Send for AppHandleWrapper {}
     unsafe impl Sync for AppHandleWrapper {}
 
+    fn level_to_u8(level: &str) -> u8 {
+        match level {
+            "error" => 0,
+            "warn" => 1,
+            "info" => 2,
+            "debug" => 3,
+            "trace" => 4,
+            _ => 2,
+        }
+    }
+
+    /// Set the maximum log level for IPC emission (called from frontend via Tauri command)
+    pub fn set_max_emit_level(level: &str) {
+        MAX_EMIT_LEVEL.store(level_to_u8(level), Ordering::Relaxed);
+    }
+
+    /// Check if a log level should be emitted via IPC
+    pub fn should_emit_level(level: &str) -> bool {
+        level_to_u8(level) <= MAX_EMIT_LEVEL.load(Ordering::Relaxed)
+    }
+
     /// Initialize the logger with the app handle
     pub fn init_logger(handle: tauri::AppHandle) {
         let _ = APP_HANDLE.set(AppHandleWrapper { handle });
     }
 
-    /// Emit a log to the UI (if app handle is available)
     fn emit_log(level: &str, message: String) {
+        if !should_emit_level(level) {
+            return;
+        }
         if let Some(wrapper) = APP_HANDLE.get() {
             let timestamp = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -74,42 +102,37 @@ pub mod native {
             let log_event = LogEvent {
                 timestamp,
                 level: level.to_string(),
-                message: message.clone(),
+                message,
             };
 
             let _ = wrapper.handle.emit("log-event", log_event);
         }
     }
 
-    /// Log at info level (both to console and UI)
     pub fn info(message: String) {
         let prefixed = format!("{}{}", super::get_instance_prefix(), message);
         log::info!("{}", prefixed);
         emit_log("info", prefixed);
     }
 
-    /// Log at warn level (both to console and UI)
     pub fn warn(message: String) {
         let prefixed = format!("{}{}", super::get_instance_prefix(), message);
         log::warn!("{}", prefixed);
         emit_log("warn", prefixed);
     }
 
-    /// Log at error level (both to console and UI)
     pub fn error(message: String) {
         let prefixed = format!("{}{}", super::get_instance_prefix(), message);
         log::error!("{}", prefixed);
         emit_log("error", prefixed);
     }
 
-    /// Log at debug level (both to console and UI)
     pub fn debug(message: String) {
         let prefixed = format!("{}{}", super::get_instance_prefix(), message);
         log::debug!("{}", prefixed);
         emit_log("debug", prefixed);
     }
 
-    /// Log at trace level (both to console and UI)
     pub fn trace(message: String) {
         let prefixed = format!("{}{}", super::get_instance_prefix(), message);
         log::trace!("{}", prefixed);
