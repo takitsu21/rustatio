@@ -163,39 +163,62 @@
       <Button onclick={handleSelectMenuClick} size="sm" variant="outline" class="gap-1 text-xs">
         {#snippet children()}
           Select
-          <ChevronDown size={12} class={selectMenuOpen ? 'rotate-180 transition-transform' : 'transition-transform'} />
+          <ChevronDown
+            size={12}
+            class={selectMenuOpen ? 'rotate-180 transition-transform' : 'transition-transform'}
+          />
         {/snippet}
       </Button>
 
       {#if selectMenuOpen}
-        <div class="absolute top-full left-0 mt-1 z-50 min-w-[180px] bg-popover border border-border rounded-lg shadow-xl shadow-black/20 py-1">
+        <div
+          class="absolute top-full left-0 mt-1 z-50 min-w-[180px] bg-popover border border-border rounded-lg shadow-xl shadow-black/20 py-1"
+        >
           <button
             class="w-full text-left px-3 py-1.5 text-xs hover:bg-accent/80 transition-colors cursor-pointer"
-            onclick={() => { gridActions.selectAll(); selectMenuOpen = false; }}
-          >Select All</button>
+            onclick={() => {
+              gridActions.selectAll();
+              selectMenuOpen = false;
+            }}>Select All</button
+          >
           <button
             class="w-full text-left px-3 py-1.5 text-xs hover:bg-accent/80 transition-colors cursor-pointer"
-            onclick={() => { gridActions.deselectAll(); selectMenuOpen = false; }}
-          >Deselect All</button>
+            onclick={() => {
+              gridActions.deselectAll();
+              selectMenuOpen = false;
+            }}>Deselect All</button
+          >
           <button
             class="w-full text-left px-3 py-1.5 text-xs hover:bg-accent/80 transition-colors cursor-pointer"
-            onclick={() => { gridActions.invertSelection(); selectMenuOpen = false; }}
-          >Invert Selection</button>
+            onclick={() => {
+              gridActions.invertSelection();
+              selectMenuOpen = false;
+            }}>Invert Selection</button
+          >
 
           <div class="h-px bg-border/50 my-1 mx-2"></div>
 
           <button
             class="w-full text-left px-3 py-1.5 text-xs hover:bg-accent/80 transition-colors cursor-pointer"
-            onclick={() => { gridActions.selectByState('running'); selectMenuOpen = false; }}
-          >All Running</button>
+            onclick={() => {
+              gridActions.selectByState('running');
+              selectMenuOpen = false;
+            }}>All Running</button
+          >
           <button
             class="w-full text-left px-3 py-1.5 text-xs hover:bg-accent/80 transition-colors cursor-pointer"
-            onclick={() => { gridActions.selectByState('stopped'); selectMenuOpen = false; }}
-          >All Stopped</button>
+            onclick={() => {
+              gridActions.selectByState('stopped');
+              selectMenuOpen = false;
+            }}>All Stopped</button
+          >
           <button
             class="w-full text-left px-3 py-1.5 text-xs hover:bg-accent/80 transition-colors cursor-pointer"
-            onclick={() => { gridActions.selectByState('paused'); selectMenuOpen = false; }}
-          >All Paused</button>
+            onclick={() => {
+              gridActions.selectByState('paused');
+              selectMenuOpen = false;
+            }}>All Paused</button
+          >
 
           {#if filteredTags.length > 0}
             <div class="h-px bg-border/50 my-1 mx-2"></div>
@@ -203,8 +226,11 @@
             {#each filteredTags as tag (tag)}
               <button
                 class="w-full text-left px-3 py-1.5 text-xs hover:bg-accent/80 transition-colors cursor-pointer pl-5"
-                onclick={() => { gridActions.selectByTag(tag); selectMenuOpen = false; }}
-              >{tag}</button>
+                onclick={() => {
+                  gridActions.selectByTag(tag);
+                  selectMenuOpen = false;
+                }}>{tag}</button
+              >
             {/each}
           {/if}
         </div>
@@ -224,21 +250,37 @@
         {/snippet}
       </Button>
 
-      <Button onclick={handleStop} size="sm" class="gap-1 bg-stat-danger hover:bg-stat-danger/90 text-white" disabled={!canStop}>
+      <Button
+        onclick={handleStop}
+        size="sm"
+        class="gap-1 bg-stat-danger hover:bg-stat-danger/90 text-white"
+        disabled={!canStop}
+      >
         {#snippet children()}
           <Square size={12} fill="currentColor" />
           Stop
         {/snippet}
       </Button>
 
-      <Button onclick={handlePause} size="sm" class="gap-1 bg-stat-ratio hover:bg-stat-ratio/90 text-white" disabled={!canPause}>
+      <Button
+        onclick={handlePause}
+        size="sm"
+        class="gap-1 bg-stat-ratio hover:bg-stat-ratio/90 text-white"
+        disabled={!canPause}
+      >
         {#snippet children()}
           <Pause size={12} fill="currentColor" />
           Pause
         {/snippet}
       </Button>
 
-      <Button onclick={handleResume} size="sm" variant="secondary" class="gap-1" disabled={!canResume}>
+      <Button
+        onclick={handleResume}
+        size="sm"
+        variant="secondary"
+        class="gap-1"
+        disabled={!canResume}
+      >
         {#snippet children()}
           <Play size={12} fill="currentColor" />
           Resume
@@ -275,7 +317,11 @@
       />
     </div>
 
-    <Select value={$gridFilters.stateFilter} onchange={handleStateFilter} class="h-8 w-32 text-xs py-1">
+    <Select
+      value={$gridFilters.stateFilter}
+      onchange={handleStateFilter}
+      class="h-8 w-32 text-xs py-1"
+    >
       {#snippet children()}
         <option value="all">All States</option>
         <option value="starting">Starting</option>
@@ -288,7 +334,11 @@
     </Select>
 
     {#if $allTags.length > 0}
-      <Select value={$gridFilters.tagFilter} onchange={handleTagFilter} class="h-8 w-32 text-xs py-1">
+      <Select
+        value={$gridFilters.tagFilter}
+        onchange={handleTagFilter}
+        class="h-8 w-32 text-xs py-1"
+      >
         {#snippet children()}
           <option value="">All Tags</option>
           {#each $allTags as tag (tag)}
@@ -312,16 +362,20 @@
   >
     <div
       class="bg-card text-card-foreground rounded-xl shadow-2xl max-w-sm w-full p-5 border border-border"
-      onclick={(e) => e.stopPropagation()}
-      onkeydown={(e) => e.stopPropagation()}
+      onclick={e => e.stopPropagation()}
+      onkeydown={e => e.stopPropagation()}
       role="presentation"
     >
       <div class="flex items-center gap-3 mb-3">
-        <div class="w-10 h-10 bg-stat-danger/10 rounded-lg flex items-center justify-center shrink-0">
+        <div
+          class="w-10 h-10 bg-stat-danger/10 rounded-lg flex items-center justify-center shrink-0"
+        >
           <AlertTriangle size={20} class="text-stat-danger" />
         </div>
         <div>
-          <h3 id="grid-delete-confirm-title" class="text-sm font-semibold text-foreground">Delete {selectionCount} Instance{selectionCount !== 1 ? 's' : ''}</h3>
+          <h3 id="grid-delete-confirm-title" class="text-sm font-semibold text-foreground">
+            Delete {selectionCount} Instance{selectionCount !== 1 ? 's' : ''}
+          </h3>
           <p class="text-xs text-muted-foreground mt-0.5">
             This will permanently delete the selected instance{selectionCount !== 1 ? 's' : ''}.
           </p>

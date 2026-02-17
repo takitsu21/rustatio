@@ -25,7 +25,11 @@
 
 <div class="bg-muted/50 rounded-lg border border-border overflow-hidden">
   <!-- Ratio -->
-  <div class="flex items-center gap-3 p-3 border-b border-border {stopAtRatioEnabled ? 'bg-primary/5' : ''}">
+  <div
+    class="flex items-center gap-3 p-3 border-b border-border {stopAtRatioEnabled
+      ? 'bg-primary/5'
+      : ''}"
+  >
     <Checkbox
       id="stop-ratio"
       checked={stopAtRatioEnabled}
@@ -57,7 +61,11 @@
   </div>
 
   <!-- Uploaded -->
-  <div class="flex items-center gap-3 p-3 border-b border-border {stopAtUploadedEnabled ? 'bg-primary/5' : ''}">
+  <div
+    class="flex items-center gap-3 p-3 border-b border-border {stopAtUploadedEnabled
+      ? 'bg-primary/5'
+      : ''}"
+  >
     <Checkbox
       id="stop-uploaded"
       checked={stopAtUploadedEnabled}
@@ -67,7 +75,10 @@
         onchange?.({ stopAtUploadedEnabled: checked });
       }}
     />
-    <Upload size={16} class={stopAtUploadedEnabled ? 'text-stat-upload' : 'text-muted-foreground'} />
+    <Upload
+      size={16}
+      class={stopAtUploadedEnabled ? 'text-stat-upload' : 'text-muted-foreground'}
+    />
     <Label for="stop-uploaded" class="flex-1 cursor-pointer text-sm font-medium">Max Upload</Label>
     {#if stopAtUploadedEnabled}
       <div class="flex items-center gap-1">
@@ -89,7 +100,11 @@
   </div>
 
   <!-- Downloaded -->
-  <div class="flex items-center gap-3 p-3 border-b border-border {stopAtDownloadedEnabled ? 'bg-primary/5' : ''}">
+  <div
+    class="flex items-center gap-3 p-3 border-b border-border {stopAtDownloadedEnabled
+      ? 'bg-primary/5'
+      : ''}"
+  >
     <Checkbox
       id="stop-downloaded"
       checked={stopAtDownloadedEnabled}
@@ -99,8 +114,13 @@
         onchange?.({ stopAtDownloadedEnabled: checked });
       }}
     />
-    <Download size={16} class={stopAtDownloadedEnabled ? 'text-stat-download' : 'text-muted-foreground'} />
-    <Label for="stop-downloaded" class="flex-1 cursor-pointer text-sm font-medium">Max Download</Label>
+    <Download
+      size={16}
+      class={stopAtDownloadedEnabled ? 'text-stat-download' : 'text-muted-foreground'}
+    />
+    <Label for="stop-downloaded" class="flex-1 cursor-pointer text-sm font-medium"
+      >Max Download</Label
+    >
     {#if stopAtDownloadedEnabled}
       <div class="flex items-center gap-1">
         <Input
@@ -121,7 +141,11 @@
   </div>
 
   <!-- Seed Time -->
-  <div class="flex items-center gap-3 p-3 border-b border-border {stopAtSeedTimeEnabled ? 'bg-primary/5' : ''}">
+  <div
+    class="flex items-center gap-3 p-3 border-b border-border {stopAtSeedTimeEnabled
+      ? 'bg-primary/5'
+      : ''}"
+  >
     <Checkbox
       id="stop-seedtime"
       checked={stopAtSeedTimeEnabled}
@@ -153,7 +177,11 @@
   </div>
 
   <!-- Idle when No Leechers -->
-  <div class="flex items-center gap-3 p-3 border-b border-border {idleWhenNoLeechers ? 'bg-primary/5' : ''}">
+  <div
+    class="flex items-center gap-3 p-3 border-b border-border {idleWhenNoLeechers
+      ? 'bg-primary/5'
+      : ''}"
+  >
     <Checkbox
       id="idle-no-leechers"
       checked={idleWhenNoLeechers}
@@ -191,7 +219,9 @@
     </Label>
     {#if idleWhenNoSeeders}
       {#if !isLeecherMode}
-        <span class="text-xs text-orange-500 font-medium" title="Only works when completion < 100%">0 KB/s</span>
+        <span class="text-xs text-orange-500 font-medium" title="Only works when completion < 100%"
+          >0 KB/s</span
+        >
       {:else}
         <span class="text-xs text-orange-500 font-medium">0 KB/s</span>
       {/if}

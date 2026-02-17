@@ -86,7 +86,9 @@
     aria-modal="true"
     tabindex="-1"
   >
-    <div class="bg-card border border-border rounded-xl shadow-2xl w-full max-w-lg max-h-[70vh] flex flex-col">
+    <div
+      class="bg-card border border-border rounded-xl shadow-2xl w-full max-w-lg max-h-[70vh] flex flex-col"
+    >
       <!-- Header -->
       <div class="flex items-center justify-between p-3 border-b border-border">
         <h3 class="text-sm font-semibold text-foreground">Browse Server Folders</h3>
@@ -109,11 +111,7 @@
         >
           <ArrowUp size={14} />
         </button>
-        <Input
-          bind:value={pathInput}
-          placeholder="/path/to/directory"
-          class="flex-1 text-xs h-8"
-        />
+        <Input bind:value={pathInput} placeholder="/path/to/directory" class="flex-1 text-xs h-8" />
         <Button size="sm" type="submit" variant="secondary">
           {#snippet children()}Go{/snippet}
         </Button>
@@ -149,7 +147,9 @@
                   <FileText size={14} class="text-muted-foreground shrink-0" />
                   <span class="truncate text-muted-foreground">{entry.name}</span>
                   {#if entry.size != null}
-                    <span class="text-xs text-muted-foreground ml-auto shrink-0">{formatSize(entry.size)}</span>
+                    <span class="text-xs text-muted-foreground ml-auto shrink-0"
+                      >{formatSize(entry.size)}</span
+                    >
                   {/if}
                 </div>
               {/if}
@@ -161,7 +161,9 @@
       <!-- Footer -->
       <div class="flex items-center justify-between p-3 border-t border-border">
         <span class="text-xs text-muted-foreground">
-          {torrentCount > 0 ? `${torrentCount} .torrent file(s) found` : 'No .torrent files in this directory'}
+          {torrentCount > 0
+            ? `${torrentCount} .torrent file(s) found`
+            : 'No .torrent files in this directory'}
         </span>
         <div class="flex gap-2">
           <Button onclick={close} size="sm" variant="secondary">

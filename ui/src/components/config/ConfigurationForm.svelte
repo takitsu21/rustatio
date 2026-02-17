@@ -2,13 +2,7 @@
   import Card from '$lib/components/ui/card.svelte';
   import Label from '$lib/components/ui/label.svelte';
   import Input from '$lib/components/ui/input.svelte';
-  import {
-    Settings,
-    ArrowUpDown,
-    Clock,
-    Upload,
-    Download,
-  } from '@lucide/svelte';
+  import { Settings, ArrowUpDown, Clock, Timer, Upload, Download } from '@lucide/svelte';
   import ClientIcon from './ClientIcon.svelte';
   import ClientSelect from './ClientSelect.svelte';
   import VersionSelect from './VersionSelect.svelte';
@@ -26,6 +20,7 @@
     completionPercent,
     initialUploaded,
     updateIntervalSeconds,
+    scrapeInterval,
     randomizeRates,
     randomRangePercent,
     progressiveRatesEnabled,
@@ -45,6 +40,7 @@
   let localCompletionPercent = $state(0);
   let localInitialUploaded = $state(0);
   let localUpdateIntervalSeconds = $state(5);
+  let localScrapeInterval = $state(60);
   let localRandomizeRates = $state(true);
   let localRandomRangePercent = $state(20);
   let localProgressiveRatesEnabled = $state(false);
@@ -66,6 +62,7 @@
       localCompletionPercent = completionPercent;
       localInitialUploaded = initialUploaded;
       localUpdateIntervalSeconds = updateIntervalSeconds;
+      localScrapeInterval = scrapeInterval;
       localRandomizeRates = randomizeRates;
       localRandomRangePercent = randomRangePercent;
       localProgressiveRatesEnabled = progressiveRatesEnabled;
@@ -87,6 +84,8 @@
   const PORT_MAX = 65535;
   const COMPLETION_MIN = 0;
   const COMPLETION_MAX = 100;
+  const SCRAPE_INTERVAL_MIN = 10;
+  const SCRAPE_INTERVAL_MAX = 3600;
 
   // Validate and sanitize port value
   function validatePort(value) {
@@ -144,6 +143,33 @@
     if (validPercent !== localCompletionPercent) {
       localCompletionPercent = validPercent;
       updateValue('completionPercent', validPercent);
+    }
+    isEditing = false;
+  }
+
+  function validateScrapeInterval(value) {
+    const parsed = parseInt(value, 10);
+    if (isNaN(parsed) || parsed < SCRAPE_INTERVAL_MIN) {
+      return SCRAPE_INTERVAL_MIN;
+    }
+    if (parsed > SCRAPE_INTERVAL_MAX) {
+      return SCRAPE_INTERVAL_MAX;
+    }
+    return parsed;
+  }
+
+  function handleScrapeIntervalInput() {
+    const parsed = parseInt(localScrapeInterval, 10);
+    if (!isNaN(parsed) && parsed >= SCRAPE_INTERVAL_MIN) {
+      updateValue('scrapeInterval', parsed);
+    }
+  }
+
+  function handleScrapeIntervalBlur() {
+    const valid = validateScrapeInterval(localScrapeInterval);
+    if (valid !== localScrapeInterval) {
+      localScrapeInterval = valid;
+      updateValue('scrapeInterval', valid);
     }
     isEditing = false;
   }
@@ -274,7 +300,7 @@
       <span class="text-sm font-medium">Initial State</span>
     </div>
     <div class="bg-muted/50 rounded-lg border border-border p-3">
-      <div class="grid grid-cols-3 gap-3">
+      <div class="grid grid-cols-2 gap-3">
         <div>
           <Label for="completion" class="text-xs text-muted-foreground mb-1.5 block"
             >Completion</Label
@@ -315,9 +341,21 @@
             <span class="text-sm text-muted-foreground">MB</span>
           </div>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Timing -->
+  <div class="mb-4">
+    <div class="flex items-center gap-2 mb-3">
+      <Timer size={16} class="text-muted-foreground" />
+      <span class="text-sm font-medium">Timing</span>
+    </div>
+    <div class="bg-muted/50 rounded-lg border border-border p-3">
+      <div class="grid grid-cols-2 gap-3">
         <div>
           <Label for="updateInterval" class="text-xs text-muted-foreground mb-1.5 block"
-            >Update Interval</Label
+            >Refresh Interval</Label
           >
           <div class="flex items-center gap-2">
             <Input
@@ -332,6 +370,27 @@
               onfocus={handleFocus}
               onblur={handleBlur}
               oninput={() => updateValue('updateIntervalSeconds', localUpdateIntervalSeconds)}
+            />
+            <span class="text-sm text-muted-foreground">sec</span>
+          </div>
+        </div>
+        <div>
+          <Label for="scrapeInterval" class="text-xs text-muted-foreground mb-1.5 block"
+            >Scrape Interval</Label
+          >
+          <div class="flex items-center gap-2">
+            <Input
+              id="scrapeInterval"
+              type="number"
+              bind:value={localScrapeInterval}
+              disabled={isRunning}
+              min="10"
+              max="3600"
+              step="1"
+              class="flex-1 h-9 text-center"
+              onfocus={handleFocus}
+              onblur={handleScrapeIntervalBlur}
+              oninput={handleScrapeIntervalInput}
             />
             <span class="text-sm text-muted-foreground">sec</span>
           </div>

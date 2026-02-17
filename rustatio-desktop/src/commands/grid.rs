@@ -1,8 +1,11 @@
 use rustatio_core::{
-    FakerConfig, FakerState, GridImportSettings, InstanceSummary, PresetSettings, RatioFaker, TorrentInfo,
+    FakerConfig, FakerState, FakerStats, GridImportSettings, InstanceSummary, PresetSettings, RatioFaker, TorrentInfo,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use tauri::{AppHandle, State};
+use tokio::sync::RwLock;
+use tokio::task::JoinSet;
 
 use crate::logging::log_and_emit;
 use crate::state::{hex_info_hash, now_secs, AppState, FakerInstance};
@@ -82,7 +85,7 @@ async fn import_torrent_files(
         fakers_lock.insert(
             instance_id,
             FakerInstance {
-                faker,
+                faker: Arc::new(RwLock::new(faker)),
                 torrent,
                 config: faker_config,
                 cumulative_uploaded: 0,
@@ -123,29 +126,45 @@ async fn import_torrent_files(
         let state_fakers = state.fakers.clone();
         let app_handle = app.clone();
         let stagger = config.stagger_start_secs;
+        let use_stagger = stagger.is_some_and(|s| s > 0);
 
         tauri::async_runtime::spawn(async move {
-            for (i, id) in auto_start_ids.iter().enumerate() {
-                if i > 0 {
-                    if let Some(delay) = stagger {
-                        if delay > 0 {
-                            tokio::time::sleep(std::time::Duration::from_secs(delay)).await;
-                        }
+            let faker_arcs: Vec<_> = {
+                let fakers = state_fakers.read().await;
+                auto_start_ids
+                    .iter()
+                    .filter_map(|id| fakers.get(id).map(|i| (*id, i.faker.clone())))
+                    .collect()
+            };
+
+            if use_stagger {
+                let delay = stagger.unwrap();
+                for (i, (id, faker)) in faker_arcs.into_iter().enumerate() {
+                    if i > 0 {
+                        tokio::time::sleep(std::time::Duration::from_secs(delay)).await;
+                    }
+                    match faker.write().await.start().await {
+                        Ok(_) => log_and_emit!(&app_handle, id, info, "Auto-started"),
+                        Err(e) => log_and_emit!(&app_handle, id, error, "Auto-start failed: {}", e),
+                    };
+                }
+            } else {
+                let mut join_set = JoinSet::new();
+                for (id, faker) in faker_arcs {
+                    join_set.spawn(async move {
+                        let result = faker.write().await.start().await;
+                        (id, result.map_err(|e| e.to_string()))
+                    });
+                }
+                while let Some(result) = join_set.join_next().await {
+                    match result {
+                        Ok((id, Ok(_))) => log_and_emit!(&app_handle, id, info, "Auto-started"),
+                        Ok((id, Err(e))) => log_and_emit!(&app_handle, id, error, "Auto-start failed: {}", e),
+                        Err(e) => log::error!("Auto-start join error: {}", e),
                     }
                 }
-                let mut fakers = state_fakers.write().await;
-                if let Some(instance) = fakers.get_mut(id) {
-                    match instance.faker.start().await {
-                        Ok(_) => {
-                            log_and_emit!(&app_handle, *id, info, "Auto-started");
-                        }
-                        Err(e) => {
-                            log_and_emit!(&app_handle, *id, error, "Auto-start failed: {}", e);
-                        }
-                    }
-                }
-                drop(fakers);
             }
+
             log_and_emit!(
                 &app_handle,
                 info,
@@ -201,7 +220,6 @@ pub async fn grid_import_folder(
         result.errors.len()
     );
 
-    state.save_state().await;
     Ok(result)
 }
 
@@ -224,7 +242,6 @@ pub async fn grid_import_files(
         result.errors.len()
     );
 
-    state.save_state().await;
     Ok(result)
 }
 
@@ -232,37 +249,49 @@ pub async fn grid_import_files(
 pub async fn grid_start(
     ids: Vec<u32>,
     state: State<'_, AppState>,
-    app: AppHandle,
+    _app: AppHandle,
 ) -> Result<GridActionResponse, String> {
     let mut succeeded = Vec::new();
     let mut failed = Vec::new();
 
-    for id in ids {
-        let mut fakers = state.fakers.write().await;
-        match fakers.get_mut(&id) {
-            Some(instance) => match instance.faker.start().await {
-                Ok(_) => {
-                    log_and_emit!(&app, id, info, "Started via grid action");
-                    succeeded.push(id);
+    let mut to_start = Vec::new();
+    {
+        let fakers = state.fakers.read().await;
+        for id in &ids {
+            match fakers.get(id) {
+                Some(instance) => {
+                    to_start.push((*id, instance.faker.clone()));
+                    succeeded.push(*id);
                 }
-                Err(e) => {
+                None => {
                     failed.push(GridActionError {
-                        id,
-                        error: e.to_string(),
+                        id: *id,
+                        error: format!("Instance {} not found", id),
                     });
                 }
-            },
-            None => {
-                failed.push(GridActionError {
-                    id,
-                    error: format!("Instance {} not found", id),
-                });
             }
         }
-        drop(fakers);
     }
 
-    state.save_state().await;
+    // Spawn HTTP announces in background — return immediately
+    tauri::async_runtime::spawn(async move {
+        let mut join_set = JoinSet::new();
+        for (id, faker) in to_start {
+            join_set.spawn(async move {
+                let result = faker.write().await.start().await;
+                (id, result.map_err(|e| e.to_string()))
+            });
+        }
+
+        while let Some(result) = join_set.join_next().await {
+            match result {
+                Ok((id, Ok(_))) => log::info!("[Instance {}] Started via grid action", id),
+                Ok((id, Err(e))) => log::error!("[Instance {}] Grid start failed: {}", id, e),
+                Err(e) => log::error!("Grid start join error: {}", e),
+            }
+        }
+    });
+
     Ok(GridActionResponse { succeeded, failed })
 }
 
@@ -270,42 +299,67 @@ pub async fn grid_start(
 pub async fn grid_stop(
     ids: Vec<u32>,
     state: State<'_, AppState>,
-    app: AppHandle,
+    _app: AppHandle,
 ) -> Result<GridActionResponse, String> {
     let mut succeeded = Vec::new();
     let mut failed = Vec::new();
 
-    for id in ids {
-        let mut fakers = state.fakers.write().await;
-        match fakers.get_mut(&id) {
-            Some(instance) => {
-                let final_stats = instance.faker.get_stats().await;
-                match instance.faker.stop().await {
-                    Ok(_) => {
-                        instance.cumulative_uploaded = final_stats.uploaded;
-                        instance.cumulative_downloaded = final_stats.downloaded;
-                        log_and_emit!(&app, id, info, "Stopped via grid action");
-                        succeeded.push(id);
-                    }
-                    Err(e) => {
-                        failed.push(GridActionError {
-                            id,
-                            error: e.to_string(),
-                        });
-                    }
+    let mut to_stop = Vec::new();
+    {
+        let fakers = state.fakers.read().await;
+        for id in &ids {
+            match fakers.get(id) {
+                Some(instance) => {
+                    to_stop.push((*id, instance.faker.clone()));
+                    succeeded.push(*id);
+                }
+                None => {
+                    failed.push(GridActionError {
+                        id: *id,
+                        error: format!("Instance {} not found", id),
+                    });
                 }
             }
-            None => {
-                failed.push(GridActionError {
-                    id,
-                    error: format!("Instance {} not found", id),
-                });
-            }
         }
-        drop(fakers);
     }
 
-    state.save_state().await;
+    // Spawn HTTP stop announces + cumulative stats update in background
+    let fakers_arc = state.fakers.clone();
+    tauri::async_runtime::spawn(async move {
+        let mut join_set = JoinSet::new();
+        for (id, faker) in to_stop {
+            join_set.spawn(async move {
+                let final_stats = faker.read().await.get_stats().await;
+                let stop_result = faker.write().await.stop().await;
+                (id, final_stats, stop_result.map_err(|e| e.to_string()))
+            });
+        }
+
+        let mut stats_updates: Vec<(u32, FakerStats)> = Vec::new();
+        while let Some(result) = join_set.join_next().await {
+            match result {
+                Ok((id, stats, Ok(_))) => {
+                    log::info!("[Instance {}] Stopped via grid action", id);
+                    stats_updates.push((id, stats));
+                }
+                Ok((id, _, Err(e))) => {
+                    log::error!("[Instance {}] Grid stop failed: {}", id, e);
+                }
+                Err(e) => log::error!("Grid stop join error: {}", e),
+            }
+        }
+
+        if !stats_updates.is_empty() {
+            let mut fakers = fakers_arc.write().await;
+            for (id, stats) in stats_updates {
+                if let Some(instance) = fakers.get_mut(&id) {
+                    instance.cumulative_uploaded = stats.uploaded;
+                    instance.cumulative_downloaded = stats.downloaded;
+                }
+            }
+        }
+    });
+
     Ok(GridActionResponse { succeeded, failed })
 }
 
@@ -318,10 +372,17 @@ pub async fn grid_pause(
     let mut succeeded = Vec::new();
     let mut failed = Vec::new();
 
-    let mut fakers = state.fakers.write().await;
-    for id in ids {
-        match fakers.get_mut(&id) {
-            Some(instance) => match instance.faker.pause().await {
+    // Collect Arcs under read lock, then drop HashMap lock
+    let faker_arcs: Vec<_> = {
+        let fakers = state.fakers.read().await;
+        ids.iter()
+            .map(|id| (*id, fakers.get(id).map(|i| i.faker.clone())))
+            .collect()
+    };
+
+    for (id, faker_opt) in faker_arcs {
+        match faker_opt {
+            Some(faker) => match faker.write().await.pause().await {
                 Ok(_) => {
                     log_and_emit!(&app, id, info, "Paused via grid action");
                     succeeded.push(id);
@@ -342,8 +403,6 @@ pub async fn grid_pause(
         }
     }
 
-    drop(fakers);
-    state.save_state().await;
     Ok(GridActionResponse { succeeded, failed })
 }
 
@@ -356,10 +415,17 @@ pub async fn grid_resume(
     let mut succeeded = Vec::new();
     let mut failed = Vec::new();
 
-    let mut fakers = state.fakers.write().await;
-    for id in ids {
-        match fakers.get_mut(&id) {
-            Some(instance) => match instance.faker.resume().await {
+    // Collect Arcs under read lock, then drop HashMap lock
+    let faker_arcs: Vec<_> = {
+        let fakers = state.fakers.read().await;
+        ids.iter()
+            .map(|id| (*id, fakers.get(id).map(|i| i.faker.clone())))
+            .collect()
+    };
+
+    for (id, faker_opt) in faker_arcs {
+        match faker_opt {
+            Some(faker) => match faker.write().await.resume().await {
                 Ok(_) => {
                     log_and_emit!(&app, id, info, "Resumed via grid action");
                     succeeded.push(id);
@@ -380,8 +446,6 @@ pub async fn grid_resume(
         }
     }
 
-    drop(fakers);
-    state.save_state().await;
     Ok(GridActionResponse { succeeded, failed })
 }
 
@@ -394,13 +458,19 @@ pub async fn grid_delete(
     let mut succeeded = Vec::new();
     let mut failed = Vec::new();
 
-    let mut fakers = state.fakers.write().await;
-    for id in ids {
-        match fakers.remove(&id) {
-            Some(mut instance) => {
-                let _ = instance.faker.stop().await;
-                log_and_emit!(&app, id, info, "Deleted via grid action");
-                succeeded.push(id);
+    let removed: Vec<_> = {
+        let mut fakers = state.fakers.write().await;
+        ids.iter().map(|id| (*id, fakers.remove(id))).collect()
+    };
+
+    let mut join_set = JoinSet::new();
+    for (id, instance_opt) in removed {
+        match instance_opt {
+            Some(instance) => {
+                join_set.spawn(async move {
+                    let _ = instance.faker.write().await.stop().await;
+                    id
+                });
             }
             None => {
                 failed.push(GridActionError {
@@ -411,8 +481,16 @@ pub async fn grid_delete(
         }
     }
 
-    drop(fakers);
-    state.save_state().await;
+    while let Some(result) = join_set.join_next().await {
+        match result {
+            Ok(id) => {
+                log_and_emit!(&app, id, info, "Deleted via grid action");
+                succeeded.push(id);
+            }
+            Err(e) => log::error!("Grid delete join error: {}", e),
+        }
+    }
+
     Ok(GridActionResponse { succeeded, failed })
 }
 
@@ -434,12 +512,12 @@ pub async fn grid_update_config(
                 let mut new_config = faker_config.clone();
                 new_config.initial_uploaded = instance.cumulative_uploaded;
                 new_config.initial_downloaded = instance.cumulative_downloaded;
-                let existing_stats = instance.faker.get_stats().await;
+                let existing_stats = instance.faker.read().await.get_stats().await;
                 new_config.completion_percent = existing_stats.torrent_completion;
 
                 match RatioFaker::new(instance.torrent.clone(), new_config) {
                     Ok(faker) => {
-                        instance.faker = faker;
+                        instance.faker = Arc::new(RwLock::new(faker));
                         instance.config = faker_config.clone();
                         log_and_emit!(&app, id, info, "Config updated via grid action");
                         succeeded.push(id);
@@ -462,7 +540,60 @@ pub async fn grid_update_config(
     }
 
     drop(fakers);
-    state.save_state().await;
+    Ok(GridActionResponse { succeeded, failed })
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BulkConfigEntry {
+    id: u32,
+    config: FakerConfig,
+}
+
+#[tauri::command]
+pub async fn bulk_update_configs(
+    entries: Vec<BulkConfigEntry>,
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<GridActionResponse, String> {
+    let mut succeeded = Vec::new();
+    let mut failed = Vec::new();
+
+    let mut fakers = state.fakers.write().await;
+    for entry in entries {
+        match fakers.get_mut(&entry.id) {
+            Some(instance) => {
+                let mut new_config = entry.config.clone();
+                new_config.initial_uploaded = instance.cumulative_uploaded;
+                new_config.initial_downloaded = instance.cumulative_downloaded;
+                let existing_stats = instance.faker.read().await.get_stats().await;
+                new_config.completion_percent = existing_stats.torrent_completion;
+
+                match RatioFaker::new(instance.torrent.clone(), new_config) {
+                    Ok(faker) => {
+                        instance.faker = Arc::new(RwLock::new(faker));
+                        instance.config = entry.config;
+                        log_and_emit!(&app, entry.id, info, "Config synced before bulk start");
+                        succeeded.push(entry.id);
+                    }
+                    Err(e) => {
+                        failed.push(GridActionError {
+                            id: entry.id,
+                            error: e.to_string(),
+                        });
+                    }
+                }
+            }
+            None => {
+                failed.push(GridActionError {
+                    id: entry.id,
+                    error: format!("Instance {} not found", entry.id),
+                });
+            }
+        }
+    }
+
+    drop(fakers);
     Ok(GridActionResponse { succeeded, failed })
 }
 
@@ -491,7 +622,6 @@ pub async fn grid_tag(
     }
 
     drop(fakers);
-    state.save_state().await;
     Ok(updated)
 }
 
@@ -507,17 +637,33 @@ pub async fn set_instance_tags(instance_id: u32, tags: Vec<String>, state: State
     }?;
 
     drop(fakers);
-    state.save_state().await;
     Ok(())
 }
 
 #[tauri::command]
 pub async fn list_summaries(state: State<'_, AppState>) -> Result<Vec<InstanceSummary>, String> {
-    let fakers = state.fakers.read().await;
-    let mut summaries = Vec::new();
+    // Collect Arcs and instance data under read lock, then drop HashMap lock
+    let instance_data: Vec<_> = {
+        let fakers = state.fakers.read().await;
+        fakers
+            .iter()
+            .map(|(id, instance)| {
+                (
+                    *id,
+                    instance.faker.clone(),
+                    instance.torrent.name.clone(),
+                    hex_info_hash(&instance.torrent.info_hash),
+                    instance.tags.clone(),
+                    instance.torrent.total_size,
+                    instance.created_at,
+                )
+            })
+            .collect()
+    };
 
-    for (id, instance) in fakers.iter() {
-        let stats = instance.faker.get_stats().await;
+    let mut summaries = Vec::new();
+    for (id, faker, name, info_hash, tags, total_size, created_at) in instance_data {
+        let stats = faker.read().await.get_stats().await;
         let state_str = match stats.state {
             FakerState::Paused => "paused",
             _ if stats.is_idling => "idle",
@@ -530,11 +676,11 @@ pub async fn list_summaries(state: State<'_, AppState>) -> Result<Vec<InstanceSu
 
         summaries.push(InstanceSummary {
             id: id.to_string(),
-            name: instance.torrent.name.clone(),
-            info_hash: hex_info_hash(&instance.torrent.info_hash),
+            name,
+            info_hash,
             state: state_str.to_string(),
-            tags: instance.tags.clone(),
-            total_size: instance.torrent.total_size,
+            tags,
+            total_size,
             uploaded: stats.uploaded,
             downloaded: stats.downloaded,
             ratio: stats.ratio,
@@ -545,7 +691,7 @@ pub async fn list_summaries(state: State<'_, AppState>) -> Result<Vec<InstanceSu
             left: stats.left,
             torrent_completion: stats.torrent_completion,
             source: "desktop".to_string(),
-            created_at: instance.created_at,
+            created_at,
         });
     }
 

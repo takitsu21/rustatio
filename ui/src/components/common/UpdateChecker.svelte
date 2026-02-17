@@ -165,7 +165,7 @@
       if (update?.available) {
         devLog('log', 'Downloading update...');
 
-        await update.downloadAndInstall((progress) => {
+        await update.downloadAndInstall(progress => {
           if (progress.event === 'Progress') {
             devLog('log', `Download progress: ${progress.data.chunkLength} bytes received`);
           }

@@ -66,6 +66,9 @@ function createDefaultInstance(id, defaults = {}) {
     idleWhenNoSeeders:
       defaults.idleWhenNoSeeders !== undefined ? defaults.idleWhenNoSeeders : false,
 
+    // Scrape interval
+    scrapeInterval: defaults.scrapeInterval !== undefined ? defaults.scrapeInterval : 60,
+
     // Progressive rates
     progressiveRatesEnabled:
       defaults.progressiveRatesEnabled !== undefined ? defaults.progressiveRatesEnabled : false,
@@ -113,6 +116,7 @@ async function saveSession(instances, activeId) {
         randomize_rates: inst.randomizeRates,
         random_range_percent: parseFloat(inst.randomRangePercent),
         update_interval_seconds: parseInt(inst.updateIntervalSeconds),
+        scrape_interval: parseInt(inst.scrapeInterval) || 60,
         stop_at_ratio_enabled: inst.stopAtRatioEnabled,
         stop_at_ratio: parseFloat(inst.stopAtRatio),
         stop_at_uploaded_enabled: inst.stopAtUploadedEnabled,
@@ -151,6 +155,7 @@ async function saveSession(instances, activeId) {
           randomize_rates: inst.randomizeRates,
           random_range_percent: parseFloat(inst.randomRangePercent),
           update_interval_seconds: parseInt(inst.updateIntervalSeconds),
+          scrape_interval: parseInt(inst.scrapeInterval) || 60,
           stop_at_ratio_enabled: inst.stopAtRatioEnabled,
           stop_at_ratio: parseFloat(inst.stopAtRatio),
           stop_at_uploaded_enabled: inst.stopAtUploadedEnabled,
@@ -216,6 +221,7 @@ function loadSessionFromStorage(config = null) {
         randomizeRates: inst.randomize_rates,
         randomRangePercent: inst.random_range_percent,
         updateIntervalSeconds: inst.update_interval_seconds,
+        scrapeInterval: inst.scrape_interval ?? 60,
         stopAtRatioEnabled: inst.stop_at_ratio_enabled,
         stopAtRatio: inst.stop_at_ratio,
         stopAtUploadedEnabled: inst.stop_at_uploaded_enabled,
@@ -316,6 +322,7 @@ export const instanceActions = {
                 targetUploadRate: serverInst.config.target_upload_rate || 100,
                 targetDownloadRate: serverInst.config.target_download_rate || 200,
                 progressiveDurationHours: (serverInst.config.progressive_duration || 3600) / 3600,
+                scrapeInterval: serverInst.config.scrape_interval || 60,
               });
 
               // Set torrent info
@@ -425,7 +432,11 @@ export const instanceActions = {
 
               // Set running state from backend
               const state = summary.state?.toLowerCase();
-              instance.isRunning = state === 'running' || state === 'starting' || state === 'idle' || state === 'paused';
+              instance.isRunning =
+                state === 'running' ||
+                state === 'starting' ||
+                state === 'idle' ||
+                state === 'paused';
               instance.isPaused = state === 'paused';
 
               if (instance.isPaused) {
@@ -740,6 +751,7 @@ export const instanceActions = {
       targetUploadRate: serverInst.config.target_upload_rate || 100,
       targetDownloadRate: serverInst.config.target_download_rate || 200,
       progressiveDurationHours: (serverInst.config.progressive_duration || 3600) / 3600,
+      scrapeInterval: serverInst.config.scrape_interval || 60,
     });
 
     // Set torrent info
@@ -803,11 +815,13 @@ export const instanceActions = {
               stopAtUploadedEnabled: serverInst.config.stop_at_uploaded != null,
               stopAtUploadedGB: (serverInst.config.stop_at_uploaded || 0) / (1024 * 1024 * 1024),
               stopAtDownloadedEnabled: serverInst.config.stop_at_downloaded != null,
-              stopAtDownloadedGB: (serverInst.config.stop_at_downloaded || 0) / (1024 * 1024 * 1024),
+              stopAtDownloadedGB:
+                (serverInst.config.stop_at_downloaded || 0) / (1024 * 1024 * 1024),
               stopAtSeedTimeEnabled: serverInst.config.stop_at_seed_time != null,
               stopAtSeedTimeHours: (serverInst.config.stop_at_seed_time || 0) / 3600,
               idleWhenNoLeechers: serverInst.config.idle_when_no_leechers || false,
               idleWhenNoSeeders: serverInst.config.idle_when_no_seeders || false,
+              scrapeInterval: serverInst.config.scrape_interval || 60,
             });
             return existing.id;
           }
@@ -864,7 +878,9 @@ export const instanceActions = {
         instance.statusMessage = 'Ready to start faking';
         instance.statusType = 'idle';
       } else {
-        instance.statusMessage = gridSummary.name ? 'Loaded from grid view' : 'Select a torrent file to begin';
+        instance.statusMessage = gridSummary.name
+          ? 'Loaded from grid view'
+          : 'Select a torrent file to begin';
         instance.statusType = gridSummary.name ? 'idle' : 'warning';
       }
 
@@ -940,8 +956,8 @@ export const instanceActions = {
     instanceActions.updateInstance(id, updates);
   },
 
-  // Sync all instance states from the backend summaries.
-  // Fetches listSummaries and updates isRunning/isPaused for every instance in the standard store.
+  // Sync all instance states and stats from the backend summaries.
+  // Called when switching from grid view back to standard view.
   syncAllInstanceStates: async () => {
     try {
       const summaries = await api.listSummaries();
@@ -956,12 +972,10 @@ export const instanceActions = {
         if (!summary) return inst;
 
         const state = summary.state?.toLowerCase();
-        const isRunning = state === 'running' || state === 'starting' || state === 'paused' || state === 'idle';
+        const isRunning =
+          state === 'running' || state === 'starting' || state === 'paused' || state === 'idle';
         const isPaused = state === 'paused';
 
-        if (inst.isRunning === isRunning && inst.isPaused === isPaused) return inst;
-
-        hasAnyChanges = true;
         const updates = { isRunning, isPaused };
 
         if (isPaused) {
@@ -982,6 +996,23 @@ export const instanceActions = {
           updates.statusIcon = null;
         }
 
+        // Merge available stats from summary into the existing stats object
+        // Session-specific fields are preserved and refreshed by polling intervals
+        updates.stats = {
+          ...(inst.stats || {}),
+          uploaded: summary.uploaded,
+          downloaded: summary.downloaded,
+          ratio: summary.ratio,
+          current_upload_rate: summary.currentUploadRate,
+          current_download_rate: summary.currentDownloadRate,
+          seeders: summary.seeders,
+          leechers: summary.leechers,
+          left: summary.left,
+          torrent_completion: summary.torrentCompletion,
+        };
+        updates.completionPercent = summary.torrentCompletion;
+
+        hasAnyChanges = true;
         return { ...inst, ...updates };
       });
 

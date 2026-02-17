@@ -105,6 +105,12 @@ export const allTags = derived(gridInstances, $instances => {
 let pollInterval = null;
 let isFetching = false;
 
+// Track IDs with in-flight background operations (start/stop).
+// Maps id -> { optimistic: 'starting'|'stopping', target: 'running'|'stopped', ts: Date.now() }
+// fetchSummaries preserves the optimistic state until the backend catches up or TTL expires.
+const PENDING_TTL_MS = 30000;
+const pendingStateIds = new Map();
+
 // After grid import, fetch actual backend configs so the standard view shows
 // the real per-instance rates (randomized from range) instead of default preset values.
 async function syncImportedInstances(imported, importConfig = {}) {
@@ -149,7 +155,33 @@ export const gridActions = {
       }
 
       const summaries = await api.listSummaries();
-      gridInstances.set(summaries || []);
+      if (!summaries) return;
+
+      // Reconcile pending optimistic states with backend reality
+      const now = Date.now();
+      const reconciled = summaries.map(s => {
+        const pending = pendingStateIds.get(s.id);
+        if (!pending) return s;
+
+        const backendState = s.state?.toLowerCase();
+
+        // Backend caught up to target state — clear pending
+        if (backendState === pending.target) {
+          pendingStateIds.delete(s.id);
+          return s;
+        }
+
+        // TTL expired — clear pending, use backend state
+        if (now - pending.ts > PENDING_TTL_MS) {
+          pendingStateIds.delete(s.id);
+          return s;
+        }
+
+        // Still pending — preserve optimistic state
+        return { ...s, state: pending.optimistic };
+      });
+
+      gridInstances.set(reconciled);
     } catch (error) {
       console.error('Failed to fetch summaries:', error);
     } finally {
@@ -218,8 +250,12 @@ export const gridActions = {
     });
     if (startable.length === 0) return;
     const idSet = new Set(startable);
+    const now = Date.now();
+    for (const id of startable) {
+      pendingStateIds.set(id, { optimistic: 'starting', target: 'running', ts: now });
+    }
     gridInstances.update(list =>
-      list.map(i => idSet.has(i.id) ? { ...i, state: 'starting' } : i)
+      list.map(i => (idSet.has(i.id) ? { ...i, state: 'starting' } : i))
     );
     const result = await api.gridStart(startable);
     await gridActions.fetchSummaries();
@@ -240,8 +276,12 @@ export const gridActions = {
     });
     if (stoppable.length === 0) return;
     const idSet = new Set(stoppable);
+    const now = Date.now();
+    for (const id of stoppable) {
+      pendingStateIds.set(id, { optimistic: 'stopping', target: 'stopped', ts: now });
+    }
     gridInstances.update(list =>
-      list.map(i => idSet.has(i.id) ? { ...i, state: 'stopping' } : i)
+      list.map(i => (idSet.has(i.id) ? { ...i, state: 'stopping' } : i))
     );
     const result = await api.gridStop(stoppable);
     await gridActions.fetchSummaries();
@@ -329,9 +369,10 @@ export const gridActions = {
   },
 
   // Single-instance actions (used by context menu)
-  startInstance: async (id) => {
+  startInstance: async id => {
+    pendingStateIds.set(id, { optimistic: 'starting', target: 'running', ts: Date.now() });
     gridInstances.update(instances =>
-      instances.map(i => i.id === id ? { ...i, state: 'starting' } : i)
+      instances.map(i => (i.id === id ? { ...i, state: 'starting' } : i))
     );
     const result = await api.gridStart([id]);
     await gridActions.fetchSummaries();
@@ -339,9 +380,10 @@ export const gridActions = {
     return result;
   },
 
-  stopInstance: async (id) => {
+  stopInstance: async id => {
+    pendingStateIds.set(id, { optimistic: 'stopping', target: 'stopped', ts: Date.now() });
     gridInstances.update(instances =>
-      instances.map(i => i.id === id ? { ...i, state: 'stopping' } : i)
+      instances.map(i => (i.id === id ? { ...i, state: 'stopping' } : i))
     );
     const result = await api.gridStop([id]);
     await gridActions.fetchSummaries();
@@ -349,21 +391,21 @@ export const gridActions = {
     return result;
   },
 
-  pauseInstance: async (id) => {
+  pauseInstance: async id => {
     const result = await api.gridPause([id]);
     await gridActions.fetchSummaries();
     instanceActions.syncInstanceState(id, { isRunning: true, isPaused: true });
     return result;
   },
 
-  resumeInstance: async (id) => {
+  resumeInstance: async id => {
     const result = await api.gridResume([id]);
     await gridActions.fetchSummaries();
     instanceActions.syncInstanceState(id, { isRunning: true, isPaused: false });
     return result;
   },
 
-  deleteInstance: async (id) => {
+  deleteInstance: async id => {
     const result = await api.gridDelete([id]);
     selectedIds.update(s => {
       const next = new Set(s);
@@ -375,13 +417,13 @@ export const gridActions = {
     return result;
   },
 
-  selectByState: (state) => {
+  selectByState: state => {
     const all = get(filteredGridInstances);
     const matching = all.filter(i => i.state?.toLowerCase() === state);
     selectedIds.set(new Set(matching.map(i => i.id)));
   },
 
-  selectByTag: (tag) => {
+  selectByTag: tag => {
     const all = get(filteredGridInstances);
     const matching = all.filter(i => i.tags?.includes(tag));
     selectedIds.set(new Set(matching.map(i => i.id)));

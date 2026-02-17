@@ -190,12 +190,44 @@ impl AppState {
             RatioFaker::new(instance.torrent.clone(), config).map_err(|e| format!("Failed to create faker: {}", e))?;
         instance.faker = Arc::new(RwLock::new(faker));
 
-        drop(instances);
-        if let Err(e) = self.save_state().await {
-            tracing::warn!("Failed to save state after config update: {}", e);
+        Ok(())
+    }
+
+    pub async fn bulk_update_configs(
+        &self,
+        entries: Vec<(String, FakerConfig)>,
+    ) -> (Vec<String>, Vec<(String, String)>) {
+        let mut succeeded = Vec::new();
+        let mut failed = Vec::new();
+        let mut instances = self.instances.write().await;
+
+        for (id, config) in entries {
+            match instances.get_mut(&id) {
+                Some(instance) => {
+                    let mut faker_config = config.clone();
+                    faker_config.initial_uploaded = instance.cumulative_uploaded;
+                    faker_config.initial_downloaded = instance.cumulative_downloaded;
+                    let existing_stats = instance.faker.read().await.get_stats().await;
+                    faker_config.completion_percent = existing_stats.torrent_completion;
+
+                    match RatioFaker::new(instance.torrent.clone(), faker_config) {
+                        Ok(faker) => {
+                            instance.faker = Arc::new(RwLock::new(faker));
+                            instance.config = config;
+                            succeeded.push(id);
+                        }
+                        Err(e) => {
+                            failed.push((id, e.to_string()));
+                        }
+                    }
+                }
+                None => {
+                    failed.push((id.clone(), format!("Instance {} not found", id)));
+                }
+            }
         }
 
-        Ok(())
+        (succeeded, failed)
     }
 
     pub async fn create_instance(&self, id: &str, torrent: TorrentInfo, config: FakerConfig) -> Result<(), String> {

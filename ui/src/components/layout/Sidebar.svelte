@@ -392,257 +392,262 @@
 
     <!-- Standard Mode Content -->
     {#if !isGridMode}
-    <!-- Total Stats Summary -->
-    {#if !isCollapsed && (totalStats().uploaded > 0 || totalStats().downloaded > 0)}
-      <div class="mb-3 p-2 bg-muted/50 rounded-lg text-xs">
-        <div class="flex justify-between text-muted-foreground mb-1">
-          <span>Total Uploaded</span>
-          <span class="font-semibold text-stat-upload">↑ {formatBytes(totalStats().uploaded)}</span>
+      <!-- Total Stats Summary -->
+      {#if !isCollapsed && (totalStats().uploaded > 0 || totalStats().downloaded > 0)}
+        <div class="mb-3 p-2 bg-muted/50 rounded-lg text-xs">
+          <div class="flex justify-between text-muted-foreground mb-1">
+            <span>Total Uploaded</span>
+            <span class="font-semibold text-stat-upload"
+              >↑ {formatBytes(totalStats().uploaded)}</span
+            >
+          </div>
+          <div class="flex justify-between text-muted-foreground mb-1">
+            <span>Total Downloaded</span>
+            <span class="font-semibold text-stat-leecher"
+              >↓ {formatBytes(totalStats().downloaded)}</span
+            >
+          </div>
+          <div class="flex justify-between text-muted-foreground">
+            <span>Running</span>
+            <span class="font-semibold text-foreground"
+              >{totalStats().running}/{totalStats().total}</span
+            >
+          </div>
         </div>
-        <div class="flex justify-between text-muted-foreground mb-1">
-          <span>Total Downloaded</span>
-          <span class="font-semibold text-stat-leecher"
-            >↓ {formatBytes(totalStats().downloaded)}</span
+      {/if}
+
+      <!-- Bulk Actions -->
+      {#if hasMultipleInstancesWithTorrents}
+        <div class={cn('flex flex-wrap gap-2 mb-3', isCollapsed && 'lg:flex-col')}>
+          <Button
+            onclick={handleStartAll}
+            disabled={!hasStoppedInstancesWithTorrents}
+            size="sm"
+            variant="default"
+            class={cn('gap-1', isCollapsed ? 'lg:w-full lg:px-2' : 'flex-1')}
+            title="Start all instances"
           >
-        </div>
-        <div class="flex justify-between text-muted-foreground">
-          <span>Running</span>
-          <span class="font-semibold text-foreground"
-            >{totalStats().running}/{totalStats().total}</span
+            {#snippet children()}
+              <Play size={12} fill="currentColor" />
+              <span class={cn(isCollapsed && 'lg:hidden')}>Start All</span>
+            {/snippet}
+          </Button>
+
+          <Button
+            onclick={handleStopAll}
+            disabled={!hasRunningInstances}
+            size="sm"
+            class={cn(
+              'gap-1 bg-stat-danger hover:bg-stat-danger/90 text-white shadow-lg shadow-stat-danger/25',
+              isCollapsed ? 'lg:w-full lg:px-2' : 'flex-1'
+            )}
+            title="Stop all instances"
           >
+            {#snippet children()}
+              <Square size={12} fill="currentColor" />
+              <span class={cn(isCollapsed && 'lg:hidden')}>Stop All</span>
+            {/snippet}
+          </Button>
+
+          <Button
+            onclick={handlePauseAll}
+            disabled={!hasUnpausedRunningInstances}
+            size="sm"
+            class={cn(
+              'gap-1 bg-stat-ratio hover:bg-stat-ratio/90 text-white shadow-lg shadow-stat-ratio/25',
+              isCollapsed ? 'lg:w-full lg:px-2' : 'flex-1'
+            )}
+            title="Pause all running instances"
+          >
+            {#snippet children()}
+              <Pause size={12} fill="currentColor" />
+              <span class={cn(isCollapsed && 'lg:hidden')}>Pause All</span>
+            {/snippet}
+          </Button>
+
+          <Button
+            onclick={handleResumeAll}
+            disabled={!hasPausedInstances}
+            size="sm"
+            variant="secondary"
+            class={cn('gap-1', isCollapsed ? 'lg:w-full lg:px-2' : 'flex-1')}
+            title="Resume all paused instances"
+          >
+            {#snippet children()}
+              <Play size={12} fill="currentColor" />
+              <span class={cn(isCollapsed && 'lg:hidden')}>Resume All</span>
+            {/snippet}
+          </Button>
         </div>
-      </div>
-    {/if}
+      {/if}
 
-    <!-- Bulk Actions -->
-    {#if hasMultipleInstancesWithTorrents}
-      <div class={cn('flex flex-wrap gap-2 mb-3', isCollapsed && 'lg:flex-col')}>
-        <Button
-          onclick={handleStartAll}
-          disabled={!hasStoppedInstancesWithTorrents}
-          size="sm"
-          variant="default"
-          class={cn('gap-1', isCollapsed ? 'lg:w-full lg:px-2' : 'flex-1')}
-          title="Start all instances"
-        >
-          {#snippet children()}
-            <Play size={12} fill="currentColor" />
-            <span class={cn(isCollapsed && 'lg:hidden')}>Start All</span>
-          {/snippet}
-        </Button>
-
-        <Button
-          onclick={handleStopAll}
-          disabled={!hasRunningInstances}
-          size="sm"
-          class={cn(
-            'gap-1 bg-stat-danger hover:bg-stat-danger/90 text-white shadow-lg shadow-stat-danger/25',
-            isCollapsed ? 'lg:w-full lg:px-2' : 'flex-1'
-          )}
-          title="Stop all instances"
-        >
-          {#snippet children()}
-            <Square size={12} fill="currentColor" />
-            <span class={cn(isCollapsed && 'lg:hidden')}>Stop All</span>
-          {/snippet}
-        </Button>
-
-        <Button
-          onclick={handlePauseAll}
-          disabled={!hasUnpausedRunningInstances}
-          size="sm"
-          class={cn(
-            'gap-1 bg-stat-ratio hover:bg-stat-ratio/90 text-white shadow-lg shadow-stat-ratio/25',
-            isCollapsed ? 'lg:w-full lg:px-2' : 'flex-1'
-          )}
-          title="Pause all running instances"
-        >
-          {#snippet children()}
-            <Pause size={12} fill="currentColor" />
-            <span class={cn(isCollapsed && 'lg:hidden')}>Pause All</span>
-          {/snippet}
-        </Button>
-
-        <Button
-          onclick={handleResumeAll}
-          disabled={!hasPausedInstances}
-          size="sm"
-          variant="secondary"
-          class={cn('gap-1', isCollapsed ? 'lg:w-full lg:px-2' : 'flex-1')}
-          title="Resume all paused instances"
-        >
-          {#snippet children()}
-            <Play size={12} fill="currentColor" />
-            <span class={cn(isCollapsed && 'lg:hidden')}>Resume All</span>
-          {/snippet}
-        </Button>
-      </div>
-    {/if}
-
-    <!-- Add Instance Button -->
-    <Button
-      onclick={handleAddInstance}
-      size="sm"
-      class={cn('w-full gap-2', isCollapsed && 'lg:px-2')}
-      title="Add new instance"
-    >
-      {#snippet children()}
-        <Plus size={16} strokeWidth={2.5} />
-        <span class={cn(isCollapsed && 'lg:hidden')}>New Instance</span>
-      {/snippet}
-    </Button>
+      <!-- Add Instance Button -->
+      <Button
+        onclick={handleAddInstance}
+        size="sm"
+        class={cn('w-full gap-2', isCollapsed && 'lg:px-2')}
+        title="Add new instance"
+      >
+        {#snippet children()}
+          <Plus size={16} strokeWidth={2.5} />
+          <span class={cn(isCollapsed && 'lg:hidden')}>New Instance</span>
+        {/snippet}
+      </Button>
     {/if}
   </div>
 
   <!-- Instance List (standard mode only) -->
   {#if !isGridMode}
-  <div class="flex-1 overflow-y-auto min-h-0">
-    {#each $instances as instance (instance.id)}
-      {@const status = getInstanceStatus(instance)}
-      {@const isActive = $activeInstanceId === instance.id}
-      {@const stopProgress = getStopConditionProgress(instance)}
+    <div class="flex-1 overflow-y-auto min-h-0">
+      {#each $instances as instance (instance.id)}
+        {@const status = getInstanceStatus(instance)}
+        {@const isActive = $activeInstanceId === instance.id}
+        {@const stopProgress = getStopConditionProgress(instance)}
 
-      <div
-        class={cn(
-          'w-full px-4 py-3 border-l-4 transition-all text-left cursor-pointer',
-          isActive ? 'bg-muted border-l-primary' : 'border-l-transparent hover:bg-muted/50',
-          isCollapsed ? 'lg:px-2' : ''
-        )}
-        onclick={() => handleSelectInstance(instance.id)}
-        onkeydown={e => e.key === 'Enter' && handleSelectInstance(instance.id)}
-        role="button"
-        tabindex="0"
-        title={instance.torrent ? instance.torrent.name : `Instance ${instance.id}`}
-      >
-        <div class="flex items-center justify-between gap-2">
-          <div
-            class={cn('flex items-center gap-2 min-w-0 flex-1', isCollapsed && 'lg:justify-center')}
-          >
-            <!-- Status Indicator -->
-            <span
+        <div
+          class={cn(
+            'w-full px-4 py-3 border-l-4 transition-all text-left cursor-pointer',
+            isActive ? 'bg-muted border-l-primary' : 'border-l-transparent hover:bg-muted/50',
+            isCollapsed ? 'lg:px-2' : ''
+          )}
+          onclick={() => handleSelectInstance(instance.id)}
+          onkeydown={e => e.key === 'Enter' && handleSelectInstance(instance.id)}
+          role="button"
+          tabindex="0"
+          title={instance.torrent ? instance.torrent.name : `Instance ${instance.id}`}
+        >
+          <div class="flex items-center justify-between gap-2">
+            <div
               class={cn(
-                'flex-shrink-0',
-                status === 'idle' && 'text-muted-foreground',
-                status === 'running' && 'text-stat-upload animate-pulse-slow',
-                status === 'idling' && 'text-violet-500',
-                status === 'paused' && 'text-stat-ratio'
+                'flex items-center gap-2 min-w-0 flex-1',
+                isCollapsed && 'lg:justify-center'
               )}
             >
-              {#if status === 'running'}
-                <Circle size={10} fill="currentColor" />
-              {:else if status === 'idling'}
-                <Moon size={10} fill="currentColor" />
-              {:else if status === 'paused'}
-                <Pause size={10} fill="currentColor" />
-              {:else}
-                <Circle size={10} fill="currentColor" class="opacity-30" />
-              {/if}
-            </span>
-
-            <!-- Instance Name -->
-            <span
-              class={cn(
-                'text-sm truncate transition-opacity duration-200',
-                isActive ? 'font-semibold text-foreground' : 'text-muted-foreground',
-                isCollapsed && 'lg:hidden lg:w-0 lg:opacity-0'
-              )}
-            >
-              {getInstanceLabel(instance)}
-            </span>
-          </div>
-
-          <!-- Ratio Badge (when running or has stats) -->
-          {#if !isCollapsed && instance.stats && instance.stats.ratio > 0}
-            <span
-              class={cn(
-                'flex-shrink-0 text-xs font-bold px-1.5 py-0.5 rounded',
-                instance.stats.ratio >= 1
-                  ? 'bg-stat-upload/20 text-stat-upload'
-                  : 'bg-stat-ratio/20 text-stat-ratio'
-              )}
-              title="Current ratio"
-            >
-              {instance.stats.ratio.toFixed(2)}x
-            </span>
-          {/if}
-
-          <!-- Close Button -->
-          {#if !isCollapsed && instance.source !== 'watch_folder'}
-            <button
-              class="flex-shrink-0 p-1 rounded hover:bg-destructive/20 group bg-transparent border-0 cursor-pointer"
-              onclick={e => handleRemoveInstance(e, instance.id)}
-              title="Close instance"
-              aria-label="Close instance"
-            >
-              <X
-                size={12}
-                strokeWidth={2.5}
-                class="text-muted-foreground group-hover:text-destructive transition-colors"
-              />
-            </button>
-          {:else if instance.source === 'watch_folder' && !isCollapsed}
-            <!-- Watch folder instance: show folder icon + force delete button -->
-            <div class="flex items-center gap-1">
-              <span class="flex-shrink-0 text-muted-foreground" title="From watch folder">
-                <FolderOpen size={12} />
+              <!-- Status Indicator -->
+              <span
+                class={cn(
+                  'flex-shrink-0',
+                  status === 'idle' && 'text-muted-foreground',
+                  status === 'running' && 'text-stat-upload animate-pulse-slow',
+                  status === 'idling' && 'text-violet-500',
+                  status === 'paused' && 'text-stat-ratio'
+                )}
+              >
+                {#if status === 'running'}
+                  <Circle size={10} fill="currentColor" />
+                {:else if status === 'idling'}
+                  <Moon size={10} fill="currentColor" />
+                {:else if status === 'paused'}
+                  <Pause size={10} fill="currentColor" />
+                {:else}
+                  <Circle size={10} fill="currentColor" class="opacity-30" />
+                {/if}
               </span>
+
+              <!-- Instance Name -->
+              <span
+                class={cn(
+                  'text-sm truncate transition-opacity duration-200',
+                  isActive ? 'font-semibold text-foreground' : 'text-muted-foreground',
+                  isCollapsed && 'lg:hidden lg:w-0 lg:opacity-0'
+                )}
+              >
+                {getInstanceLabel(instance)}
+              </span>
+            </div>
+
+            <!-- Ratio Badge (when running or has stats) -->
+            {#if !isCollapsed && instance.stats && instance.stats.ratio > 0}
+              <span
+                class={cn(
+                  'flex-shrink-0 text-xs font-bold px-1.5 py-0.5 rounded',
+                  instance.stats.ratio >= 1
+                    ? 'bg-stat-upload/20 text-stat-upload'
+                    : 'bg-stat-ratio/20 text-stat-ratio'
+                )}
+                title="Current ratio"
+              >
+                {instance.stats.ratio.toFixed(2)}x
+              </span>
+            {/if}
+
+            <!-- Close Button -->
+            {#if !isCollapsed && instance.source !== 'watch_folder'}
               <button
-                class="flex-shrink-0 p-1 rounded hover:bg-destructive/20 group bg-transparent border-0 cursor-pointer opacity-50 hover:opacity-100"
-                onclick={e => handleForceRemoveInstance(e, instance.id, instance.name)}
-                title="Force delete (file may be missing)"
-                aria-label="Force delete instance"
+                class="flex-shrink-0 p-1 rounded hover:bg-destructive/20 group bg-transparent border-0 cursor-pointer"
+                onclick={e => handleRemoveInstance(e, instance.id)}
+                title="Close instance"
+                aria-label="Close instance"
               >
                 <X
-                  size={10}
+                  size={12}
                   strokeWidth={2.5}
                   class="text-muted-foreground group-hover:text-destructive transition-colors"
                 />
               </button>
+            {:else if instance.source === 'watch_folder' && !isCollapsed}
+              <!-- Watch folder instance: show folder icon + force delete button -->
+              <div class="flex items-center gap-1">
+                <span class="flex-shrink-0 text-muted-foreground" title="From watch folder">
+                  <FolderOpen size={12} />
+                </span>
+                <button
+                  class="flex-shrink-0 p-1 rounded hover:bg-destructive/20 group bg-transparent border-0 cursor-pointer opacity-50 hover:opacity-100"
+                  onclick={e => handleForceRemoveInstance(e, instance.id, instance.name)}
+                  title="Force delete (file may be missing)"
+                  aria-label="Force delete instance"
+                >
+                  <X
+                    size={10}
+                    strokeWidth={2.5}
+                    class="text-muted-foreground group-hover:text-destructive transition-colors"
+                  />
+                </button>
+              </div>
+            {/if}
+          </div>
+
+          <!-- Stats Row (when not collapsed and has stats) -->
+          {#if !isCollapsed && instance.stats && instance.isRunning}
+            <div class="mt-1.5 flex items-center gap-3 text-xs text-muted-foreground pl-5">
+              <span class="text-stat-upload" title="Session uploaded">
+                ↑ {formatBytesCompact(instance.stats.session_uploaded)}
+              </span>
+              <span class="text-stat-leecher" title="Session downloaded">
+                ↓ {formatBytesCompact(instance.stats.session_downloaded)}
+              </span>
+              {#if instance.stats.current_upload_rate > 0}
+                <span class="text-muted-foreground/70" title="Upload speed">
+                  {instance.stats.current_upload_rate.toFixed(1)} KB/s
+                </span>
+              {/if}
+            </div>
+          {/if}
+
+          <!-- Progress Bar (when stop condition is active) -->
+          {#if !isCollapsed && stopProgress && instance.isRunning}
+            <div class="mt-2 pl-5">
+              <div class="h-1 bg-muted rounded-full overflow-hidden">
+                <div
+                  class={cn(
+                    'h-full rounded-full transition-all duration-300',
+                    stopProgress.progress >= 100
+                      ? 'bg-stat-upload'
+                      : stopProgress.progress >= 75
+                        ? 'bg-stat-ratio'
+                        : 'bg-primary'
+                  )}
+                  style="width: {Math.min(100, stopProgress.progress)}%"
+                ></div>
+              </div>
+              <div class="mt-0.5 text-[10px] text-muted-foreground/70">
+                {stopProgress.progress.toFixed(0)}% to target
+              </div>
             </div>
           {/if}
         </div>
-
-        <!-- Stats Row (when not collapsed and has stats) -->
-        {#if !isCollapsed && instance.stats && instance.isRunning}
-          <div class="mt-1.5 flex items-center gap-3 text-xs text-muted-foreground pl-5">
-            <span class="text-stat-upload" title="Session uploaded">
-              ↑ {formatBytesCompact(instance.stats.session_uploaded)}
-            </span>
-            <span class="text-stat-leecher" title="Session downloaded">
-              ↓ {formatBytesCompact(instance.stats.session_downloaded)}
-            </span>
-            {#if instance.stats.current_upload_rate > 0}
-              <span class="text-muted-foreground/70" title="Upload speed">
-                {instance.stats.current_upload_rate.toFixed(1)} KB/s
-              </span>
-            {/if}
-          </div>
-        {/if}
-
-        <!-- Progress Bar (when stop condition is active) -->
-        {#if !isCollapsed && stopProgress && instance.isRunning}
-          <div class="mt-2 pl-5">
-            <div class="h-1 bg-muted rounded-full overflow-hidden">
-              <div
-                class={cn(
-                  'h-full rounded-full transition-all duration-300',
-                  stopProgress.progress >= 100
-                    ? 'bg-stat-upload'
-                    : stopProgress.progress >= 75
-                      ? 'bg-stat-ratio'
-                      : 'bg-primary'
-                )}
-                style="width: {Math.min(100, stopProgress.progress)}%"
-              ></div>
-            </div>
-            <div class="mt-0.5 text-[10px] text-muted-foreground/70">
-              {stopProgress.progress.toFixed(0)}% to target
-            </div>
-          </div>
-        {/if}
-      </div>
-    {/each}
-  </div>
+      {/each}
+    </div>
   {:else}
     <!-- Grid Mode Sidebar Content -->
     <div class="flex-1 overflow-y-auto min-h-0">
@@ -656,18 +661,22 @@
             ↓{formatRateCompact(gridStats().totalDownloadRate)}
           </span>
           {#if gridStats().total > 0}
-            <span class="text-muted-foreground text-[10px] mt-1" title="{gridStats().total} instances">
+            <span
+              class="text-muted-foreground text-[10px] mt-1"
+              title="{gridStats().total} instances"
+            >
               {gridStats().total}
             </span>
           {/if}
         </div>
       {:else}
         <div class="p-3 space-y-3">
-
           <!-- Aggregate Rate Display -->
           <div class="p-3 bg-muted/50 rounded-lg">
             <div class="flex items-center justify-between mb-2">
-              <span class="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Live Rates</span>
+              <span class="text-[10px] font-medium text-muted-foreground uppercase tracking-wider"
+                >Live Rates</span
+              >
               {#if gridStats().stateCounts['running'] > 0}
                 <span class="flex items-center gap-1 text-[10px] text-stat-upload">
                   <Circle size={6} fill="currentColor" class="animate-pulse-slow" />
@@ -676,10 +685,14 @@
               {/if}
             </div>
             <div class="flex items-baseline gap-2">
-              <span class="text-lg font-bold text-stat-upload">↑ {formatRate(gridStats().totalUploadRate)}</span>
+              <span class="text-lg font-bold text-stat-upload"
+                >↑ {formatRate(gridStats().totalUploadRate)}</span
+              >
             </div>
             <div class="flex items-baseline gap-2 mt-0.5">
-              <span class="text-lg font-bold text-stat-leecher">↓ {formatRate(gridStats().totalDownloadRate)}</span>
+              <span class="text-lg font-bold text-stat-leecher"
+                >↓ {formatRate(gridStats().totalDownloadRate)}</span
+              >
             </div>
           </div>
 
@@ -688,24 +701,32 @@
             <div class="p-2.5 bg-muted/50 rounded-lg text-xs space-y-1.5">
               <div class="flex justify-between text-muted-foreground">
                 <span>Uploaded</span>
-                <span class="font-semibold text-stat-upload">↑ {formatBytes(gridStats().totalUploaded)}</span>
+                <span class="font-semibold text-stat-upload"
+                  >↑ {formatBytes(gridStats().totalUploaded)}</span
+                >
               </div>
               <div class="flex justify-between text-muted-foreground">
                 <span>Downloaded</span>
-                <span class="font-semibold text-stat-leecher">↓ {formatBytes(gridStats().totalDownloaded)}</span>
+                <span class="font-semibold text-stat-leecher"
+                  >↓ {formatBytes(gridStats().totalDownloaded)}</span
+                >
               </div>
               <div class="flex justify-between text-muted-foreground">
                 <span>Ratio</span>
-                <span class={cn(
-                  'font-bold',
-                  gridStats().ratio >= 1 ? 'text-stat-upload' : 'text-stat-ratio'
-                )}>
+                <span
+                  class={cn(
+                    'font-bold',
+                    gridStats().ratio >= 1 ? 'text-stat-upload' : 'text-stat-ratio'
+                  )}
+                >
                   {gridStats().ratio.toFixed(2)}x
                 </span>
               </div>
               <div class="flex justify-between text-muted-foreground">
                 <span>Total Size</span>
-                <span class="font-semibold text-foreground">{formatBytes(gridStats().totalSize)}</span>
+                <span class="font-semibold text-foreground"
+                  >{formatBytes(gridStats().totalSize)}</span
+                >
               </div>
               <div class="flex justify-between text-muted-foreground">
                 <span>Instances</span>
@@ -714,7 +735,8 @@
               {#if gridStats().downloadingCount > 0}
                 <div class="flex justify-between text-muted-foreground">
                   <span>Downloading</span>
-                  <span class="font-semibold text-stat-leecher">{gridStats().downloadingCount}</span>
+                  <span class="font-semibold text-stat-leecher">{gridStats().downloadingCount}</span
+                  >
                 </div>
               {/if}
             </div>
@@ -723,7 +745,10 @@
           <!-- State Breakdown -->
           {#if gridStats().total > 0}
             <div class="space-y-0.5">
-              <span class="text-[10px] font-medium text-muted-foreground uppercase tracking-wider px-1">States</span>
+              <span
+                class="text-[10px] font-medium text-muted-foreground uppercase tracking-wider px-1"
+                >States</span
+              >
               {#each stateConfig as sc (sc.key)}
                 {@const count = gridStats().stateCounts[sc.key] || 0}
                 {#if count > 0}
@@ -739,7 +764,10 @@
                     title="Filter by {sc.label}"
                   >
                     <span class={sc.color}>
-                      <StateIcon size={12} fill={sc.key === 'running' || sc.key === 'idle' ? 'currentColor' : 'none'} />
+                      <StateIcon
+                        size={12}
+                        fill={sc.key === 'running' || sc.key === 'idle' ? 'currentColor' : 'none'}
+                      />
                     </span>
                     <span class="flex-1 text-left">{sc.label}</span>
                     <span class="font-mono font-semibold tabular-nums">{count}</span>
@@ -751,7 +779,10 @@
 
           <!-- Quick State Filters -->
           <div class="space-y-1">
-            <span class="text-[10px] font-medium text-muted-foreground uppercase tracking-wider px-1">Filter</span>
+            <span
+              class="text-[10px] font-medium text-muted-foreground uppercase tracking-wider px-1"
+              >Filter</span
+            >
             <div class="flex flex-wrap gap-1">
               {#each quickFilters as qf (qf.key)}
                 <button
@@ -778,19 +809,24 @@
               </div>
               <div class="flex justify-between text-muted-foreground">
                 <span>Size</span>
-                <span class="font-semibold text-foreground">{formatBytes(selectionStats().size)}</span>
+                <span class="font-semibold text-foreground"
+                  >{formatBytes(selectionStats().size)}</span
+                >
               </div>
               <div class="flex justify-between text-muted-foreground">
                 <span>Uploaded</span>
-                <span class="font-semibold text-stat-upload">↑ {formatBytes(selectionStats().uploaded)}</span>
+                <span class="font-semibold text-stat-upload"
+                  >↑ {formatBytes(selectionStats().uploaded)}</span
+                >
               </div>
               <div class="flex justify-between text-muted-foreground">
                 <span>Downloaded</span>
-                <span class="font-semibold text-stat-leecher">↓ {formatBytes(selectionStats().downloaded)}</span>
+                <span class="font-semibold text-stat-leecher"
+                  >↓ {formatBytes(selectionStats().downloaded)}</span
+                >
               </div>
             </div>
           {/if}
-
         </div>
       {/if}
     </div>

@@ -1,7 +1,7 @@
 //! Instance management endpoints.
 
 use axum::{
-    extract::{Multipart, Path, Query, State},
+    extract::{DefaultBodyLimit, Multipart, Path, Query, State},
     http::StatusCode,
     response::Response,
     routing::{delete, get, patch},
@@ -126,27 +126,38 @@ pub async fn load_instance_torrent(
     Path(id): Path<String>,
     mut multipart: Multipart,
 ) -> Response {
-    while let Ok(Some(field)) = multipart.next_field().await {
-        if field.name() == Some("file") {
-            match field.bytes().await {
-                Ok(bytes) => match TorrentInfo::from_bytes(&bytes) {
-                    Ok(torrent) => {
-                        if let Err(e) = state.app.create_idle_instance(&id, torrent.clone()).await {
-                            return ApiError::response(
-                                StatusCode::INTERNAL_SERVER_ERROR,
-                                format!("Failed to create instance: {}", e),
-                            );
-                        }
+    loop {
+        match multipart.next_field().await {
+            Ok(Some(field)) => {
+                if field.name() == Some("file") {
+                    match field.bytes().await {
+                        Ok(bytes) => match TorrentInfo::from_bytes(&bytes) {
+                            Ok(torrent) => {
+                                if let Err(e) = state.app.create_idle_instance(&id, torrent.clone()).await {
+                                    return ApiError::response(
+                                        StatusCode::INTERNAL_SERVER_ERROR,
+                                        format!("Failed to create instance: {}", e),
+                                    );
+                                }
 
-                        return ApiSuccess::response(LoadTorrentResponse { torrent });
+                                return ApiSuccess::response(LoadTorrentResponse { torrent });
+                            }
+                            Err(e) => {
+                                return ApiError::response(
+                                    StatusCode::BAD_REQUEST,
+                                    format!("Failed to parse torrent: {}", e),
+                                );
+                            }
+                        },
+                        Err(e) => {
+                            return ApiError::response(StatusCode::BAD_REQUEST, format!("Failed to read file: {}", e));
+                        }
                     }
-                    Err(e) => {
-                        return ApiError::response(StatusCode::BAD_REQUEST, format!("Failed to parse torrent: {}", e));
-                    }
-                },
-                Err(e) => {
-                    return ApiError::response(StatusCode::BAD_REQUEST, format!("Failed to read file: {}", e));
                 }
+            }
+            Ok(None) => break,
+            Err(e) => {
+                return ApiError::response(StatusCode::BAD_REQUEST, format!("Failed to parse upload: {}", e));
             }
         }
     }
@@ -206,11 +217,12 @@ pub async fn get_instance_torrent(State(state): State<ServerState>, Path(id): Pa
 
 pub fn router() -> Router<ServerState> {
     Router::new()
-        .route("/instances", get(list_instances).post(create_instance))
-        .route("/instances/{id}", delete(delete_instance))
         .route(
             "/instances/{id}/torrent",
             get(get_instance_torrent).post(load_instance_torrent),
         )
+        .layer(DefaultBodyLimit::max(500 * 1024 * 1024))
+        .route("/instances", get(list_instances).post(create_instance))
+        .route("/instances/{id}", delete(delete_instance))
         .route("/instances/{id}/config", patch(update_instance_config))
 }

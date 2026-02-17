@@ -226,15 +226,17 @@ export async function listenToLogs(callback) {
 export function listenToInstanceEvents(callback) {
   if (isTauri) {
     let unlisten = null;
-    import('@tauri-apps/api/event').then(({ listen }) => {
-      listen('instance-restored', () => {
-        callback({ type: 'created' });
-      }).then(fn => {
-        unlisten = fn;
+    import('@tauri-apps/api/event')
+      .then(({ listen }) => {
+        listen('instance-restored', () => {
+          callback({ type: 'created' });
+        }).then(fn => {
+          unlisten = fn;
+        });
+      })
+      .catch(error => {
+        console.error('Failed to set up Tauri instance event listener:', error);
       });
-    }).catch(error => {
-      console.error('Failed to set up Tauri instance event listener:', error);
-    });
     return () => {
       if (unlisten) unlisten();
     };
@@ -594,6 +596,12 @@ const serverApi = {
       body: JSON.stringify({ ids, config }),
     });
   },
+  bulkUpdateConfigs: async entries => {
+    return serverFetch('/grid/bulk-update-configs', {
+      method: 'POST',
+      body: JSON.stringify(entries),
+    });
+  },
   gridTag: async (ids, addTags = [], removeTags = []) => {
     return serverFetch('/grid/tag', {
       method: 'POST',
@@ -614,6 +622,9 @@ const serverApi = {
   },
   browseFolders: async (path = '/') => {
     return serverFetch(`/browse?path=${encodeURIComponent(path)}`, { method: 'GET' });
+  },
+  setLogLevel: async () => {
+    // No-op for server mode — log filtering happens via SSE or frontend
   },
 };
 
@@ -860,11 +871,12 @@ const tauriApi = {
   gridImport: async (files, config = {}) => {
     // For Tauri desktop, convert File objects to paths via dialog if needed
     // Files from Tauri's file dialog come with path property
-    const paths = files
-      .map(f => f.path || f.name)
-      .filter(p => p && !p.startsWith('blob:'));
+    const paths = files.map(f => f.path || f.name).filter(p => p && !p.startsWith('blob:'));
     if (paths.length === 0) {
-      return { imported: [], errors: ['No valid file paths available. Use folder import or file dialog.'] };
+      return {
+        imported: [],
+        errors: ['No valid file paths available. Use folder import or file dialog.'],
+      };
     }
     const { invoke } = await import('@tauri-apps/api/core');
     return invoke('grid_import_files', { paths, config });
@@ -897,9 +909,19 @@ const tauriApi = {
     const { invoke } = await import('@tauri-apps/api/core');
     return invoke('grid_update_config', { ids: ids.map(Number), config });
   },
+  bulkUpdateConfigs: async entries => {
+    const { invoke } = await import('@tauri-apps/api/core');
+    return invoke('bulk_update_configs', {
+      entries: entries.map(e => ({ id: Number(e.id), config: e.config })),
+    });
+  },
   gridTag: async (ids, addTags, removeTags) => {
     const { invoke } = await import('@tauri-apps/api/core');
-    return invoke('grid_tag', { ids: ids.map(Number), addTags: addTags || [], removeTags: removeTags || [] });
+    return invoke('grid_tag', {
+      ids: ids.map(Number),
+      addTags: addTags || [],
+      removeTags: removeTags || [],
+    });
   },
   listSummaries: async () => {
     const { invoke } = await import('@tauri-apps/api/core');
@@ -914,6 +936,10 @@ const tauriApi = {
     return invoke('get_instance_torrent', { instanceId: Number(id) });
   },
   browseFolders: async () => ({ path: '/', parent: null, entries: [] }),
+  setLogLevel: async level => {
+    const { invoke } = await import('@tauri-apps/api/core');
+    return invoke('set_log_level', { level });
+  },
 };
 
 // WASM API implementation
@@ -1015,18 +1041,38 @@ const wasmApi = {
     }
     return wasm.grid_import(fileBytes, config);
   },
-  gridImportFolder: async () => ({ imported: [], errors: ['Folder import not available in WASM mode'] }),
+  gridImportFolder: async () => ({
+    imported: [],
+    errors: ['Folder import not available in WASM mode'],
+  }),
   gridStart: async ids => wasm.grid_start(ids.map(Number)),
   gridStop: async ids => wasm.grid_stop(ids.map(Number)),
   gridPause: async ids => wasm.grid_pause(ids.map(Number)),
   gridResume: async ids => wasm.grid_resume(ids.map(Number)),
   gridDelete: async ids => wasm.grid_delete(ids.map(Number)),
   gridUpdateConfig: async (ids, config) => wasm.grid_update_config(ids.map(Number), config),
-  gridTag: async (ids, addTags, removeTags) => wasm.grid_tag(ids.map(Number), addTags || [], removeTags || []),
+  bulkUpdateConfigs: async entries => {
+    const succeeded = [];
+    const failed = [];
+    for (const { id, config } of entries) {
+      try {
+        wasm.update_instance_config(Number(id), config);
+        succeeded.push(id);
+      } catch (e) {
+        failed.push({ id, error: e?.toString() });
+      }
+    }
+    return { succeeded, failed };
+  },
+  gridTag: async (ids, addTags, removeTags) =>
+    wasm.grid_tag(ids.map(Number), addTags || [], removeTags || []),
   listSummaries: async () => wasm.list_summaries(),
   setInstanceTags: async (id, tags) => wasm.set_instance_tags(Number(id), tags),
   getInstanceTorrent: async id => wasm.get_instance_torrent(Number(id)),
   browseFolders: async () => ({ path: '/', parent: null, entries: [] }),
+  setLogLevel: async () => {
+    // No-op for WASM — no IPC overhead concern
+  },
 };
 
 // Dynamic API getter that returns the appropriate implementation

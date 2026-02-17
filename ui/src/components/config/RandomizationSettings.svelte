@@ -43,7 +43,9 @@
           max="50"
           step="1"
           class="flex-1 h-2 rounded-lg cursor-pointer accent-primary"
-          style="background: linear-gradient(to right, hsl(var(--primary)) {((rangePercent - 1) / 49) * 100}%, hsl(var(--muted)) {((rangePercent - 1) / 49) * 100}%);"
+          style="background: linear-gradient(to right, hsl(var(--primary)) {((rangePercent - 1) /
+            49) *
+            100}%, hsl(var(--muted)) {((rangePercent - 1) / 49) * 100}%);"
           oninput={() => onchange?.({ randomRangePercent: rangePercent })}
         />
         <span class="text-lg font-bold text-primary min-w-[4ch] text-right">±{rangePercent}%</span>
@@ -53,7 +55,9 @@
         <div class="p-3 border-r border-border">
           <div class="text-xs text-muted-foreground mb-1">↑ Upload Range</div>
           <div class="font-medium">
-            <span class="text-muted-foreground">{(uploadRate * (1 - rangePercent / 100)).toFixed(0)}</span>
+            <span class="text-muted-foreground"
+              >{(uploadRate * (1 - rangePercent / 100)).toFixed(0)}</span
+            >
             <span class="text-muted-foreground mx-1">—</span>
             <span class="text-primary">{(uploadRate * (1 + rangePercent / 100)).toFixed(0)}</span>
             <span class="text-xs text-muted-foreground ml-1">KB/s</span>
@@ -62,7 +66,9 @@
         <div class="p-3">
           <div class="text-xs text-muted-foreground mb-1">↓ Download Range</div>
           <div class="font-medium">
-            <span class="text-muted-foreground">{(downloadRate * (1 - rangePercent / 100)).toFixed(0)}</span>
+            <span class="text-muted-foreground"
+              >{(downloadRate * (1 - rangePercent / 100)).toFixed(0)}</span
+            >
             <span class="text-muted-foreground mx-1">—</span>
             <span class="text-primary">{(downloadRate * (1 + rangePercent / 100)).toFixed(0)}</span>
             <span class="text-xs text-muted-foreground ml-1">KB/s</span>

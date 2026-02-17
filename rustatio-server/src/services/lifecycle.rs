@@ -26,10 +26,6 @@ impl InstanceLifecycle for AppState {
 
         faker.write().await.start().await.map_err(|e| e.to_string())?;
 
-        if let Err(e) = self.save_state().await {
-            tracing::warn!("Failed to save state after starting instance: {}", e);
-        }
-
         Ok(())
     }
 
@@ -54,10 +50,6 @@ impl InstanceLifecycle for AppState {
             }
         }
 
-        if let Err(e) = self.save_state().await {
-            tracing::warn!("Failed to save state after stopping instance: {}", e);
-        }
-
         Ok(stats)
     }
 
@@ -72,10 +64,6 @@ impl InstanceLifecycle for AppState {
 
         faker.write().await.pause().await.map_err(|e| e.to_string())?;
 
-        if let Err(e) = self.save_state().await {
-            tracing::warn!("Failed to save state after pausing instance: {}", e);
-        }
-
         Ok(())
     }
 
@@ -89,10 +77,6 @@ impl InstanceLifecycle for AppState {
         };
 
         faker.write().await.resume().await.map_err(|e| e.to_string())?;
-
-        if let Err(e) = self.save_state().await {
-            tracing::warn!("Failed to save state after resuming instance: {}", e);
-        }
 
         Ok(())
     }
