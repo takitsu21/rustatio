@@ -35,11 +35,17 @@ pub async fn browse_directory(Query(query): Query<BrowseQuery>) -> Response {
     let path = std::path::Path::new(&query.path);
 
     if !path.exists() {
-        return ApiError::response(StatusCode::NOT_FOUND, format!("Path not found: {}", query.path));
+        return ApiError::response(
+            StatusCode::NOT_FOUND,
+            format!("Path not found: {}", query.path),
+        );
     }
 
     if !path.is_dir() {
-        return ApiError::response(StatusCode::BAD_REQUEST, format!("Not a directory: {}", query.path));
+        return ApiError::response(
+            StatusCode::BAD_REQUEST,
+            format!("Not a directory: {}", query.path),
+        );
     }
 
     let canonical = match path.canonicalize() {
@@ -47,7 +53,7 @@ pub async fn browse_directory(Query(query): Query<BrowseQuery>) -> Response {
         Err(e) => {
             return ApiError::response(
                 StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to resolve path: {}", e),
+                format!("Failed to resolve path: {e}"),
             );
         }
     };
@@ -59,7 +65,7 @@ pub async fn browse_directory(Query(query): Query<BrowseQuery>) -> Response {
         Err(e) => {
             return ApiError::response(
                 StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to read directory: {}", e),
+                format!("Failed to read directory: {e}"),
             );
         }
     };
@@ -67,9 +73,8 @@ pub async fn browse_directory(Query(query): Query<BrowseQuery>) -> Response {
     let mut result: Vec<BrowseEntry> = Vec::new();
 
     for entry in entries.flatten() {
-        let file_type = match entry.file_type() {
-            Ok(ft) => ft,
-            Err(_) => continue,
+        let Ok(file_type) = entry.file_type() else {
+            continue;
         };
 
         let name = entry.file_name().to_string_lossy().to_string();
@@ -82,20 +87,11 @@ pub async fn browse_directory(Query(query): Query<BrowseQuery>) -> Response {
         let entry_path = entry.path().to_string_lossy().to_string();
         let is_dir = file_type.is_dir();
 
-        let size = if !is_dir {
-            entry.metadata().ok().map(|m| m.len())
-        } else {
-            None
-        };
+        let size = if is_dir { None } else { entry.metadata().ok().map(|m| m.len()) };
 
         // Only show directories and .torrent files
         if is_dir || name.ends_with(".torrent") {
-            result.push(BrowseEntry {
-                name,
-                path: entry_path,
-                is_dir,
-                size,
-            });
+            result.push(BrowseEntry { name, path: entry_path, is_dir, size });
         }
     }
 

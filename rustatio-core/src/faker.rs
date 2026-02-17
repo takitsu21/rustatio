@@ -1,4 +1,6 @@
-use crate::protocol::{AnnounceRequest, AnnounceResponse, TrackerClient, TrackerError, TrackerEvent};
+use crate::protocol::{
+    AnnounceRequest, AnnounceResponse, TrackerClient, TrackerError, TrackerEvent,
+};
 use crate::torrent::{ClientConfig, ClientType, TorrentInfo};
 use crate::{log_debug, log_info, log_trace, log_warn};
 use instant::Instant;
@@ -171,11 +173,8 @@ pub struct PresetSettings {
 
 impl From<PresetSettings> for FakerConfig {
     fn from(p: PresetSettings) -> Self {
-        let stop_at_ratio = if p.stop_at_ratio_enabled.unwrap_or(false) {
-            p.stop_at_ratio
-        } else {
-            None
-        };
+        let stop_at_ratio =
+            if p.stop_at_ratio_enabled.unwrap_or(false) { p.stop_at_ratio } else { None };
 
         let stop_at_uploaded = if p.stop_at_uploaded_enabled.unwrap_or(false) {
             p.stop_at_uploaded_gb.map(|gb| (gb * 1024.0 * 1024.0 * 1024.0) as u64)
@@ -195,7 +194,7 @@ impl From<PresetSettings> for FakerConfig {
             None
         };
 
-        FakerConfig {
+        Self {
             upload_rate: p.upload_rate.unwrap_or(50.0),
             download_rate: p.download_rate.unwrap_or(100.0),
             port: p.port.unwrap_or(6881),
@@ -222,25 +221,25 @@ impl From<PresetSettings> for FakerConfig {
     }
 }
 
-fn default_randomize_rates() -> bool {
+const fn default_randomize_rates() -> bool {
     true
 }
 
-fn default_progressive_duration() -> u64 {
+const fn default_progressive_duration() -> u64 {
     3600 // 1 hour
 }
 
-fn default_random_range() -> f64 {
+const fn default_random_range() -> f64 {
     20.0
 }
 
-fn default_scrape_interval() -> u64 {
+const fn default_scrape_interval() -> u64 {
     60 // 60 seconds
 }
 
 impl Default for FakerConfig {
     fn default() -> Self {
-        FakerConfig {
+        Self {
             upload_rate: 50.0,    // 50 KB/s
             download_rate: 100.0, // 100 KB/s
             port: 6881,
@@ -398,7 +397,7 @@ impl RatioFaker {
         );
 
         // Create client configuration
-        let client_config = ClientConfig::get(config.client_type.clone(), config.client_version.clone());
+        let client_config = ClientConfig::get(config.client_type, config.client_version.clone());
 
         // Generate session identifiers
         let peer_id = client_config.generate_peer_id();
@@ -407,8 +406,8 @@ impl RatioFaker {
         log_trace!("Generated peer_id: {}, key: {}", peer_id, key);
 
         // Create tracker client
-        let tracker_client =
-            TrackerClient::new(client_config.clone()).map_err(|e| FakerError::ConfigError(e.to_string()))?;
+        let tracker_client = TrackerClient::new(client_config)
+            .map_err(|e| FakerError::ConfigError(e.to_string()))?;
 
         // Calculate how much of THIS torrent is already downloaded
         let completion = config.completion_percent.clamp(0.0, 100.0) / 100.0;
@@ -478,7 +477,7 @@ impl RatioFaker {
 
         #[cfg(not(target_arch = "wasm32"))]
         {
-            Ok(RatioFaker {
+            Ok(Self {
                 torrent,
                 config,
                 tracker_client,
@@ -643,7 +642,9 @@ impl RatioFaker {
         }
 
         // Periodic scrape for peer counts (if supported and enough time has passed)
-        if self.scrape_supported && now.duration_since(self.last_scrape).as_secs() >= self.config.scrape_interval {
+        if self.scrape_supported
+            && now.duration_since(self.last_scrape).as_secs() >= self.config.scrape_interval
+        {
             drop(stats);
             match self.scrape().await {
                 Ok(scrape_response) => {
@@ -688,7 +689,9 @@ impl RatioFaker {
         self.last_update = now;
 
         // Periodic scrape for peer counts (if supported and enough time has passed)
-        if self.scrape_supported && now.duration_since(self.last_scrape).as_secs() >= self.config.scrape_interval {
+        if self.scrape_supported
+            && now.duration_since(self.last_scrape).as_secs() >= self.config.scrape_interval
+        {
             match self.scrape().await {
                 Ok(scrape_response) => {
                     let mut stats = write_lock!(self.stats);
@@ -756,12 +759,12 @@ impl RatioFaker {
     }
 
     /// Get torrent info
-    pub fn get_torrent(&self) -> &TorrentInfo {
+    pub const fn get_torrent(&self) -> &TorrentInfo {
         &self.torrent
     }
 
     /// Send an announce to the tracker
-    async fn announce(&mut self, event: TrackerEvent) -> Result<AnnounceResponse> {
+    async fn announce(&self, event: TrackerEvent) -> Result<AnnounceResponse> {
         let stats = read_lock!(self.stats);
 
         log_debug!(
@@ -790,10 +793,8 @@ impl RatioFaker {
 
         drop(stats); // Release lock before async call
 
-        let response = self
-            .tracker_client
-            .announce(self.torrent.get_tracker_url(), &request)
-            .await?;
+        let response =
+            self.tracker_client.announce(self.torrent.get_tracker_url(), &request).await?;
 
         Ok(response)
     }
@@ -825,7 +826,7 @@ impl RatioFaker {
     }
 
     /// Handle completion event
-    async fn on_completed(&mut self) -> Result<()> {
+    async fn on_completed(&self) -> Result<()> {
         log_info!("Torrent completed! Sending completed event");
 
         let response = self.announce(TrackerEvent::Completed).await?;
@@ -931,7 +932,11 @@ impl RatioFaker {
 
         // Idle when no seeders (for leechers) - only after first announce and if we still need data
         // This keeps us connected to the tracker but with 0 download rate
-        if self.config.idle_when_no_seeders && stats.seeders == 0 && stats.left > 0 && stats.announce_count > 0 {
+        if self.config.idle_when_no_seeders
+            && stats.seeders == 0
+            && stats.left > 0
+            && stats.announce_count > 0
+        {
             log_debug!(
                 "Idling: no seeders to download from (seeders={}, left={}, announce_count={})",
                 stats.seeders,
@@ -954,7 +959,7 @@ impl RatioFaker {
         if self.config.randomize_rates {
             let mut rng = rand::rng();
             let range = self.config.random_range_percent / 100.0;
-            let variation = 1.0 + (rng.random::<f64>() * (range * 2.0) - range);
+            let variation = 1.0 + rng.random::<f64>().mul_add(range * 2.0, -range);
             base_rate * variation
         } else {
             base_rate
@@ -962,6 +967,7 @@ impl RatioFaker {
     }
 
     /// Update rate statistics and history
+    #[allow(clippy::unused_self)]
     fn update_rate_stats(&self, stats: &mut FakerStats, upload_rate: f64, download_rate: f64) {
         stats.current_upload_rate = upload_rate;
         stats.current_download_rate = download_rate;
@@ -975,7 +981,13 @@ impl RatioFaker {
     }
 
     /// Update transfer stats (uploaded, downloaded, left). Returns true if just completed.
-    fn update_transfer_stats(&self, stats: &mut FakerStats, upload_delta: u64, download_delta: u64) -> bool {
+    #[allow(clippy::unused_self)]
+    fn update_transfer_stats(
+        &self,
+        stats: &mut FakerStats,
+        upload_delta: u64,
+        download_delta: u64,
+    ) -> bool {
         stats.uploaded += upload_delta;
         stats.session_uploaded += upload_delta;
 
@@ -1048,10 +1060,7 @@ impl RatioFaker {
         #[cfg(not(target_arch = "wasm32"))]
         {
             use std::time::{SystemTime, UNIX_EPOCH};
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_millis() as u64
+            SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as u64
         }
         #[cfg(target_arch = "wasm32")]
         {
@@ -1112,6 +1121,7 @@ impl RatioFaker {
     }
 
     /// Calculate progressive rate (linear interpolation)
+    #[allow(clippy::unused_self)]
     fn calculate_progressive_rate(
         &self,
         start_rate: f64,
@@ -1124,14 +1134,15 @@ impl RatioFaker {
         }
 
         let progress = elapsed_secs as f64 / duration_secs as f64;
-        start_rate + (target_rate - start_rate) * progress
+        (target_rate - start_rate).mul_add(progress, start_rate)
     }
 
     /// Update progress percentages and ETAs
     fn update_progress_and_eta(&self, stats: &mut FakerStats) {
         // Upload progress (based on session uploaded)
         if let Some(target) = self.config.stop_at_uploaded {
-            stats.upload_progress = ((stats.session_uploaded as f64 / target as f64) * 100.0).min(100.0);
+            stats.upload_progress =
+                ((stats.session_uploaded as f64 / target as f64) * 100.0).min(100.0);
 
             // Calculate ETA
             if stats.average_upload_rate > 0.0 {
@@ -1146,7 +1157,8 @@ impl RatioFaker {
 
         // Download progress (based on session downloaded)
         if let Some(target) = self.config.stop_at_downloaded {
-            stats.download_progress = ((stats.session_downloaded as f64 / target as f64) * 100.0).min(100.0);
+            stats.download_progress =
+                ((stats.session_downloaded as f64 / target as f64) * 100.0).min(100.0);
         } else {
             stats.download_progress = 0.0;
         }
@@ -1157,7 +1169,8 @@ impl RatioFaker {
 
             // Calculate ETA for ratio (based on session stats)
             if stats.average_upload_rate > 0.0 && self.torrent.total_size > 0 {
-                let target_session_uploaded = (target_ratio * self.torrent.total_size as f64) as u64;
+                let target_session_uploaded =
+                    (target_ratio * self.torrent.total_size as f64) as u64;
                 let remaining = target_session_uploaded.saturating_sub(stats.session_uploaded);
                 let eta_secs = (remaining as f64 / 1024.0) / stats.average_upload_rate;
                 stats.eta_ratio = Some(Duration::from_secs_f64(eta_secs));

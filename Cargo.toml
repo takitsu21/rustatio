@@ -27,3 +27,33 @@ incremental = false
 # WASM-specific optimizations (smaller binary size)
 [profile.release.package.rustatio-wasm]
 opt-level = "z"
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+# Pedantic lints that are too noisy or inappropriate
+module_name_repetitions = "allow"
+must_use_candidate = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+cast_precision_loss = "allow"     # u64→f64 casts are intentional for ratio math
+cast_sign_loss = "allow"          # positive values cast to unsigned, intentional
+cast_possible_truncation = "allow" # f64→u64 for byte counts, intentional
+float_cmp = "allow"               # exact float comparisons are fine in this context
+similar_names = "allow"           # subjective, too noisy
+too_many_lines = "allow"          # threshold in .clippy.toml is sufficient
+struct_excessive_bools = "allow"  # config structs legitimately have many bool fields
+# Nursery lints that are too noisy or have false positives
+significant_drop_tightening = "allow" # many false positives
+future_not_send = "allow"            # WASM futures can't be Send
+# Additional strict lints
+clone_on_ref_ptr = "warn"
+dbg_macro = "warn"
+print_stdout = "warn"
+print_stderr = "warn"
+todo = "warn"
+unimplemented = "warn"
+unwrap_used = "warn"

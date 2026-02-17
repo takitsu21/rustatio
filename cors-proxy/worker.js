@@ -14,7 +14,7 @@ export default {
 
     // Only allow GET requests
     if (request.method !== 'GET') {
-      return new Response('Method not allowed', { 
+      return new Response('Method not allowed', {
         status: 405,
         headers: { 'Access-Control-Allow-Origin': '*' }
       });
@@ -22,9 +22,9 @@ export default {
 
     const url = new URL(request.url);
     const targetUrl = url.searchParams.get('url');
-    
+
     if (!targetUrl) {
-      return new Response('Missing url parameter. Usage: ?url=http://tracker.example.com/announce', { 
+      return new Response('Missing url parameter. Usage: ?url=http://tracker.example.com/announce', {
         status: 400,
         headers: { 'Access-Control-Allow-Origin': '*' }
       });
@@ -35,7 +35,7 @@ export default {
     try {
       targetURL = new URL(targetUrl);
     } catch (e) {
-      return new Response('Invalid URL', { 
+      return new Response('Invalid URL', {
         status: 400,
         headers: { 'Access-Control-Allow-Origin': '*' }
       });
@@ -43,7 +43,7 @@ export default {
 
     // Only allow HTTP/HTTPS
     if (!['http:', 'https:'].includes(targetURL.protocol)) {
-      return new Response('Only HTTP/HTTPS URLs are allowed', { 
+      return new Response('Only HTTP/HTTPS URLs are allowed', {
         status: 400,
         headers: { 'Access-Control-Allow-Origin': '*' }
       });
@@ -57,13 +57,13 @@ export default {
           'User-Agent': 'RustatioWeb/1.0 (via Cloudflare Worker)'
         }
       });
-      
+
       // Create new response with CORS headers
       const newResponse = new Response(response.body, {
         status: response.status,
         statusText: response.statusText,
       });
-      
+
       // Copy important headers
       const headersToKeep = ['content-type', 'content-length'];
       for (const header of headersToKeep) {
@@ -72,15 +72,15 @@ export default {
           newResponse.headers.set(header, value);
         }
       }
-      
+
       // Add CORS headers
       newResponse.headers.set('Access-Control-Allow-Origin', '*');
       newResponse.headers.set('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
       newResponse.headers.set('Access-Control-Allow-Headers', '*');
-      
+
       return newResponse;
     } catch (error) {
-      return new Response('Proxy error: ' + error.message, { 
+      return new Response('Proxy error: ' + error.message, {
         status: 500,
         headers: { 'Access-Control-Allow-Origin': '*' }
       });

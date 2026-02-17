@@ -43,7 +43,7 @@ pub struct DeleteInstanceQuery {
     )
 )]
 pub async fn create_instance(State(state): State<ServerState>) -> Response {
-    let id = state.app.next_instance_id().await;
+    let id = state.app.next_instance_id();
     ApiSuccess::response(CreateInstanceResponse { id })
 }
 
@@ -133,10 +133,12 @@ pub async fn load_instance_torrent(
                     match field.bytes().await {
                         Ok(bytes) => match TorrentInfo::from_bytes(&bytes) {
                             Ok(torrent) => {
-                                if let Err(e) = state.app.create_idle_instance(&id, torrent.clone()).await {
+                                if let Err(e) =
+                                    state.app.create_idle_instance(&id, torrent.clone()).await
+                                {
                                     return ApiError::response(
                                         StatusCode::INTERNAL_SERVER_ERROR,
-                                        format!("Failed to create instance: {}", e),
+                                        format!("Failed to create instance: {e}"),
                                     );
                                 }
 
@@ -145,19 +147,25 @@ pub async fn load_instance_torrent(
                             Err(e) => {
                                 return ApiError::response(
                                     StatusCode::BAD_REQUEST,
-                                    format!("Failed to parse torrent: {}", e),
+                                    format!("Failed to parse torrent: {e}"),
                                 );
                             }
                         },
                         Err(e) => {
-                            return ApiError::response(StatusCode::BAD_REQUEST, format!("Failed to read file: {}", e));
+                            return ApiError::response(
+                                StatusCode::BAD_REQUEST,
+                                format!("Failed to read file: {e}"),
+                            );
                         }
                     }
                 }
             }
             Ok(None) => break,
             Err(e) => {
-                return ApiError::response(StatusCode::BAD_REQUEST, format!("Failed to parse upload: {}", e));
+                return ApiError::response(
+                    StatusCode::BAD_REQUEST,
+                    format!("Failed to parse upload: {e}"),
+                );
             }
         }
     }
@@ -208,7 +216,10 @@ pub async fn update_instance_config(
         (status = 404, description = "Instance not found", body = ApiError)
     )
 )]
-pub async fn get_instance_torrent(State(state): State<ServerState>, Path(id): Path<String>) -> Response {
+pub async fn get_instance_torrent(
+    State(state): State<ServerState>,
+    Path(id): Path<String>,
+) -> Response {
     match state.app.get_instance_torrent(&id).await {
         Ok(torrent) => ApiSuccess::response(torrent),
         Err(e) => ApiError::response(StatusCode::NOT_FOUND, e),
@@ -217,10 +228,7 @@ pub async fn get_instance_torrent(State(state): State<ServerState>, Path(id): Pa
 
 pub fn router() -> Router<ServerState> {
     Router::new()
-        .route(
-            "/instances/{id}/torrent",
-            get(get_instance_torrent).post(load_instance_torrent),
-        )
+        .route("/instances/{id}/torrent", get(get_instance_torrent).post(load_instance_torrent))
         .layer(DefaultBodyLimit::max(500 * 1024 * 1024))
         .route("/instances", get(list_instances).post(create_instance))
         .route("/instances/{id}", delete(delete_instance))

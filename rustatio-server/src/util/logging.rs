@@ -12,9 +12,7 @@ pub struct BroadcastLayer {
 
 impl BroadcastLayer {
     pub fn new(sender: broadcast::Sender<LogEvent>) -> Self {
-        Self {
-            sender: Arc::new(sender),
-        }
+        Self { sender: Arc::new(sender) }
     }
 }
 
@@ -23,7 +21,7 @@ struct MessageVisitor {
 }
 
 impl MessageVisitor {
-    fn new() -> Self {
+    const fn new() -> Self {
         Self { message: String::new() }
     }
 }
@@ -31,7 +29,7 @@ impl MessageVisitor {
 impl Visit for MessageVisitor {
     fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
         if field.name() == "message" {
-            self.message = format!("{:?}", value);
+            self.message = format!("{value:?}");
             // Remove surrounding quotes if present
             if self.message.starts_with('"') && self.message.ends_with('"') {
                 self.message = self.message[1..self.message.len() - 1].to_string();

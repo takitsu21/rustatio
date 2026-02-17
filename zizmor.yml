@@ -1,0 +1,6 @@
+rules:
+  cache-poisoning:
+    ignore:
+      # Low confidence: cargo dependency cache in same job as release upload
+      - release.yml:166
+      - release.yml:172

@@ -73,7 +73,10 @@ pub async fn list_watch_files(State(state): State<ServerState>) -> Response {
         (status = 404, description = "File not found", body = ApiError)
     )
 )]
-pub async fn delete_watch_file(State(state): State<ServerState>, Path(filename): Path<String>) -> Response {
+pub async fn delete_watch_file(
+    State(state): State<ServerState>,
+    Path(filename): Path<String>,
+) -> Response {
     let watch = state.watch.read().await;
     match watch.delete_file(&filename).await {
         Ok(()) => ApiSuccess::response(EmptyData {}),
@@ -97,7 +100,10 @@ pub async fn delete_watch_file(State(state): State<ServerState>, Path(filename):
         (status = 500, description = "Failed to reload file", body = ApiError)
     )
 )]
-pub async fn reload_watch_file(State(state): State<ServerState>, Path(filename): Path<String>) -> Response {
+pub async fn reload_watch_file(
+    State(state): State<ServerState>,
+    Path(filename): Path<String>,
+) -> Response {
     let watch = state.watch.read().await;
     match watch.reload_file(&filename).await {
         Ok(()) => ApiSuccess::response(EmptyData {}),

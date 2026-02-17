@@ -26,9 +26,7 @@ pub struct AuthStatusResponse {
     )
 )]
 pub async fn auth_status() -> Response {
-    ApiSuccess::response(AuthStatusResponse {
-        auth_enabled: middleware::is_auth_enabled(),
-    })
+    ApiSuccess::response(AuthStatusResponse { auth_enabled: middleware::is_auth_enabled() })
 }
 
 /// Verify authentication token

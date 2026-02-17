@@ -13,14 +13,15 @@ pub struct Scheduler {
 }
 
 impl Scheduler {
-    pub fn new() -> Self {
-        Self {
-            shutdown_tx: None,
-            task_handle: None,
-        }
+    pub const fn new() -> Self {
+        Self { shutdown_tx: None, task_handle: None }
     }
 
-    pub fn start(&mut self, state: AppState, instances: Arc<RwLock<HashMap<String, FakerInstance>>>) {
+    pub fn start(
+        &mut self,
+        state: AppState,
+        instances: Arc<RwLock<HashMap<String, FakerInstance>>>,
+    ) {
         if self.task_handle.is_some() {
             return;
         }
@@ -62,7 +63,7 @@ async fn scheduler_loop(
                 tracing::info!("Scheduler received shutdown signal");
                 break;
             }
-            _ = tokio::time::sleep(update_interval) => {
+            () = tokio::time::sleep(update_interval) => {
                 update_all_running_instances(&instances).await;
 
                 if last_save.elapsed() >= save_interval {
@@ -82,21 +83,15 @@ async fn update_all_running_instances(instances: &Arc<RwLock<HashMap<String, Fak
     // Collect running instance IDs and their faker handles
     let running: Vec<(String, Arc<RwLock<rustatio_core::RatioFaker>>)> = {
         let guard = instances.read().await;
-        guard
-            .iter()
-            .map(|(id, inst)| (id.clone(), inst.faker.clone()))
-            .collect()
+        guard.iter().map(|(id, inst)| (id.clone(), Arc::clone(&inst.faker))).collect()
     };
 
     for (id, faker) in running {
         // Use try_write to skip instances currently locked by user operations (start/stop/pause)
         // This prevents the scheduler from blocking for up to 30s on a tracker announce
-        let mut guard = match faker.try_write() {
-            Ok(guard) => guard,
-            Err(_) => {
-                tracing::trace!("Scheduler: skipping instance {} (locked by another operation)", id);
-                continue;
-            }
+        let Ok(mut guard) = faker.try_write() else {
+            tracing::trace!("Scheduler: skipping instance {} (locked by another operation)", id);
+            continue;
         };
 
         let stats = guard.get_stats().await;

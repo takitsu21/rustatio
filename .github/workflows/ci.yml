@@ -11,26 +11,28 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
 
 jobs:
-  ci-checks:
-    name: CI Checks
+  ci:
+    name: CI
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
 
       - name: Install mise
-        uses: jdx/mise-action@v2
+        uses: jdx/mise-action@c37c93293d6b742fc901e1406b8f764f6fb19dac # v2
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           cache: true
 
       - name: Setup mold linker
-        uses: rui314/setup-mold@v1
+        uses: rui314/setup-mold@725a8794d15fc7563f59595bd9556495c0564878 # v1
 
       - name: Ensure Rust components are installed
-        run: |
-          rustup component add rustfmt clippy
+        run: rustup component add rustfmt clippy
 
       - name: Install system dependencies
         run: |
@@ -43,14 +45,11 @@ jobs:
             librsvg2-dev \
             clang
 
-      - name: Cache cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2.8.2
+
+      - name: Create frontend dist stub for Tauri compilation
+        run: mkdir -p ui/dist
 
       - name: Run all CI checks
         run: mise run ci

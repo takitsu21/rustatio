@@ -15,7 +15,10 @@ use logging::log_and_emit;
 use state::{AppState, FakerInstance};
 
 /// Synchronous save for the exit handler (tokio runtime may be winding down)
-fn save_state_sync(fakers: &Arc<RwLock<HashMap<u32, FakerInstance>>>, next_instance_id: &Arc<RwLock<u32>>) {
+fn save_state_sync(
+    fakers: &Arc<RwLock<HashMap<u32, FakerInstance>>>,
+    next_instance_id: &Arc<RwLock<u32>>,
+) {
     let Some(fakers) = fakers.try_read().ok() else {
         log::warn!("Could not acquire fakers lock for exit save");
         return;
@@ -52,14 +55,11 @@ fn save_state_sync(fakers: &Arc<RwLock<HashMap<u32, FakerInstance>>>, next_insta
         );
     }
 
-    let persisted = persistence::PersistedState {
-        instances,
-        next_instance_id: *next_id,
-        version: 1,
-    };
+    let persisted =
+        persistence::PersistedState { instances, next_instance_id: *next_id, version: 1 };
 
     if let Err(e) = persistence::save_state(&persisted) {
-        log::error!("Exit save failed: {}", e);
+        log::error!("Exit save failed: {e}");
     } else {
         log::info!("Final state saved successfully");
     }
@@ -81,8 +81,8 @@ fn main() {
     let next_id_for_exit = Arc::new(RwLock::new(next_id));
 
     let app_state = AppState {
-        fakers: fakers_for_exit.clone(),
-        next_instance_id: next_id_for_exit.clone(),
+        fakers: Arc::clone(&fakers_for_exit),
+        next_instance_id: Arc::clone(&next_id_for_exit),
         config: Arc::new(RwLock::new(config)),
     };
 
@@ -134,7 +134,7 @@ fn main() {
             let app_handle = app.handle().clone();
             let state: tauri::State<'_, AppState> = app.state();
 
-            let fakers_arc = state.fakers.clone();
+            let fakers_arc = Arc::clone(&state.fakers);
             let restored_instances = saved_instances;
 
             tauri::async_runtime::spawn(async move {
@@ -147,7 +147,10 @@ fn main() {
 
                     match RatioFaker::new(persisted.torrent.clone(), config) {
                         Ok(faker) => {
-                            let was_running = matches!(persisted.state, FakerState::Starting | FakerState::Running);
+                            let was_running = matches!(
+                                persisted.state,
+                                FakerState::Starting | FakerState::Running
+                            );
 
                             fakers_arc.write().await.insert(
                                 *id,
@@ -168,10 +171,22 @@ fn main() {
                                 auto_start_ids.push(*id);
                             }
 
-                            log_and_emit!(&app_handle, *id, info, "Restored instance: {}", persisted.torrent.name);
+                            log_and_emit!(
+                                &app_handle,
+                                *id,
+                                info,
+                                "Restored instance: {}",
+                                persisted.torrent.name
+                            );
                         }
                         Err(e) => {
-                            log_and_emit!(&app_handle, error, "Failed to restore instance {}: {}", id, e);
+                            log_and_emit!(
+                                &app_handle,
+                                error,
+                                "Failed to restore instance {}: {}",
+                                id,
+                                e
+                            );
                         }
                     }
                 }
@@ -190,14 +205,19 @@ fn main() {
                     let faker = {
                         let fakers = fakers_arc.read().await;
                         match fakers.get(id) {
-                            Some(instance) => instance.faker.clone(),
+                            Some(instance) => Arc::clone(&instance.faker),
                             None => continue,
                         }
                     };
 
                     match faker.write().await.start().await {
-                        Ok(_) => {
-                            log_and_emit!(&app_handle, *id, info, "Auto-started (was running before shutdown)");
+                        Ok(()) => {
+                            log_and_emit!(
+                                &app_handle,
+                                *id,
+                                info,
+                                "Auto-started (was running before shutdown)"
+                            );
                         }
                         Err(e) => {
                             log_and_emit!(&app_handle, *id, error, "Auto-start failed: {}", e);
@@ -208,8 +228,8 @@ fn main() {
 
             // Periodic auto-save every 30 seconds
             let state_for_save: tauri::State<'_, AppState> = app.state();
-            let fakers_for_save = state_for_save.fakers.clone();
-            let next_id_for_save = state_for_save.next_instance_id.clone();
+            let fakers_for_save = Arc::clone(&state_for_save.fakers);
+            let next_id_for_save = Arc::clone(&state_for_save.next_instance_id);
 
             tauri::async_runtime::spawn(async move {
                 loop {
@@ -249,7 +269,7 @@ fn main() {
 
                     let _ = tokio::task::spawn_blocking(move || {
                         if let Err(e) = persistence::save_state(&persisted) {
-                            log::error!("Periodic save failed: {}", e);
+                            log::error!("Periodic save failed: {e}");
                         }
                     })
                     .await;
@@ -262,7 +282,7 @@ fn main() {
         .expect("error while building tauri application");
 
     app.run(move |_app_handle, event| {
-        if let RunEvent::Exit = event {
+        if matches!(event, RunEvent::Exit) {
             log::info!("Application exiting, saving final state...");
             save_state_sync(&fakers_for_exit, &next_id_for_exit);
         }

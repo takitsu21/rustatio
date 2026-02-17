@@ -1,3 +1,5 @@
+#![allow(clippy::print_stdout, clippy::print_stderr)]
+
 mod cli;
 mod json;
 mod runner;
@@ -12,6 +14,7 @@ use runner::RunnerConfig;
 use session::Session;
 
 #[tokio::main]
+#[allow(clippy::excessive_nesting)]
 async fn main() -> Result<()> {
     // Initialize logger for non-JSON mode
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();
@@ -51,7 +54,11 @@ async fn main() -> Result<()> {
             // Validate torrent file exists
             if !torrent.exists() {
                 if json {
-                    json::OutputEvent::error(format!("Torrent file not found: {}", torrent.display())).emit();
+                    json::OutputEvent::error(format!(
+                        "Torrent file not found: {}",
+                        torrent.display()
+                    ))
+                    .emit();
                 } else {
                     eprintln!("Error: Torrent file not found: {}", torrent.display());
                 }
@@ -66,25 +73,22 @@ async fn main() -> Result<()> {
             let info_hash = torrent_info.info_hash_hex();
 
             // Try to load existing session if --resume is set
-            let existing_session = if resume {
-                Session::load_for_hash(&info_hash)
-            } else {
-                None
-            };
+            let existing_session = if resume { Session::load_for_hash(&info_hash) } else { None };
 
             // Determine initial values: session > CLI args > config defaults
-            let (effective_uploaded, effective_downloaded) = if let Some(ref session) = existing_session {
-                if !json {
-                    eprintln!(
-                        "Resuming session: {} uploaded, ratio {:.3}",
-                        format_bytes(session.uploaded),
-                        session.ratio()
-                    );
-                }
-                (session.uploaded, session.downloaded)
-            } else {
-                (initial_uploaded, initial_downloaded)
-            };
+            let (effective_uploaded, effective_downloaded) = existing_session.as_ref().map_or(
+                (initial_uploaded, initial_downloaded),
+                |session| {
+                    if !json {
+                        eprintln!(
+                            "Resuming session: {} uploaded, ratio {:.3}",
+                            format_bytes(session.uploaded),
+                            session.ratio()
+                        );
+                    }
+                    (session.uploaded, session.downloaded)
+                },
+            );
 
             // Apply config defaults where CLI args use defaults
             let effective_upload_rate = if upload_rate == 50.0 {
@@ -99,16 +103,13 @@ async fn main() -> Result<()> {
                 download_rate
             };
 
-            let effective_port = if port == 6881 {
-                app_config.client.default_port
-            } else {
-                port
-            };
+            let effective_port = if port == 6881 { app_config.client.default_port } else { port };
 
             let config = RunnerConfig {
                 torrent_path: torrent,
                 client,
-                client_version: client_version.or(app_config.client.default_version.clone()),
+                client_version: client_version
+                    .or_else(|| app_config.client.default_version.clone()),
                 upload_rate: effective_upload_rate,
                 download_rate: effective_download_rate,
                 port: effective_port,
@@ -153,29 +154,32 @@ async fn main() -> Result<()> {
             no_save_session,
         } => {
             // Look up the session
-            let session = match Session::load_for_hash(&info_hash) {
-                Some(s) => s,
-                None => {
-                    if json {
-                        json::OutputEvent::error(format!("Session not found: {}", info_hash)).emit();
-                    } else {
-                        eprintln!("Error: No saved session found for hash: {}", info_hash);
-                        eprintln!();
-                        eprintln!("Run `rustatio sessions` to list available sessions.");
-                    }
-                    std::process::exit(1);
+            let Some(session) = Session::load_for_hash(&info_hash) else {
+                if json {
+                    json::OutputEvent::error(format!("Session not found: {info_hash}")).emit();
+                } else {
+                    eprintln!("Error: No saved session found for hash: {info_hash}");
+                    eprintln!();
+                    eprintln!("Run `rustatio sessions` to list available sessions.");
                 }
+                std::process::exit(1);
             };
 
             // Check if torrent file still exists
             let torrent_path = std::path::PathBuf::from(&session.torrent_path);
             if !torrent_path.exists() {
                 if json {
-                    json::OutputEvent::error(format!("Torrent file no longer exists: {}", session.torrent_path)).emit();
+                    json::OutputEvent::error(format!(
+                        "Torrent file no longer exists: {}",
+                        session.torrent_path
+                    ))
+                    .emit();
                 } else {
                     eprintln!("Error: Torrent file no longer exists: {}", session.torrent_path);
                     eprintln!();
-                    eprintln!("The session was saved but the torrent file has been moved or deleted.");
+                    eprintln!(
+                        "The session was saved but the torrent file has been moved or deleted."
+                    );
                 }
                 std::process::exit(1);
             }
@@ -194,7 +198,6 @@ async fn main() -> Result<()> {
 
             // Parse client type from session
             let client = match session.client.to_lowercase().as_str() {
-                "qbittorrent" => cli::ClientArg::Qbittorrent,
                 "utorrent" => cli::ClientArg::Utorrent,
                 "transmission" => cli::ClientArg::Transmission,
                 "deluge" => cli::ClientArg::Deluge,
@@ -242,7 +245,11 @@ async fn main() -> Result<()> {
         Commands::Info { torrent, json } => {
             if !torrent.exists() {
                 if json {
-                    json::OutputEvent::error(format!("Torrent file not found: {}", torrent.display())).emit();
+                    json::OutputEvent::error(format!(
+                        "Torrent file not found: {}",
+                        torrent.display()
+                    ))
+                    .emit();
                 } else {
                     eprintln!("Error: Torrent file not found: {}", torrent.display());
                 }
@@ -278,17 +285,15 @@ async fn main() -> Result<()> {
             }
         }
 
-        Commands::Config {
-            init,
-            path,
-            show,
-            json: json_output,
-        } => {
+        Commands::Config { init, path, show, json: json_output } => {
             let config_path = rustatio_core::AppConfig::default_path();
 
             if path {
                 if json_output {
-                    println!("{}", serde_json::json!({ "path": config_path.display().to_string() }));
+                    println!(
+                        "{}",
+                        serde_json::json!({ "path": config_path.display().to_string() })
+                    );
                 } else {
                     println!("{}", config_path.display());
                 }
@@ -342,7 +347,7 @@ async fn main() -> Result<()> {
                 } else {
                     println!("# Config file: {}", config_path.display());
                     println!();
-                    println!("{}", content);
+                    println!("{content}");
                 }
             } else {
                 // Show help if no subcommand
@@ -354,16 +359,14 @@ async fn main() -> Result<()> {
             }
         }
 
-        Commands::Sessions {
-            delete,
-            clear,
-            path,
-            json: json_output,
-        } => {
+        Commands::Sessions { delete, clear, path, json: json_output } => {
             if path {
                 let sessions_dir = Session::sessions_dir();
                 if json_output {
-                    println!("{}", serde_json::json!({ "path": sessions_dir.display().to_string() }));
+                    println!(
+                        "{}",
+                        serde_json::json!({ "path": sessions_dir.display().to_string() })
+                    );
                 } else {
                     println!("{}", sessions_dir.display());
                 }
@@ -380,7 +383,7 @@ async fn main() -> Result<()> {
                 if json_output {
                     println!("{}", serde_json::json!({ "deleted": count }));
                 } else {
-                    println!("Deleted {} session(s)", count);
+                    println!("Deleted {count} session(s)");
                 }
             } else if let Some(hash) = delete {
                 if let Some(session) = Session::load_for_hash(&hash) {
@@ -388,13 +391,13 @@ async fn main() -> Result<()> {
                     if json_output {
                         println!("{}", serde_json::json!({ "deleted": true, "info_hash": hash }));
                     } else {
-                        println!("Deleted session for {}", hash);
+                        println!("Deleted session for {hash}");
                     }
                 } else {
                     if json_output {
-                        json::OutputEvent::error(format!("Session not found: {}", hash)).emit();
+                        json::OutputEvent::error(format!("Session not found: {hash}")).emit();
                     } else {
-                        eprintln!("Session not found: {}", hash);
+                        eprintln!("Session not found: {hash}");
                     }
                     std::process::exit(1);
                 }
@@ -407,10 +410,14 @@ async fn main() -> Result<()> {
                 } else if sessions.is_empty() {
                     println!("No saved sessions found.");
                     println!();
-                    println!("Sessions are created when you run `rustatio start` (saved by default).");
+                    println!(
+                        "Sessions are created when you run `rustatio start` (saved by default)."
+                    );
                     println!("Use --resume to continue from a saved session.");
                 } else {
-                    use comfy_table::{presets::UTF8_FULL_CONDENSED, Cell, Color, ContentArrangement, Table};
+                    use comfy_table::{
+                        presets::UTF8_FULL_CONDENSED, Cell, Color, ContentArrangement, Table,
+                    };
 
                     let mut table = Table::new();
                     table
@@ -475,24 +482,24 @@ async fn main() -> Result<()> {
 }
 
 /// Load configuration from file or use defaults
-fn load_config(config_path: Option<&std::path::PathBuf>, json_mode: bool) -> rustatio_core::AppConfig {
-    if let Some(path) = config_path {
+fn load_config(
+    config_path: Option<&std::path::PathBuf>,
+    json_mode: bool,
+) -> rustatio_core::AppConfig {
+    config_path.map_or_else(rustatio_core::AppConfig::load_or_default, |path| {
         match rustatio_core::AppConfig::load(path) {
             Ok(config) => config,
             Err(e) => {
                 if json_mode {
-                    json::OutputEvent::error(format!("Failed to load config: {}", e)).emit();
+                    json::OutputEvent::error(format!("Failed to load config: {e}")).emit();
                 } else {
-                    eprintln!("Warning: Failed to load config from {:?}: {}", path, e);
+                    eprintln!("Warning: Failed to load config from {}: {e}", path.display());
                     eprintln!("Using default configuration.");
                 }
                 rustatio_core::AppConfig::default()
             }
         }
-    } else {
-        // Try to load from default path, but don't fail if not found
-        rustatio_core::AppConfig::load_or_default()
-    }
+    })
 }
 
 fn print_torrent_info(torrent: &rustatio_core::TorrentInfo) {
@@ -517,11 +524,7 @@ fn print_torrent_info(torrent: &rustatio_core::TorrentInfo) {
     }
 
     println!();
-    println!(
-        "Pieces:      {} x {}",
-        torrent.num_pieces,
-        format_bytes(torrent.piece_length)
-    );
+    println!("Pieces:      {} x {}", torrent.num_pieces, format_bytes(torrent.piece_length));
 
     if let Some(date) = torrent.creation_date {
         if let Some(dt) = chrono::DateTime::from_timestamp(date, 0) {
@@ -530,11 +533,11 @@ fn print_torrent_info(torrent: &rustatio_core::TorrentInfo) {
     }
 
     if let Some(ref by) = torrent.created_by {
-        println!("Created By:  {}", by);
+        println!("Created By:  {by}");
     }
 
     if let Some(ref comment) = torrent.comment {
-        println!("Comment:     {}", comment);
+        println!("Comment:     {comment}");
     }
 
     println!();

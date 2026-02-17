@@ -73,6 +73,7 @@ impl Session {
     pub const VERSION: u32 = 1;
 
     /// Create a new session
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         info_hash: &str,
         torrent_name: &str,
@@ -82,7 +83,7 @@ impl Session {
         client_version: Option<String>,
     ) -> Self {
         let now = Utc::now();
-        Session {
+        Self {
             version: Self::VERSION,
             info_hash: info_hash.to_string(),
             torrent_name: torrent_name.to_string(),
@@ -112,7 +113,7 @@ impl Session {
         self.updated_at = Utc::now();
     }
 
-    /// Calculate current ratio (uploaded / torrent_size)
+    /// Calculate current ratio (uploaded / `torrent_size`)
     /// This represents how many times you've "uploaded" the torrent
     pub fn ratio(&self) -> f64 {
         if self.torrent_size > 0 {
@@ -127,8 +128,9 @@ impl Session {
     /// Load a session from file
     pub fn load<P: AsRef<Path>>(path: P) -> Result<Self> {
         let content = fs::read_to_string(path.as_ref())
-            .with_context(|| format!("Failed to read session file: {:?}", path.as_ref()))?;
-        let mut session: Session = serde_json::from_str(&content).with_context(|| "Failed to parse session file")?;
+            .with_context(|| format!("Failed to read session file: {}", path.as_ref().display()))?;
+        let mut session: Self =
+            serde_json::from_str(&content).with_context(|| "Failed to parse session file")?;
 
         // Migrate old sessions: try to get torrent_size from the torrent file
         if session.torrent_size == 0 {
@@ -144,27 +146,30 @@ impl Session {
     pub fn save<P: AsRef<Path>>(&self, path: P) -> Result<()> {
         // Ensure parent directory exists
         if let Some(parent) = path.as_ref().parent() {
-            fs::create_dir_all(parent).with_context(|| format!("Failed to create session directory: {:?}", parent))?;
+            fs::create_dir_all(parent).with_context(|| {
+                format!("Failed to create session directory: {}", parent.display())
+            })?;
         }
 
-        let content = serde_json::to_string_pretty(self).with_context(|| "Failed to serialize session")?;
-        fs::write(path.as_ref(), content)
-            .with_context(|| format!("Failed to write session file: {:?}", path.as_ref()))?;
+        let content =
+            serde_json::to_string_pretty(self).with_context(|| "Failed to serialize session")?;
+        fs::write(path.as_ref(), content).with_context(|| {
+            format!("Failed to write session file: {}", path.as_ref().display())
+        })?;
         Ok(())
     }
 
     /// Get the default sessions directory
     pub fn sessions_dir() -> PathBuf {
-        if let Ok(home) = std::env::var("HOME") {
-            PathBuf::from(home).join(".config").join("rustatio").join("sessions")
-        } else {
-            PathBuf::from("sessions")
-        }
+        std::env::var("HOME").map_or_else(
+            |_| PathBuf::from("sessions"),
+            |home| PathBuf::from(home).join(".config").join("rustatio").join("sessions"),
+        )
     }
 
     /// Get the session file path for an info hash
     pub fn path_for_hash(info_hash: &str) -> PathBuf {
-        Self::sessions_dir().join(format!("{}.json", info_hash))
+        Self::sessions_dir().join(format!("{info_hash}.json"))
     }
 
     /// Load session by info hash (if exists)
@@ -177,7 +182,7 @@ impl Session {
         }
     }
 
-    /// Save session (uses info_hash as filename)
+    /// Save session (uses `info_hash` as filename)
     pub fn save_session(&self) -> Result<()> {
         let path = Self::path_for_hash(&self.info_hash);
         self.save(path)
@@ -187,7 +192,8 @@ impl Session {
     pub fn delete(&self) -> Result<()> {
         let path = Self::path_for_hash(&self.info_hash);
         if path.exists() {
-            fs::remove_file(&path).with_context(|| format!("Failed to delete session file: {:?}", path))?;
+            fs::remove_file(&path)
+                .with_context(|| format!("Failed to delete session file: {}", path.display()))?;
         }
         Ok(())
     }
@@ -232,14 +238,15 @@ pub struct SessionSummary {
     pub updated_at: DateTime<Utc>,
 }
 
+#[allow(clippy::ref_option)]
 fn is_infinite_ratio(r: &Option<f64>) -> bool {
-    r.map(|v| v.is_infinite()).unwrap_or(true)
+    r.map(f64::is_infinite).unwrap_or(true)
 }
 
 impl From<&Session> for SessionSummary {
     fn from(session: &Session) -> Self {
         let ratio = session.ratio();
-        SessionSummary {
+        Self {
             info_hash: session.info_hash.clone(),
             torrent_name: session.torrent_name.clone(),
             uploaded: session.uploaded,
@@ -248,7 +255,7 @@ impl From<&Session> for SessionSummary {
             ratio_display: if ratio.is_infinite() {
                 "inf".to_string()
             } else {
-                format!("{:.3}", ratio)
+                format!("{ratio:.3}")
             },
             total_seed_time_secs: session.total_seed_time_secs,
             updated_at: session.updated_at,

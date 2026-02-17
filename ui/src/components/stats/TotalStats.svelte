@@ -116,7 +116,7 @@
           <ArrowUp size={14} class="text-stat-upload" />
         </div>
         <div>
-          <div class="text-lg font-bold">{stats.seeders}</div>
+          <div class="text-lg font-bold">{stats.seeders ?? 0}</div>
           <div class="text-[10px] text-muted-foreground">Seeders</div>
         </div>
       </div>
@@ -125,7 +125,7 @@
           <ArrowDown size={14} class="text-stat-danger" />
         </div>
         <div>
-          <div class="text-lg font-bold">{stats.leechers}</div>
+          <div class="text-lg font-bold">{stats.leechers ?? 0}</div>
           <div class="text-[10px] text-muted-foreground">Leechers</div>
         </div>
       </div>

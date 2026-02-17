@@ -6,10 +6,10 @@
 
   // Calculate session ratio
   let sessionRatio = $derived(() => {
-    if (stats.session_downloaded > 0) {
-      return stats.session_uploaded / stats.session_downloaded;
+    if ((stats.session_downloaded ?? 0) > 0) {
+      return (stats.session_uploaded ?? 0) / stats.session_downloaded;
     }
-    return stats.session_uploaded > 0 ? Infinity : 0;
+    return (stats.session_uploaded ?? 0) > 0 ? Infinity : 0;
   });
 
   // Format ratio for display
@@ -68,7 +68,7 @@
           Avg Upload
         </div>
         <div class="text-lg font-semibold">
-          {stats.average_upload_rate.toFixed(1)}
+          {(stats.average_upload_rate ?? 0).toFixed(1)}
           <span class="text-xs font-normal text-muted-foreground">KB/s</span>
         </div>
       </div>
@@ -79,7 +79,7 @@
           Avg Download
         </div>
         <div class="text-lg font-semibold">
-          {stats.average_download_rate.toFixed(1)}
+          {(stats.average_download_rate ?? 0).toFixed(1)}
           <span class="text-xs font-normal text-muted-foreground">KB/s</span>
         </div>
       </div>

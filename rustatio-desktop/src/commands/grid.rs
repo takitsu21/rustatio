@@ -1,5 +1,6 @@
 use rustatio_core::{
-    FakerConfig, FakerState, FakerStats, GridImportSettings, InstanceSummary, PresetSettings, RatioFaker, TorrentInfo,
+    FakerConfig, FakerState, FakerStats, GridImportSettings, InstanceSummary, PresetSettings,
+    RatioFaker, TorrentInfo,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -74,7 +75,7 @@ async fn import_torrent_files(
         let faker = match RatioFaker::new(torrent.clone(), faker_config.clone()) {
             Ok(f) => f,
             Err(e) => {
-                errors.push(format!("{}: {}", torrent_name, e));
+                errors.push(format!("{torrent_name}: {e}"));
                 continue;
             }
         };
@@ -114,16 +115,10 @@ async fn import_torrent_files(
     }
     drop(next_id);
 
-    log_and_emit!(
-        app,
-        info,
-        "Imported {} torrent(s) ({} errors)",
-        imported.len(),
-        errors.len()
-    );
+    log_and_emit!(app, info, "Imported {} torrent(s) ({} errors)", imported.len(), errors.len());
 
     if !auto_start_ids.is_empty() {
-        let state_fakers = state.fakers.clone();
+        let state_fakers = Arc::clone(&state.fakers);
         let app_handle = app.clone();
         let stagger = config.stagger_start_secs;
         let use_stagger = stagger.is_some_and(|s| s > 0);
@@ -133,18 +128,18 @@ async fn import_torrent_files(
                 let fakers = state_fakers.read().await;
                 auto_start_ids
                     .iter()
-                    .filter_map(|id| fakers.get(id).map(|i| (*id, i.faker.clone())))
+                    .filter_map(|id| fakers.get(id).map(|i| (*id, Arc::clone(&i.faker))))
                     .collect()
             };
 
             if use_stagger {
-                let delay = stagger.unwrap();
+                let delay = stagger.expect("use_stagger implies stagger is Some");
                 for (i, (id, faker)) in faker_arcs.into_iter().enumerate() {
                     if i > 0 {
                         tokio::time::sleep(std::time::Duration::from_secs(delay)).await;
                     }
                     match faker.write().await.start().await {
-                        Ok(_) => log_and_emit!(&app_handle, id, info, "Auto-started"),
+                        Ok(()) => log_and_emit!(&app_handle, id, info, "Auto-started"),
                         Err(e) => log_and_emit!(&app_handle, id, error, "Auto-start failed: {}", e),
                     };
                 }
@@ -158,9 +153,11 @@ async fn import_torrent_files(
                 }
                 while let Some(result) = join_set.join_next().await {
                     match result {
-                        Ok((id, Ok(_))) => log_and_emit!(&app_handle, id, info, "Auto-started"),
-                        Ok((id, Err(e))) => log_and_emit!(&app_handle, id, error, "Auto-start failed: {}", e),
-                        Err(e) => log::error!("Auto-start join error: {}", e),
+                        Ok((id, Ok(()))) => log_and_emit!(&app_handle, id, info, "Auto-started"),
+                        Ok((id, Err(e))) => {
+                            log_and_emit!(&app_handle, id, error, "Auto-start failed: {}", e);
+                        }
+                        Err(e) => log::error!("Auto-start join error: {e}"),
                     }
                 }
             }
@@ -188,13 +185,13 @@ pub async fn grid_import_folder(
 
     let dir = std::path::Path::new(&path);
     if !dir.is_dir() {
-        return Err(format!("Not a directory: {}", path));
+        return Err(format!("Not a directory: {path}"));
     }
 
     let mut torrent_paths = Vec::new();
-    let entries = std::fs::read_dir(dir).map_err(|e| format!("Failed to read directory: {}", e))?;
+    let entries = std::fs::read_dir(dir).map_err(|e| format!("Failed to read directory: {e}"))?;
     for entry in entries {
-        let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
+        let entry = entry.map_err(|e| format!("Failed to read entry: {e}"))?;
         let p = entry.path();
         if p.extension().and_then(|e| e.to_str()) == Some("torrent") {
             torrent_paths.push(p);
@@ -232,7 +229,8 @@ pub async fn grid_import_files(
 ) -> Result<GridImportResponse, String> {
     log_and_emit!(&app, info, "Grid importing {} files", paths.len());
 
-    let torrent_paths: Vec<std::path::PathBuf> = paths.iter().map(std::path::PathBuf::from).collect();
+    let torrent_paths: Vec<std::path::PathBuf> =
+        paths.iter().map(std::path::PathBuf::from).collect();
     let result = import_torrent_files(torrent_paths, &config, &state, &app).await;
     log_and_emit!(
         &app,
@@ -260,13 +258,13 @@ pub async fn grid_start(
         for id in &ids {
             match fakers.get(id) {
                 Some(instance) => {
-                    to_start.push((*id, instance.faker.clone()));
+                    to_start.push((*id, Arc::clone(&instance.faker)));
                     succeeded.push(*id);
                 }
                 None => {
                     failed.push(GridActionError {
                         id: *id,
-                        error: format!("Instance {} not found", id),
+                        error: format!("Instance {id} not found"),
                     });
                 }
             }
@@ -285,9 +283,9 @@ pub async fn grid_start(
 
         while let Some(result) = join_set.join_next().await {
             match result {
-                Ok((id, Ok(_))) => log::info!("[Instance {}] Started via grid action", id),
-                Ok((id, Err(e))) => log::error!("[Instance {}] Grid start failed: {}", id, e),
-                Err(e) => log::error!("Grid start join error: {}", e),
+                Ok((id, Ok(()))) => log::info!("[Instance {id}] Started via grid action"),
+                Ok((id, Err(e))) => log::error!("[Instance {id}] Grid start failed: {e}"),
+                Err(e) => log::error!("Grid start join error: {e}"),
             }
         }
     });
@@ -310,13 +308,13 @@ pub async fn grid_stop(
         for id in &ids {
             match fakers.get(id) {
                 Some(instance) => {
-                    to_stop.push((*id, instance.faker.clone()));
+                    to_stop.push((*id, Arc::clone(&instance.faker)));
                     succeeded.push(*id);
                 }
                 None => {
                     failed.push(GridActionError {
                         id: *id,
-                        error: format!("Instance {} not found", id),
+                        error: format!("Instance {id} not found"),
                     });
                 }
             }
@@ -324,7 +322,7 @@ pub async fn grid_stop(
     }
 
     // Spawn HTTP stop announces + cumulative stats update in background
-    let fakers_arc = state.fakers.clone();
+    let fakers_arc = Arc::clone(&state.fakers);
     tauri::async_runtime::spawn(async move {
         let mut join_set = JoinSet::new();
         for (id, faker) in to_stop {
@@ -338,14 +336,14 @@ pub async fn grid_stop(
         let mut stats_updates: Vec<(u32, FakerStats)> = Vec::new();
         while let Some(result) = join_set.join_next().await {
             match result {
-                Ok((id, stats, Ok(_))) => {
-                    log::info!("[Instance {}] Stopped via grid action", id);
+                Ok((id, stats, Ok(()))) => {
+                    log::info!("[Instance {id}] Stopped via grid action");
                     stats_updates.push((id, stats));
                 }
                 Ok((id, _, Err(e))) => {
-                    log::error!("[Instance {}] Grid stop failed: {}", id, e);
+                    log::error!("[Instance {id}] Grid stop failed: {e}");
                 }
-                Err(e) => log::error!("Grid stop join error: {}", e),
+                Err(e) => log::error!("Grid stop join error: {e}"),
             }
         }
 
@@ -375,30 +373,22 @@ pub async fn grid_pause(
     // Collect Arcs under read lock, then drop HashMap lock
     let faker_arcs: Vec<_> = {
         let fakers = state.fakers.read().await;
-        ids.iter()
-            .map(|id| (*id, fakers.get(id).map(|i| i.faker.clone())))
-            .collect()
+        ids.iter().map(|id| (*id, fakers.get(id).map(|i| Arc::clone(&i.faker)))).collect()
     };
 
     for (id, faker_opt) in faker_arcs {
         match faker_opt {
             Some(faker) => match faker.write().await.pause().await {
-                Ok(_) => {
+                Ok(()) => {
                     log_and_emit!(&app, id, info, "Paused via grid action");
                     succeeded.push(id);
                 }
                 Err(e) => {
-                    failed.push(GridActionError {
-                        id,
-                        error: e.to_string(),
-                    });
+                    failed.push(GridActionError { id, error: e.to_string() });
                 }
             },
             None => {
-                failed.push(GridActionError {
-                    id,
-                    error: format!("Instance {} not found", id),
-                });
+                failed.push(GridActionError { id, error: format!("Instance {id} not found") });
             }
         }
     }
@@ -418,30 +408,22 @@ pub async fn grid_resume(
     // Collect Arcs under read lock, then drop HashMap lock
     let faker_arcs: Vec<_> = {
         let fakers = state.fakers.read().await;
-        ids.iter()
-            .map(|id| (*id, fakers.get(id).map(|i| i.faker.clone())))
-            .collect()
+        ids.iter().map(|id| (*id, fakers.get(id).map(|i| Arc::clone(&i.faker)))).collect()
     };
 
     for (id, faker_opt) in faker_arcs {
         match faker_opt {
             Some(faker) => match faker.write().await.resume().await {
-                Ok(_) => {
+                Ok(()) => {
                     log_and_emit!(&app, id, info, "Resumed via grid action");
                     succeeded.push(id);
                 }
                 Err(e) => {
-                    failed.push(GridActionError {
-                        id,
-                        error: e.to_string(),
-                    });
+                    failed.push(GridActionError { id, error: e.to_string() });
                 }
             },
             None => {
-                failed.push(GridActionError {
-                    id,
-                    error: format!("Instance {} not found", id),
-                });
+                failed.push(GridActionError { id, error: format!("Instance {id} not found") });
             }
         }
     }
@@ -473,10 +455,7 @@ pub async fn grid_delete(
                 });
             }
             None => {
-                failed.push(GridActionError {
-                    id,
-                    error: format!("Instance {} not found", id),
-                });
+                failed.push(GridActionError { id, error: format!("Instance {id} not found") });
             }
         }
     }
@@ -487,7 +466,7 @@ pub async fn grid_delete(
                 log_and_emit!(&app, id, info, "Deleted via grid action");
                 succeeded.push(id);
             }
-            Err(e) => log::error!("Grid delete join error: {}", e),
+            Err(e) => log::error!("Grid delete join error: {e}"),
         }
     }
 
@@ -523,18 +502,12 @@ pub async fn grid_update_config(
                         succeeded.push(id);
                     }
                     Err(e) => {
-                        failed.push(GridActionError {
-                            id,
-                            error: e.to_string(),
-                        });
+                        failed.push(GridActionError { id, error: e.to_string() });
                     }
                 }
             }
             None => {
-                failed.push(GridActionError {
-                    id,
-                    error: format!("Instance {} not found", id),
-                });
+                failed.push(GridActionError { id, error: format!("Instance {id} not found") });
             }
         }
     }
@@ -577,10 +550,7 @@ pub async fn bulk_update_configs(
                         succeeded.push(entry.id);
                     }
                     Err(e) => {
-                        failed.push(GridActionError {
-                            id: entry.id,
-                            error: e.to_string(),
-                        });
+                        failed.push(GridActionError { id: entry.id, error: e.to_string() });
                     }
                 }
             }
@@ -626,14 +596,18 @@ pub async fn grid_tag(
 }
 
 #[tauri::command]
-pub async fn set_instance_tags(instance_id: u32, tags: Vec<String>, state: State<'_, AppState>) -> Result<(), String> {
+pub async fn set_instance_tags(
+    instance_id: u32,
+    tags: Vec<String>,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
     let mut fakers = state.fakers.write().await;
 
     if let Some(instance) = fakers.get_mut(&instance_id) {
         instance.tags = tags;
         Ok(())
     } else {
-        Err(format!("Instance {} not found", instance_id))
+        Err(format!("Instance {instance_id} not found"))
     }?;
 
     drop(fakers);
@@ -650,7 +624,7 @@ pub async fn list_summaries(state: State<'_, AppState>) -> Result<Vec<InstanceSu
             .map(|(id, instance)| {
                 (
                     *id,
-                    instance.faker.clone(),
+                    Arc::clone(&instance.faker),
                     instance.torrent.name.clone(),
                     hex_info_hash(&instance.torrent.info_hash),
                     instance.tags.clone(),

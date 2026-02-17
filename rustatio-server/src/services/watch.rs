@@ -32,45 +32,31 @@ impl WatchConfig {
             .map(|v| v.to_lowercase() == "true" || v == "1")
             .unwrap_or(false);
 
-        let (enabled, disabled_reason) = match std::env::var("WATCH_ENABLED") {
-            Ok(val) => {
-                let val_lower = val.to_lowercase();
-                if val_lower == "false" || val == "0" {
-                    // Explicitly disabled
-                    (false, Some(WatchDisabledReason::ExplicitlyDisabled))
-                } else if val_lower == "true" || val == "1" {
-                    // Explicitly enabled
-                    (true, None)
-                } else if val.is_empty() {
-                    // Empty string - use auto-detection
-                    if watch_path.exists() && watch_path.is_dir() {
-                        (true, None)
-                    } else {
-                        (false, Some(WatchDisabledReason::DirectoryNotFound))
-                    }
-                } else {
-                    // Unknown value - treat as enabled (backwards compatible)
-                    (true, None)
-                }
-            }
-            Err(_) => {
-                // Not set - auto-detect based on directory existence
-                if watch_path.exists() && watch_path.is_dir() {
-                    (true, None)
-                } else {
-                    (false, Some(WatchDisabledReason::DirectoryNotFound))
-                }
+        let auto_detect = || {
+            if watch_path.exists() && watch_path.is_dir() {
+                (true, None)
+            } else {
+                (false, Some(WatchDisabledReason::DirectoryNotFound))
             }
         };
 
-        (
-            Self {
-                watch_dir: watch_path,
-                auto_start,
-                enabled,
+        let (enabled, disabled_reason) = std::env::var("WATCH_ENABLED").map_or_else(
+            |_| auto_detect(),
+            |val| {
+                let val_lower = val.to_lowercase();
+                if val_lower == "false" || val == "0" {
+                    (false, Some(WatchDisabledReason::ExplicitlyDisabled))
+                } else if val_lower == "true" || val == "1" {
+                    (true, None)
+                } else if val.is_empty() {
+                    auto_detect()
+                } else {
+                    (true, None)
+                }
             },
-            disabled_reason,
-        )
+        );
+
+        (Self { watch_dir: watch_path, auto_start, enabled }, disabled_reason)
     }
 }
 
@@ -84,7 +70,7 @@ pub struct WatchedFile {
     pub size: u64,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq, ToSchema)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum WatchedFileStatus {
     Pending,
@@ -186,14 +172,12 @@ impl WatchService {
             }
 
             // Try to parse the torrent to get its info_hash
-            let data = match std::fs::read(&path) {
-                Ok(data) => data,
-                Err(_) => continue,
+            let Ok(data) = std::fs::read(&path) else {
+                continue;
             };
 
-            let torrent = match TorrentInfo::from_bytes(&data) {
-                Ok(t) => t,
-                Err(_) => continue,
+            let Ok(torrent) = TorrentInfo::from_bytes(&data) else {
+                continue;
             };
 
             // Only add to mapping if this hash is in our loaded set
@@ -223,7 +207,7 @@ impl WatchService {
         // Create watch directory if it doesn't exist
         if !self.config.watch_dir.exists() {
             if let Err(e) = std::fs::create_dir_all(&self.config.watch_dir) {
-                return Err(format!("Failed to create watch directory: {}", e));
+                return Err(format!("Failed to create watch directory: {e}"));
             }
             tracing::info!("Created watch directory: {:?}", self.config.watch_dir);
         }
@@ -241,11 +225,14 @@ impl WatchService {
         let watch_dir = self.config.watch_dir.clone();
         let auto_start = self.config.auto_start;
         let state = self.state.clone();
-        let loaded_hashes = self.loaded_hashes.clone();
-        let path_to_hash = self.path_to_hash.clone();
+        let loaded_hashes = Arc::clone(&self.loaded_hashes);
+        let path_to_hash = Arc::clone(&self.path_to_hash);
 
         tokio::spawn(async move {
-            if let Err(e) = run_watcher(watch_dir, auto_start, state, loaded_hashes, path_to_hash, shutdown_rx).await {
+            if let Err(e) =
+                run_watcher(watch_dir, auto_start, state, loaded_hashes, path_to_hash, shutdown_rx)
+                    .await
+            {
                 tracing::error!("Watch service error: {}", e);
             }
         });
@@ -323,9 +310,8 @@ impl WatchService {
         let mut files = Vec::new();
         let loaded_hashes = self.loaded_hashes.read().await;
 
-        let entries = match std::fs::read_dir(&self.config.watch_dir) {
-            Ok(entries) => entries,
-            Err(_) => return files,
+        let Ok(entries) = std::fs::read_dir(&self.config.watch_dir) else {
+            return files;
         };
 
         for entry in entries.flatten() {
@@ -334,36 +320,30 @@ impl WatchService {
                 continue;
             }
 
-            let filename = path
-                .file_name()
-                .map(|n| n.to_string_lossy().to_string())
-                .unwrap_or_default();
+            let filename =
+                path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
 
             let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
 
             // Try to parse the torrent to get info
-            let (status, info_hash, name) = match std::fs::read(&path) {
-                Ok(data) => {
+            let (status, info_hash, name) =
+                std::fs::read(&path).map_or((WatchedFileStatus::Invalid, None, None), |data| {
                     match TorrentInfo::from_bytes(&data) {
                         Ok(torrent) => {
                             let hash = torrent.info_hash;
                             let hash_hex = hex::encode(hash);
-                            let torrent_name = torrent.name.clone();
 
                             let status = if loaded_hashes.contains(&hash) {
                                 WatchedFileStatus::Loaded
                             } else {
-                                // Check if any instance has this hash
                                 WatchedFileStatus::Pending
                             };
 
-                            (status, Some(hash_hex), Some(torrent_name))
+                            (status, Some(hash_hex), Some(torrent.name))
                         }
                         Err(_) => (WatchedFileStatus::Invalid, None, None),
                     }
-                }
-                Err(_) => (WatchedFileStatus::Invalid, None, None),
-            };
+                });
 
             files.push(WatchedFile {
                 filename,
@@ -380,7 +360,7 @@ impl WatchService {
         files
     }
 
-    /// Remove an info_hash from the loaded set (for force-deleting watch folder instances)
+    /// Remove an `info_hash` from the loaded set (for force-deleting watch folder instances)
     pub async fn remove_info_hash(&self, info_hash: &[u8; 20]) {
         let removed = self.loaded_hashes.write().await.remove(info_hash);
         if removed {
@@ -399,8 +379,8 @@ impl WatchService {
             .config
             .watch_dir
             .canonicalize()
-            .map_err(|e| format!("Failed to canonicalize watch dir: {}", e))?;
-        let canonical_file = path.canonicalize().map_err(|e| format!("File not found: {}", e))?;
+            .map_err(|e| format!("Failed to canonicalize watch dir: {e}"))?;
+        let canonical_file = path.canonicalize().map_err(|e| format!("File not found: {e}"))?;
 
         if !canonical_file.starts_with(&canonical_watch) {
             return Err("Invalid file path".to_string());
@@ -442,22 +422,20 @@ impl WatchService {
             return Err("Watch directory does not exist".to_string());
         }
 
-        let entries =
-            std::fs::read_dir(&self.config.watch_dir).map_err(|e| format!("Failed to read watch directory: {}", e))?;
+        let entries = std::fs::read_dir(&self.config.watch_dir)
+            .map_err(|e| format!("Failed to read watch directory: {e}"))?;
 
         let mut count = 0;
         for entry in entries.flatten() {
             let path = entry.path();
             if is_torrent_file(&path) {
                 // Check if already loaded
-                let data = match std::fs::read(&path) {
-                    Ok(data) => data,
-                    Err(_) => continue,
+                let Ok(data) = std::fs::read(&path) else {
+                    continue;
                 };
 
-                let torrent = match TorrentInfo::from_bytes(&data) {
-                    Ok(t) => t,
-                    Err(_) => continue,
+                let Ok(torrent) = TorrentInfo::from_bytes(&data) else {
+                    continue;
                 };
 
                 // Skip if already loaded
@@ -497,8 +475,8 @@ impl WatchService {
             .config
             .watch_dir
             .canonicalize()
-            .map_err(|e| format!("Failed to canonicalize watch dir: {}", e))?;
-        let canonical_file = path.canonicalize().map_err(|e| format!("File not found: {}", e))?;
+            .map_err(|e| format!("Failed to canonicalize watch dir: {e}"))?;
+        let canonical_file = path.canonicalize().map_err(|e| format!("File not found: {e}"))?;
 
         if !canonical_file.starts_with(&canonical_watch) {
             return Err("Invalid file path".to_string());
@@ -511,7 +489,7 @@ impl WatchService {
         };
 
         // Delete the file
-        std::fs::remove_file(&canonical_file).map_err(|e| format!("Failed to delete file: {}", e))?;
+        std::fs::remove_file(&canonical_file).map_err(|e| format!("Failed to delete file: {e}"))?;
 
         tracing::info!("Deleted torrent file: {}", filename);
 
@@ -522,10 +500,8 @@ impl WatchService {
             // Remove from loaded_hashes
             self.loaded_hashes.write().await.remove(&hash);
             // First, change the instance source to Manual (in case delete fails)
-            if let Err(e) = self
-                .state
-                .update_instance_source_by_info_hash(&hash, InstanceSource::Manual)
-                .await
+            if let Err(e) =
+                self.state.update_instance_source_by_info_hash(&hash, InstanceSource::Manual).await
             {
                 tracing::warn!("Failed to update instance source: {}", e);
             }
@@ -540,7 +516,7 @@ impl WatchService {
 }
 
 fn is_torrent_file(path: &Path) -> bool {
-    path.is_file() && path.extension().map(|e| e == "torrent").unwrap_or(false)
+    path.is_file() && path.extension().is_some_and(|e| e == "torrent")
 }
 
 async fn process_torrent_file(
@@ -551,10 +527,11 @@ async fn process_torrent_file(
     path_to_hash: &Arc<RwLock<HashMap<PathBuf, [u8; 20]>>>,
 ) -> Result<(), String> {
     // Read torrent file
-    let data = std::fs::read(path).map_err(|e| format!("Failed to read torrent file: {}", e))?;
+    let data = std::fs::read(path).map_err(|e| format!("Failed to read torrent file: {e}"))?;
 
     // Parse torrent
-    let torrent = TorrentInfo::from_bytes(&data).map_err(|e| format!("Failed to parse torrent: {}", e))?;
+    let torrent =
+        TorrentInfo::from_bytes(&data).map_err(|e| format!("Failed to parse torrent: {e}"))?;
 
     let info_hash = torrent.info_hash;
 
@@ -572,15 +549,13 @@ async fn process_torrent_file(
     }
 
     // Create instance with event emission for real-time sync
-    let instance_id = state.next_instance_id().await;
+    let instance_id = state.next_instance_id();
 
     // Use default config from settings if available, otherwise use built-in defaults
     let config = state.get_default_config().await.unwrap_or_default();
 
     // Use create_instance_with_event so connected frontends get notified
-    state
-        .create_instance_with_event(&instance_id, torrent.clone(), config, auto_start)
-        .await?;
+    state.create_instance_with_event(&instance_id, torrent.clone(), config, auto_start).await?;
 
     // Track as loaded
     loaded_hashes.write().await.insert(info_hash);
@@ -607,6 +582,7 @@ async fn process_torrent_file(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn run_watcher(
     watch_dir: PathBuf,
     auto_start: bool,
@@ -626,12 +602,12 @@ async fn run_watcher(
         },
         Config::default(),
     )
-    .map_err(|e| format!("Failed to create watcher: {}", e))?;
+    .map_err(|e| format!("Failed to create watcher: {e}"))?;
 
     // Start watching
     watcher
         .watch(&watch_dir, RecursiveMode::NonRecursive)
-        .map_err(|e| format!("Failed to watch directory: {}", e))?;
+        .map_err(|e| format!("Failed to watch directory: {e}"))?;
 
     tracing::debug!("File watcher started for {:?}", watch_dir);
 
@@ -680,7 +656,7 @@ async fn run_watcher(
                                 // This handles the case where notify gives us a non-canonical path
                                 // but we stored the canonical version
                                 let filename = path.file_name();
-                                if let Some(fname) = filename {
+                                filename.map_or((None, None), |fname| {
                                     let mut found = None;
                                     for (stored_path, &hash) in mapping.iter() {
                                         if stored_path.file_name() == Some(fname) {
@@ -692,9 +668,7 @@ async fn run_watcher(
                                         Some((hash, stored_path)) => (Some(hash), Some(stored_path)),
                                         None => (None, None),
                                     }
-                                } else {
-                                    (None, None)
-                                }
+                                })
                             }
                         };
 

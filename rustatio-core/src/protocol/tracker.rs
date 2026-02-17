@@ -3,6 +3,7 @@ use crate::torrent::ClientConfig;
 use crate::{log_debug, log_error, log_info, log_trace, log_warn};
 use reqwest;
 use serde::{Deserialize, Serialize};
+use std::fmt::Write;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -30,12 +31,12 @@ pub enum TrackerEvent {
 }
 
 impl TrackerEvent {
-    pub fn as_str(&self) -> Option<&str> {
+    pub const fn as_str(&self) -> Option<&str> {
         match self {
-            TrackerEvent::Started => Some("started"),
-            TrackerEvent::Stopped => Some("stopped"),
-            TrackerEvent::Completed => Some("completed"),
-            TrackerEvent::None => None,
+            Self::Started => Some("started"),
+            Self::Stopped => Some("stopped"),
+            Self::Completed => Some("completed"),
+            Self::None => None,
         }
     }
 }
@@ -106,16 +107,18 @@ impl TrackerClient {
             .build()?;
 
         #[cfg(target_arch = "wasm32")]
-        let client = reqwest::Client::builder()
-            .user_agent(&client_config.user_agent)
-            .build()?;
+        let client = reqwest::Client::builder().user_agent(&client_config.user_agent).build()?;
 
-        Ok(TrackerClient { client, client_config })
+        Ok(Self { client, client_config })
     }
 
     /// Send an announce request to the tracker
-    pub async fn announce(&self, tracker_url: &str, request: &AnnounceRequest) -> Result<AnnounceResponse> {
-        let announce_url = self.build_announce_url(tracker_url, request)?;
+    pub async fn announce(
+        &self,
+        tracker_url: &str,
+        request: &AnnounceRequest,
+    ) -> Result<AnnounceResponse> {
+        let announce_url = self.build_announce_url(tracker_url, request);
 
         // For WASM, check if proxy is configured
         #[cfg(target_arch = "wasm32")]
@@ -158,7 +161,10 @@ impl TrackerClient {
 
         if !status.is_success() {
             log_error!("Tracker request failed with status: {}", status);
-            return Err(TrackerError::HttpError(response.error_for_status().unwrap_err()));
+            let err = response
+                .error_for_status()
+                .expect_err("status was already checked to be non-success");
+            return Err(TrackerError::HttpError(err));
         }
 
         let body = response.bytes().await?;
@@ -170,14 +176,17 @@ impl TrackerClient {
 
     /// Send a scrape request to the tracker
     pub async fn scrape(&self, tracker_url: &str, info_hash: &[u8; 20]) -> Result<ScrapeResponse> {
-        let scrape_url = self.build_scrape_url(tracker_url, info_hash)?;
+        let scrape_url = self.build_scrape_url(tracker_url, info_hash);
 
         log_info!("Scraping tracker: {}", scrape_url);
 
         let response = self.client.get(&scrape_url).send().await?;
 
         if !response.status().is_success() {
-            return Err(TrackerError::HttpError(response.error_for_status().unwrap_err()));
+            let err = response
+                .error_for_status()
+                .expect_err("status was already checked to be non-success");
+            return Err(TrackerError::HttpError(err));
         }
 
         let body = response.bytes().await?;
@@ -185,9 +194,13 @@ impl TrackerClient {
     }
 
     /// Build announce URL with all parameters
-    fn build_announce_url(&self, tracker_url: &str, request: &AnnounceRequest) -> Result<String> {
+    fn build_announce_url(&self, tracker_url: &str, request: &AnnounceRequest) -> String {
         // Build query parameters manually since info_hash needs special encoding
-        let info_hash_encoded: String = request.info_hash.iter().map(|b| format!("%{:02X}", b)).collect();
+        let info_hash_encoded: String =
+            request.info_hash.iter().fold(String::new(), |mut acc, b| {
+                let _ = write!(acc, "%{b:02X}");
+                acc
+            });
 
         let mut params = vec![
             format!("info_hash={}", info_hash_encoded),
@@ -204,23 +217,23 @@ impl TrackerClient {
         }
 
         if let Some(event) = request.event.as_str() {
-            params.push(format!("event={}", event));
+            params.push(format!("event={event}"));
         }
 
         if let Some(ref ip) = request.ip {
-            params.push(format!("ip={}", ip));
+            params.push(format!("ip={ip}"));
         }
 
         if let Some(numwant) = request.numwant {
-            params.push(format!("numwant={}", numwant));
+            params.push(format!("numwant={numwant}"));
         }
 
         if let Some(ref key) = request.key {
-            params.push(format!("key={}", key));
+            params.push(format!("key={key}"));
         }
 
         if let Some(ref tracker_id) = request.tracker_id {
-            params.push(format!("trackerid={}", tracker_id));
+            params.push(format!("trackerid={tracker_id}"));
         }
 
         // Add client-specific parameters
@@ -231,58 +244,58 @@ impl TrackerClient {
         let query_string = params.join("&");
         let separator = if tracker_url.contains('?') { '&' } else { '?' };
 
-        Ok(format!("{}{}{}", tracker_url, separator, query_string))
+        format!("{tracker_url}{separator}{query_string}")
     }
 
-    /// Build scrape URL from announce URL
-    fn build_scrape_url(&self, tracker_url: &str, info_hash: &[u8; 20]) -> Result<String> {
+    #[allow(clippy::unused_self)]
+    fn build_scrape_url(&self, tracker_url: &str, info_hash: &[u8; 20]) -> String {
         // Convert announce URL to scrape URL
         let scrape_url = tracker_url.replace("/announce", "/scrape");
 
         // URL encode info_hash (same format as announce)
-        let info_hash_encoded: String = info_hash.iter().map(|b| format!("%{:02X}", b)).collect();
+        let info_hash_encoded: String = info_hash.iter().fold(String::new(), |mut acc, b| {
+            let _ = write!(acc, "%{b:02X}");
+            acc
+        });
 
         // Build URL with query parameter
         let separator = if scrape_url.contains('?') { '&' } else { '?' };
-        Ok(format!("{}{}info_hash={}", scrape_url, separator, info_hash_encoded))
+        format!("{scrape_url}{separator}info_hash={info_hash_encoded}")
     }
 
     /// Parse announce response from bencoded data
     fn parse_announce_response(&self, data: &[u8]) -> Result<AnnounceResponse> {
         log_trace!("Parsing announce response ({} bytes)", data.len());
 
-        let value = match bencode::parse(data) {
-            Ok(v) => v,
-            Err(_) => {
-                // Try to provide a helpful error message about what the tracker returned
-                let preview = self.format_response_preview(data);
-                log_error!(
-                    "Failed to parse tracker response as bencode. Response preview: {}",
-                    preview
-                );
-                return Err(TrackerError::InvalidResponse(format!(
-                    "Tracker returned invalid response (not bencode). {}. This usually means: invalid passkey, torrent not registered, IP blocked, or tracker requires login.",
-                    preview
-                )));
-            }
+        let Ok(value) = bencode::parse(data) else {
+            // Try to provide a helpful error message about what the tracker returned
+            let preview = self.format_response_preview(data);
+            log_error!(
+                "Failed to parse tracker response as bencode. Response preview: {}",
+                preview
+            );
+            return Err(TrackerError::InvalidResponse(format!(
+                "Tracker returned invalid response (not bencode). {preview}. This usually means: invalid passkey, torrent not registered, IP blocked, or tracker requires login."
+            )));
         };
-        let dict = match &value {
-            serde_bencode::value::Value::Dict(d) => d,
-            _ => {
-                log_error!("Invalid response: not a dictionary");
-                return Err(TrackerError::InvalidResponse("Response is not a dictionary".into()));
-            }
+        let serde_bencode::value::Value::Dict(dict) = &value else {
+            log_error!("Invalid response: not a dictionary");
+            return Err(TrackerError::InvalidResponse("Response is not a dictionary".into()));
         };
 
         // Check for failure
-        if let Some(serde_bencode::value::Value::Bytes(bytes)) = dict.get(b"failure reason".as_ref()) {
+        if let Some(serde_bencode::value::Value::Bytes(bytes)) =
+            dict.get(b"failure reason".as_ref())
+        {
             let reason = String::from_utf8_lossy(bytes).to_string();
             log_error!("Tracker returned failure: {}", reason);
             return Err(TrackerError::TrackerFailure(reason));
         }
 
         // Check for warning
-        if let Some(serde_bencode::value::Value::Bytes(bytes)) = dict.get(b"warning message".as_ref()) {
+        if let Some(serde_bencode::value::Value::Bytes(bytes)) =
+            dict.get(b"warning message".as_ref())
+        {
             let warning = String::from_utf8_lossy(bytes).to_string();
             log_warn!("Tracker warning: {}", warning);
         }
@@ -313,35 +326,20 @@ impl TrackerClient {
             _ => None,
         });
 
-        Ok(AnnounceResponse {
-            interval,
-            min_interval,
-            tracker_id,
-            complete,
-            incomplete,
-            warning,
-        })
+        Ok(AnnounceResponse { interval, min_interval, tracker_id, complete, incomplete, warning })
     }
 
     /// Parse scrape response from bencoded data
     fn parse_scrape_response(&self, data: &[u8], info_hash: &[u8; 20]) -> Result<ScrapeResponse> {
-        let value = match bencode::parse(data) {
-            Ok(v) => v,
-            Err(_) => {
-                let preview = self.format_response_preview(data);
-                log_error!(
-                    "Failed to parse scrape response as bencode. Response preview: {}",
-                    preview
-                );
-                return Err(TrackerError::InvalidResponse(format!(
-                    "Tracker returned invalid scrape response (not bencode). {}",
-                    preview
-                )));
-            }
+        let Ok(value) = bencode::parse(data) else {
+            let preview = self.format_response_preview(data);
+            log_error!("Failed to parse scrape response as bencode. Response preview: {}", preview);
+            return Err(TrackerError::InvalidResponse(format!(
+                "Tracker returned invalid scrape response (not bencode). {preview}"
+            )));
         };
-        let dict = match &value {
-            serde_bencode::value::Value::Dict(d) => d,
-            _ => return Err(TrackerError::InvalidResponse("Response is not a dictionary".into())),
+        let serde_bencode::value::Value::Dict(dict) = &value else {
+            return Err(TrackerError::InvalidResponse("Response is not a dictionary".into()));
         };
 
         // Get the files dictionary
@@ -351,7 +349,9 @@ impl TrackerClient {
                 serde_bencode::value::Value::Dict(d) => Some(d),
                 _ => None,
             })
-            .ok_or_else(|| TrackerError::InvalidResponse("Missing 'files' in scrape response".into()))?;
+            .ok_or_else(|| {
+                TrackerError::InvalidResponse("Missing 'files' in scrape response".into())
+            })?;
 
         // Find our torrent's stats (the key is the raw info_hash bytes)
         let stats = files
@@ -360,7 +360,9 @@ impl TrackerClient {
                 serde_bencode::value::Value::Dict(d) => Some(d),
                 _ => None,
             })
-            .ok_or_else(|| TrackerError::InvalidResponse("Torrent not found in scrape response".into()))?;
+            .ok_or_else(|| {
+                TrackerError::InvalidResponse("Torrent not found in scrape response".into())
+            })?;
 
         let complete = bencode::get_int(stats, "complete")?;
         let incomplete = bencode::get_int(stats, "incomplete")?;
@@ -370,15 +372,11 @@ impl TrackerClient {
             _ => None,
         });
 
-        Ok(ScrapeResponse {
-            complete,
-            incomplete,
-            downloaded,
-            name,
-        })
+        Ok(ScrapeResponse { complete, incomplete, downloaded, name })
     }
 
     /// Format a preview of the response data for error messages
+    #[allow(clippy::unused_self)]
     fn format_response_preview(&self, data: &[u8]) -> String {
         if data.is_empty() {
             return "Response was empty".to_string();
@@ -399,9 +397,8 @@ impl TrackerClient {
             let text = String::from_utf8_lossy(&data[..data.len().min(500)]);
             // Try to find title or error message
             if let Some(start) = text.find("<title>").or_else(|| text.find("<TITLE>")) {
-                if let Some(end) = text[start..]
-                    .find("</title>")
-                    .or_else(|| text[start..].find("</TITLE>"))
+                if let Some(end) =
+                    text[start..].find("</title>").or_else(|| text[start..].find("</TITLE>"))
                 {
                     let title = &text[start + 7..start + end];
                     return format!("Received HTML page with title: \"{}\"", title.trim());
@@ -419,10 +416,7 @@ impl TrackerClient {
         let text = String::from_utf8_lossy(&data[..preview_len]);
 
         // If it looks like text, show it
-        if text
-            .chars()
-            .filter(|c| c.is_ascii_graphic() || c.is_ascii_whitespace())
-            .count()
+        if text.chars().filter(|c| c.is_ascii_graphic() || c.is_ascii_whitespace()).count()
             > preview_len / 2
         {
             format!(

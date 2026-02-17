@@ -1,6 +1,7 @@
 use rustatio_core::{FakerConfig, RatioFaker, TorrentInfo};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fmt::Write;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -36,5 +37,8 @@ pub fn now_secs() -> u64 {
 }
 
 pub fn hex_info_hash(hash: &[u8; 20]) -> String {
-    hash.iter().map(|b| format!("{:02x}", b)).collect()
+    hash.iter().fold(String::new(), |mut acc, b| {
+        let _ = write!(acc, "{b:02x}");
+        acc
+    })
 }

@@ -49,9 +49,9 @@ pub struct App {
 impl App {
     pub fn new(torrent: TorrentInfo, config: &RunnerConfig) -> Self {
         let client_type: ClientType = config.client.into();
-        let client_config = ClientConfig::get(client_type.clone(), config.client_version.clone());
+        let client_config = ClientConfig::get(client_type, config.client_version.clone());
 
-        App {
+        Self {
             torrent,
             client_type,
             client_version: client_config.version,
@@ -78,7 +78,7 @@ impl App {
     }
 
     /// Check if any stop condition is set
-    pub fn has_stop_condition(&self) -> bool {
+    pub const fn has_stop_condition(&self) -> bool {
         self.target_ratio.is_some() || self.target_uploaded.is_some() || self.target_time.is_some()
     }
 }
@@ -94,6 +94,7 @@ enum KeyCommand {
 }
 
 /// Run the TUI mode
+#[allow(clippy::excessive_nesting)]
 pub async fn run_tui_mode(config: RunnerConfig) -> Result<()> {
     // Load torrent
     let torrent = crate::runner::load_torrent(&config.torrent_path)?;
@@ -105,8 +106,8 @@ pub async fn run_tui_mode(config: RunnerConfig) -> Result<()> {
     let faker_config = crate::runner::create_faker_config(&config);
 
     // Create faker
-    let mut faker =
-        RatioFaker::new(torrent, faker_config).map_err(|e| anyhow::anyhow!("Failed to create faker: {}", e))?;
+    let mut faker = RatioFaker::new(torrent, faker_config)
+        .map_err(|e| anyhow::anyhow!("Failed to create faker: {e}"))?;
 
     // Setup terminal
     enable_raw_mode()?;
@@ -121,7 +122,7 @@ pub async fn run_tui_mode(config: RunnerConfig) -> Result<()> {
 
     if let Err(e) = faker.start().await {
         cleanup_terminal(&mut terminal)?;
-        return Err(anyhow::anyhow!("Failed to start faker: {}", e));
+        return Err(anyhow::anyhow!("Failed to start faker: {e}"));
     }
 
     app.set_status("Running");
@@ -130,28 +131,25 @@ pub async fn run_tui_mode(config: RunnerConfig) -> Result<()> {
     let (key_tx, key_rx) = mpsc::channel::<KeyCommand>();
 
     // Spawn keyboard event reader thread
-    thread::spawn(move || {
-        loop {
-            // Poll for events with a timeout
-            if event::poll(StdDuration::from_millis(100)).unwrap_or(false) {
-                if let Ok(Event::Key(key)) = event::read() {
-                    if key.kind == KeyEventKind::Press {
-                        let cmd = match key.code {
-                            KeyCode::Char('q') | KeyCode::Esc => Some(KeyCommand::Quit),
-                            KeyCode::Char('p') => Some(KeyCommand::Pause),
-                            KeyCode::Char('r') => Some(KeyCommand::Resume),
-                            KeyCode::Char('x') => Some(KeyCommand::Stop),
-                            KeyCode::Char('s') => Some(KeyCommand::Scrape),
-                            _ => None,
-                        };
-
-                        if let Some(cmd) = cmd {
-                            if key_tx.send(cmd).is_err() {
-                                break; // Channel closed, exit thread
-                            }
-                        }
-                    }
-                }
+    thread::spawn(move || loop {
+        if !event::poll(StdDuration::from_millis(100)).unwrap_or(false) {
+            continue;
+        }
+        let Ok(Event::Key(key)) = event::read() else { continue };
+        if key.kind != KeyEventKind::Press {
+            continue;
+        }
+        let cmd = match key.code {
+            KeyCode::Char('q') | KeyCode::Esc => Some(KeyCommand::Quit),
+            KeyCode::Char('p') => Some(KeyCommand::Pause),
+            KeyCode::Char('r') => Some(KeyCommand::Resume),
+            KeyCode::Char('x') => Some(KeyCommand::Stop),
+            KeyCode::Char('s') => Some(KeyCommand::Scrape),
+            _ => None,
+        };
+        if let Some(cmd) = cmd {
+            if key_tx.send(cmd).is_err() {
+                break;
             }
         }
     });
@@ -169,24 +167,24 @@ pub async fn run_tui_mode(config: RunnerConfig) -> Result<()> {
                     break;
                 }
                 KeyCommand::Pause => {
-                    if let Some(ref stats) = app.stats {
-                        if matches!(stats.state, FakerState::Running) {
-                            if let Err(e) = faker.pause().await {
-                                app.set_status(format!("Pause failed: {}", e));
-                            } else {
-                                app.set_status("Paused - press [r] to resume");
-                            }
+                    let is_running =
+                        app.stats.as_ref().is_some_and(|s| matches!(s.state, FakerState::Running));
+                    if is_running {
+                        if let Err(e) = faker.pause().await {
+                            app.set_status(format!("Pause failed: {e}"));
+                        } else {
+                            app.set_status("Paused - press [r] to resume");
                         }
                     }
                 }
                 KeyCommand::Resume => {
-                    if let Some(ref stats) = app.stats {
-                        if matches!(stats.state, FakerState::Paused) {
-                            if let Err(e) = faker.resume().await {
-                                app.set_status(format!("Resume failed: {}", e));
-                            } else {
-                                app.set_status("Resumed");
-                            }
+                    let is_paused =
+                        app.stats.as_ref().is_some_and(|s| matches!(s.state, FakerState::Paused));
+                    if is_paused {
+                        if let Err(e) = faker.resume().await {
+                            app.set_status(format!("Resume failed: {e}"));
+                        } else {
+                            app.set_status("Resumed");
                         }
                     }
                 }
@@ -194,7 +192,7 @@ pub async fn run_tui_mode(config: RunnerConfig) -> Result<()> {
                     app.set_status("Stopping...");
                     terminal.draw(|f| ui(f, &app))?;
                     if let Err(e) = faker.stop().await {
-                        app.set_status(format!("Stop failed: {}", e));
+                        app.set_status(format!("Stop failed: {e}"));
                     } else {
                         app.set_status("Stopped");
                         app.should_quit = true;
@@ -211,7 +209,7 @@ pub async fn run_tui_mode(config: RunnerConfig) -> Result<()> {
                             ));
                         }
                         Err(e) => {
-                            app.set_status(format!("Scrape failed: {}", e));
+                            app.set_status(format!("Scrape failed: {e}"));
                         }
                     }
                 }
@@ -232,7 +230,7 @@ pub async fn run_tui_mode(config: RunnerConfig) -> Result<()> {
         if matches!(stats.state, FakerState::Running) {
             // Use update() which handles periodic announces
             if let Err(e) = faker.update().await {
-                app.set_status(format!("Update error: {}", e));
+                app.set_status(format!("Update error: {e}"));
             }
         }
 
@@ -282,7 +280,7 @@ pub async fn run_tui_mode(config: RunnerConfig) -> Result<()> {
                 &config.torrent_name,
                 &config.torrent_path.to_string_lossy(),
                 config.torrent_size,
-                &format!("{:?}", client_type),
+                &format!("{client_type:?}"),
                 config.client_version.clone(),
             );
             session.upload_rate = config.upload_rate;
@@ -294,7 +292,7 @@ pub async fn run_tui_mode(config: RunnerConfig) -> Result<()> {
             session.update(stats.uploaded, stats.downloaded, stats.elapsed_time.as_secs());
 
             if let Err(e) = session.save_session() {
-                eprintln!("Warning: Failed to save session: {}", e);
+                eprintln!("Warning: Failed to save session: {e}");
             } else {
                 println!("Session saved. Use --resume to continue later.");
             }
@@ -429,57 +427,50 @@ fn render_torrent_info(frame: &mut Frame, app: &App, area: Rect) {
     lines.push(Line::from(vec![
         Span::styled("Rates:   ", Style::default().fg(Color::Gray)),
         Span::styled("↑ ", Style::default().fg(Color::Green)),
-        Span::styled(
-            format!("{:.0} KB/s", app.upload_rate),
-            Style::default().fg(Color::White),
-        ),
+        Span::styled(format!("{:.0} KB/s", app.upload_rate), Style::default().fg(Color::White)),
         Span::raw("   "),
         Span::styled("↓ ", Style::default().fg(Color::Blue)),
-        Span::styled(
-            format!("{:.0} KB/s", app.download_rate),
-            Style::default().fg(Color::White),
-        ),
+        Span::styled(format!("{:.0} KB/s", app.download_rate), Style::default().fg(Color::White)),
     ]));
 
-    let torrent_info = Paragraph::new(lines).block(Block::default().borders(Borders::ALL).title(" Torrent "));
+    let torrent_info =
+        Paragraph::new(lines).block(Block::default().borders(Borders::ALL).title(" Torrent "));
     frame.render_widget(torrent_info, area);
 }
 
 fn render_status_bar(frame: &mut Frame, app: &App, area: Rect) {
-    let (status_text, status_color) = if let Some(ref stats) = app.stats {
-        match stats.state {
+    let (status_text, status_color) =
+        app.stats.as_ref().map_or(("○ Initializing", Color::Gray), |stats| match stats.state {
             FakerState::Running => ("● Running", Color::Green),
             FakerState::Starting => ("◌ Starting", Color::Yellow),
             FakerState::Stopping => ("◼ Stopping", Color::Yellow),
             FakerState::Paused => ("⏸ Paused", Color::Yellow),
             FakerState::Stopped => ("■ Stopped", Color::Red),
             FakerState::Idle => ("○ Idle", Color::Gray),
-        }
-    } else {
-        ("○ Initializing", Color::Gray)
-    };
+        });
 
-    let seeders = app.stats.as_ref().map(|s| s.seeders).unwrap_or(0);
-    let leechers = app.stats.as_ref().map(|s| s.leechers).unwrap_or(0);
+    let seeders = app.stats.as_ref().map_or(0, |s| s.seeders);
+    let leechers = app.stats.as_ref().map_or(0, |s| s.leechers);
 
     let mut status_spans = vec![
-        Span::styled(format!(" {}", status_text), Style::default().fg(status_color)),
+        Span::styled(format!(" {status_text}"), Style::default().fg(status_color)),
         Span::raw("   "),
         Span::styled("Peers: ", Style::default().fg(Color::Gray)),
-        Span::styled(format!("{}", seeders), Style::default().fg(Color::Green)),
+        Span::styled(format!("{seeders}"), Style::default().fg(Color::Green)),
         Span::styled(" S ", Style::default().fg(Color::DarkGray)),
-        Span::styled(format!("{}", leechers), Style::default().fg(Color::Yellow)),
+        Span::styled(format!("{leechers}"), Style::default().fg(Color::Yellow)),
         Span::styled(" L", Style::default().fg(Color::DarkGray)),
     ];
 
     // Add status message if present
     if let Some(ref msg) = app.status_message {
         status_spans.push(Span::raw("   "));
-        status_spans.push(Span::styled(format!("[{}]", msg), Style::default().fg(Color::Magenta)));
+        status_spans.push(Span::styled(format!("[{msg}]"), Style::default().fg(Color::Magenta)));
     }
 
     let status_line = Line::from(status_spans);
-    let status_bar = Paragraph::new(status_line).block(Block::default().borders(Borders::ALL).title(" Status "));
+    let status_bar =
+        Paragraph::new(status_line).block(Block::default().borders(Borders::ALL).title(" Status "));
     frame.render_widget(status_bar, area);
 }
 
@@ -531,7 +522,10 @@ fn render_stats(frame: &mut Frame, app: &App, area: Rect) {
                 ),
                 Span::raw("   "),
                 Span::styled("Session: ", Style::default().fg(Color::Gray)),
-                Span::styled(format!("{:.3}", stats.session_ratio), Style::default().fg(Color::Cyan)),
+                Span::styled(
+                    format!("{:.3}", stats.session_ratio),
+                    Style::default().fg(Color::Cyan),
+                ),
                 Span::raw("   "),
                 Span::styled("This session: ", Style::default().fg(Color::Gray)),
                 Span::styled(
@@ -549,12 +543,12 @@ fn render_stats(frame: &mut Frame, app: &App, area: Rect) {
             ]),
         ];
 
-        let stats_widget =
-            Paragraph::new(stats_text).block(Block::default().borders(Borders::ALL).title(" Transfer Stats "));
+        let stats_widget = Paragraph::new(stats_text)
+            .block(Block::default().borders(Borders::ALL).title(" Transfer Stats "));
         frame.render_widget(stats_widget, area);
     } else {
-        let loading =
-            Paragraph::new(" Loading stats...").block(Block::default().borders(Borders::ALL).title(" Transfer Stats "));
+        let loading = Paragraph::new(" Loading stats...")
+            .block(Block::default().borders(Borders::ALL).title(" Transfer Stats "));
         frame.render_widget(loading, area);
     }
 }
@@ -574,10 +568,7 @@ fn render_tracker_info(frame: &mut Frame, app: &App, area: Rect) {
             let ago = Instant::now().duration_since(last).as_secs();
             spans.push(Span::raw("   "));
             spans.push(Span::styled("Last: ", Style::default().fg(Color::Gray)));
-            spans.push(Span::styled(
-                format!("{}s ago", ago),
-                Style::default().fg(Color::DarkGray),
-            ));
+            spans.push(Span::styled(format!("{ago}s ago"), Style::default().fg(Color::DarkGray)));
         }
 
         // Next announce countdown
@@ -606,7 +597,8 @@ fn render_tracker_info(frame: &mut Frame, app: &App, area: Rect) {
     }
 
     let tracker_line = Line::from(spans);
-    let tracker_info = Paragraph::new(tracker_line).block(Block::default().borders(Borders::ALL).title(" Announce "));
+    let tracker_info = Paragraph::new(tracker_line)
+        .block(Block::default().borders(Borders::ALL).title(" Announce "));
     frame.render_widget(tracker_info, area);
 }
 
@@ -641,10 +633,8 @@ fn render_progress(frame: &mut Frame, app: &App, area: Rect) {
     let inner = progress_block.inner(area);
     frame.render_widget(progress_block, area);
 
-    let progress_chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints(constraints)
-        .split(inner);
+    let progress_chunks =
+        Layout::default().direction(Direction::Vertical).constraints(constraints).split(inner);
 
     let mut chunk_idx = 0;
 
@@ -681,8 +671,7 @@ fn render_progress(frame: &mut Frame, app: &App, area: Rect) {
                 .gauge_style(Style::default().fg(Color::Green))
                 .percent(progress as u16)
                 .label(format!(
-                    "Upload: {:.2}/{:.1} GB ({:.0}%){}",
-                    current_gb, target_gb, progress, eta_str
+                    "Upload: {current_gb:.2}/{target_gb:.1} GB ({progress:.0}%){eta_str}"
                 ));
             frame.render_widget(gauge, progress_chunks[chunk_idx]);
             chunk_idx += 1;
@@ -701,8 +690,7 @@ fn render_progress(frame: &mut Frame, app: &App, area: Rect) {
                 .gauge_style(Style::default().fg(Color::Magenta))
                 .percent(progress as u16)
                 .label(format!(
-                    "Time: {:.1}/{:.1}h ({:.0}%){}",
-                    current_hours, target_hours, progress, eta_str
+                    "Time: {current_hours:.1}/{target_hours:.1}h ({progress:.0}%){eta_str}"
                 ));
             frame.render_widget(gauge, progress_chunks[chunk_idx]);
         }

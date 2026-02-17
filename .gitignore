@@ -22,7 +22,13 @@ Thumbs.db
 *.swp
 *.swo
 
+# hk local overrides
+hk.local.pkl
+
 # Config (optional - uncomment if you don't want to commit user configs)
 # rustatio.toml
 
 flatpak
+
+nyaa_torrents/
+torrents/

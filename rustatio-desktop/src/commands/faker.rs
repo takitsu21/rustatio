@@ -15,14 +15,15 @@ pub async fn start_faker(
     state: State<'_, AppState>,
     app: AppHandle,
 ) -> Result<(), String> {
-    validation::validate_rate(config.upload_rate, "upload_rate").map_err(|e| format!("{}", e))?;
-    validation::validate_rate(config.download_rate, "download_rate").map_err(|e| format!("{}", e))?;
-    validation::validate_port(config.port).map_err(|e| format!("{}", e))?;
-    validation::validate_percentage(config.completion_percent, "completion_percent").map_err(|e| format!("{}", e))?;
+    validation::validate_rate(config.upload_rate, "upload_rate").map_err(|e| format!("{e}"))?;
+    validation::validate_rate(config.download_rate, "download_rate").map_err(|e| format!("{e}"))?;
+    validation::validate_port(config.port).map_err(|e| format!("{e}"))?;
+    validation::validate_percentage(config.completion_percent, "completion_percent")
+        .map_err(|e| format!("{e}"))?;
 
     if config.randomize_rates {
         validation::validate_percentage(config.random_range_percent, "random_range_percent")
-            .map_err(|e| format!("{}", e))?;
+            .map_err(|e| format!("{e}"))?;
     }
 
     log_and_emit!(&app, instance_id, info, "Starting faker for torrent: {}", torrent.name);
@@ -78,14 +79,14 @@ pub async fn start_faker(
     let cumulative_downloaded = config_with_cumulative.initial_downloaded;
 
     let mut faker = RatioFaker::new(torrent.clone(), config_with_cumulative).map_err(|e| {
-        let error_msg = format!("Failed to create faker: {}", e);
+        let error_msg = format!("Failed to create faker: {e}");
         log_and_emit!(&app, instance_id, error, "{}", error_msg);
         error_msg
     })?;
 
     // HTTP happens here — no HashMap lock held
     faker.start().await.map_err(|e| {
-        let error_msg = format!("Failed to start faker: {}", e);
+        let error_msg = format!("Failed to start faker: {e}");
         log_and_emit!(&app, instance_id, error, "{}", error_msg);
         error_msg
     })?;
@@ -111,23 +112,26 @@ pub async fn start_faker(
 }
 
 #[tauri::command]
-pub async fn stop_faker(instance_id: u32, state: State<'_, AppState>, app: AppHandle) -> Result<(), String> {
+pub async fn stop_faker(
+    instance_id: u32,
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<(), String> {
     log_and_emit!(&app, instance_id, info, "Stopping faker");
     rustatio_core::logger::set_instance_context(Some(instance_id));
 
     // Clone the Arc under read lock, then drop the HashMap lock
     let faker = {
         let fakers = state.fakers.read().await;
-        let instance = fakers
-            .get(&instance_id)
-            .ok_or_else(|| format!("Instance {} not found", instance_id))?;
-        instance.faker.clone()
+        let instance =
+            fakers.get(&instance_id).ok_or_else(|| format!("Instance {instance_id} not found"))?;
+        Arc::clone(&instance.faker)
     };
 
     // HTTP happens here (announce Stopped) — only this instance is locked
     let final_stats = faker.read().await.get_stats().await;
     faker.write().await.stop().await.map_err(|e| {
-        let error_msg = format!("Failed to stop faker: {}", e);
+        let error_msg = format!("Failed to stop faker: {e}");
         log_and_emit!(&app, instance_id, error, "{}", error_msg);
         error_msg
     })?;
@@ -160,32 +164,28 @@ pub async fn update_faker(instance_id: u32, state: State<'_, AppState>) -> Resul
 
     let faker = {
         let fakers = state.fakers.read().await;
-        let instance = fakers
-            .get(&instance_id)
-            .ok_or_else(|| format!("Instance {} not found", instance_id))?;
-        instance.faker.clone()
+        let instance =
+            fakers.get(&instance_id).ok_or_else(|| format!("Instance {instance_id} not found"))?;
+        Arc::clone(&instance.faker)
     };
 
-    faker
-        .write()
-        .await
-        .update()
-        .await
-        .map_err(|e| format!("Failed to update faker: {}", e))?;
+    faker.write().await.update().await.map_err(|e| format!("Failed to update faker: {e}"))?;
 
     Ok(())
 }
 
 #[tauri::command]
-pub async fn update_stats_only(instance_id: u32, state: State<'_, AppState>) -> Result<FakerStats, String> {
+pub async fn update_stats_only(
+    instance_id: u32,
+    state: State<'_, AppState>,
+) -> Result<FakerStats, String> {
     rustatio_core::logger::set_instance_context(Some(instance_id));
 
     let faker = {
         let fakers = state.fakers.read().await;
-        let instance = fakers
-            .get(&instance_id)
-            .ok_or_else(|| format!("Instance {} not found", instance_id))?;
-        instance.faker.clone()
+        let instance =
+            fakers.get(&instance_id).ok_or_else(|| format!("Instance {instance_id} not found"))?;
+        Arc::clone(&instance.faker)
     };
 
     faker
@@ -193,7 +193,7 @@ pub async fn update_stats_only(instance_id: u32, state: State<'_, AppState>) -> 
         .await
         .update_stats_only()
         .await
-        .map_err(|e| format!("Failed to update stats: {}", e))?;
+        .map_err(|e| format!("Failed to update stats: {e}"))?;
 
     let stats = faker.read().await.get_stats().await;
     Ok(stats)
@@ -203,10 +203,9 @@ pub async fn update_stats_only(instance_id: u32, state: State<'_, AppState>) -> 
 pub async fn get_stats(instance_id: u32, state: State<'_, AppState>) -> Result<FakerStats, String> {
     let faker = {
         let fakers = state.fakers.read().await;
-        let instance = fakers
-            .get(&instance_id)
-            .ok_or_else(|| format!("Instance {} not found", instance_id))?;
-        instance.faker.clone()
+        let instance =
+            fakers.get(&instance_id).ok_or_else(|| format!("Instance {instance_id} not found"))?;
+        Arc::clone(&instance.faker)
     };
 
     let stats = faker.read().await.get_stats().await;
@@ -214,70 +213,63 @@ pub async fn get_stats(instance_id: u32, state: State<'_, AppState>) -> Result<F
 }
 
 #[tauri::command]
-pub async fn scrape_tracker(instance_id: u32, state: State<'_, AppState>) -> Result<(i64, i64, i64), String> {
+pub async fn scrape_tracker(
+    instance_id: u32,
+    state: State<'_, AppState>,
+) -> Result<(i64, i64, i64), String> {
     rustatio_core::logger::set_instance_context(Some(instance_id));
 
     let faker = {
         let fakers = state.fakers.read().await;
-        let instance = fakers
-            .get(&instance_id)
-            .ok_or_else(|| format!("Instance {} not found", instance_id))?;
-        instance.faker.clone()
+        let instance =
+            fakers.get(&instance_id).ok_or_else(|| format!("Instance {instance_id} not found"))?;
+        Arc::clone(&instance.faker)
     };
 
-    let scrape = faker
-        .read()
-        .await
-        .scrape()
-        .await
-        .map_err(|e| format!("Failed to scrape: {}", e))?;
+    let scrape = faker.read().await.scrape().await.map_err(|e| format!("Failed to scrape: {e}"))?;
 
     Ok((scrape.complete, scrape.incomplete, scrape.downloaded))
 }
 
 #[tauri::command]
-pub async fn pause_faker(instance_id: u32, state: State<'_, AppState>, app: AppHandle) -> Result<(), String> {
+pub async fn pause_faker(
+    instance_id: u32,
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<(), String> {
     log_and_emit!(&app, instance_id, info, "Pausing faker");
     rustatio_core::logger::set_instance_context(Some(instance_id));
 
     let faker = {
         let fakers = state.fakers.read().await;
-        let instance = fakers
-            .get(&instance_id)
-            .ok_or_else(|| format!("Instance {} not found", instance_id))?;
-        instance.faker.clone()
+        let instance =
+            fakers.get(&instance_id).ok_or_else(|| format!("Instance {instance_id} not found"))?;
+        Arc::clone(&instance.faker)
     };
 
-    faker
-        .write()
-        .await
-        .pause()
-        .await
-        .map_err(|e| format!("Failed to pause faker: {}", e))?;
+    faker.write().await.pause().await.map_err(|e| format!("Failed to pause faker: {e}"))?;
 
     log_and_emit!(&app, instance_id, info, "Faker paused successfully");
     Ok(())
 }
 
 #[tauri::command]
-pub async fn resume_faker(instance_id: u32, state: State<'_, AppState>, app: AppHandle) -> Result<(), String> {
+pub async fn resume_faker(
+    instance_id: u32,
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<(), String> {
     log_and_emit!(&app, instance_id, info, "Resuming faker");
     rustatio_core::logger::set_instance_context(Some(instance_id));
 
     let faker = {
         let fakers = state.fakers.read().await;
-        let instance = fakers
-            .get(&instance_id)
-            .ok_or_else(|| format!("Instance {} not found", instance_id))?;
-        instance.faker.clone()
+        let instance =
+            fakers.get(&instance_id).ok_or_else(|| format!("Instance {instance_id} not found"))?;
+        Arc::clone(&instance.faker)
     };
 
-    faker
-        .write()
-        .await
-        .resume()
-        .await
-        .map_err(|e| format!("Failed to resume faker: {}", e))?;
+    faker.write().await.resume().await.map_err(|e| format!("Failed to resume faker: {e}"))?;
 
     log_and_emit!(&app, instance_id, info, "Faker resumed successfully");
     Ok(())

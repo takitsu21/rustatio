@@ -1,4 +1,10 @@
-# Clippy linting configuration
-# Warn on common mistakes
-cognitive-complexity-threshold = 30
-type-complexity-threshold = 250
+cognitive-complexity-threshold = 15
+type-complexity-threshold = 200
+too-many-arguments-threshold = 5
+too-many-lines-threshold = 60
+excessive-nesting-threshold = 6
+single-char-binding-names-threshold = 1
+max-fn-params-bools = 2
+max-struct-bools = 3
+trivial-copy-size-limit = 8
+allow-unwrap-in-tests = true

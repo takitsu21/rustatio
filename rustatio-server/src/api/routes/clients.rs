@@ -1,4 +1,4 @@
-//! BitTorrent client information endpoints.
+//! `BitTorrent` client information endpoints.
 
 use axum::{response::Response, routing::get, Router};
 use rustatio_core::ClientType;
@@ -18,7 +18,7 @@ pub struct ClientInfoResponse {
 
 impl From<rustatio_core::ClientInfo> for ClientInfoResponse {
     fn from(info: rustatio_core::ClientInfo) -> Self {
-        ClientInfoResponse {
+        Self {
             id: info.id,
             name: info.name,
             default_version: info.default_version,
@@ -57,7 +57,8 @@ pub async fn get_client_types() -> Response {
     )
 )]
 pub async fn get_client_infos() -> Response {
-    let infos: Vec<ClientInfoResponse> = ClientType::all_infos().into_iter().map(|i| i.into()).collect();
+    let infos: Vec<ClientInfoResponse> =
+        ClientType::all_infos().into_iter().map(std::convert::Into::into).collect();
     ApiSuccess::response(infos)
 }
 
