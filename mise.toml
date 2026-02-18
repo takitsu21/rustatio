@@ -15,6 +15,17 @@ rust = { version = "latest", components = "rustfmt,clippy" }
 # WASM tools
 "github:WebAssembly/binaryen" = "latest"
 
+# Git hooks manager + config language
+hk = "latest"
+pkl = "latest"
+
+# Linters for infrastructure files
+actionlint = "latest"
+shellcheck = "latest"
+hadolint = "latest"
+typos = "latest"
+zizmor = "latest"
+
 [env]
 CARGO_TERM_COLOR = "always"
 RUST_BACKTRACE = "1"
@@ -97,41 +108,6 @@ run = [
     "echo '✅ All tests passed!'"
 ]
 
-[tasks.lint]
-description = "Run all linters"
-run = [
-    "echo '🔍 Linting Rust code...'",
-    "cargo clippy --all-targets --all-features -- -D warnings",
-    "echo '🔍 Linting UI code...'",
-    "cd ui && npm run lint",
-    "echo '✅ All linting passed!'"
-]
-
-[tasks.format]
-description = "Format all code"
-run = [
-    "echo '💅 Formatting Rust code...'",
-    "cargo fmt",
-    "echo '💅 Formatting UI code...'",
-    "cd ui && npm run format",
-    "echo '✅ All code formatted!'"
-]
-
-[tasks.format-check]
-description = "Check code formatting without modifying"
-run = [
-    "echo '🔍 Checking Rust formatting...'",
-    "cargo fmt --check",
-    "echo '🔍 Checking UI formatting...'",
-    "cd ui && npm run format:check",
-    "echo '✅ Format check complete!'"
-]
-
-[tasks.check]
-description = "Run all checks (format, lint, test)"
-depends = ["format-check", "lint", "test"]
-run = "echo '✅ All checks passed!'"
-
 [tasks.clean]
 description = "Clean build artifacts"
 run = [
@@ -184,41 +160,30 @@ run = [
     "echo '✅ UI dependencies installed!'"
 ]
 
-[tasks."ci:format"]
-description = "Check code formatting"
-depends = ["ci:install"]
-run = [
-    "echo '🔍 Checking Rust formatting...'",
-    "cargo fmt --check -p rustatio-core -p rustatio-wasm -p rustatio-cli",
-    "echo '🔍 Checking UI formatting...'",
-    "cd ui && npm run format:check",
-    "echo '✅ Format check complete!'"
-]
-
 [tasks."ci:lint"]
-description = "Lint code"
+description = "Run non-Rust lint and format checks via hk"
 depends = ["ci:install"]
 run = [
-    "echo '🔍 Linting Rust code...'",
-    "cargo clippy -p rustatio-core -p rustatio-wasm -p rustatio-cli --all-targets --all-features -- -D warnings",
-    "echo '🔍 Linting UI code...'",
-    "cd ui && npm run lint",
-    "echo '✅ All linting passed!'"
+    "echo '🔍 Running lint checks (non-Rust)...'",
+    "hk check --all --skip-step cargo-clippy",
+    "echo '✅ Lint checks passed!'"
 ]
 
-[tasks."ci:test"]
-description = "Run tests"
+[tasks."ci:rust"]
+description = "Run Rust clippy and tests"
 depends = ["ci:install"]
 run = [
+    "echo '🔍 Running cargo clippy...'",
+    "hk check --all --step cargo-clippy",
     "echo '🧪 Running Rust tests...'",
     "cargo test -p rustatio-core -p rustatio-cli",
-    "echo '✅ All tests passed!'"
+    "echo '✅ Rust checks passed!'"
 ]
 
 [tasks.ci]
-description = "Run all CI checks"
-depends = ["ci:format", "ci:lint", "ci:test"]
-run = "echo '✅ CI checks passed!'"
+description = "Run all CI checks (lint + rust)"
+depends = ["ci:lint", "ci:rust"]
+run = "echo '✅ All CI checks passed!'"
 
 # UI tasks
 [tasks."ui:install"]
@@ -297,18 +262,13 @@ run = "cargo doc --open --no-deps"
 description = "Show current version"
 run = "grep '^version' Cargo.toml | head -1"
 
+[tasks.fix]
+description = "Auto-fix lint and formatting issues"
+run = "hk fix --all"
+
 # Convenience aliases
 [tasks.b]
 alias = "build"
 
 [tasks.t]
 alias = "test"
-
-[tasks.l]
-alias = "lint"
-
-[tasks.f]
-alias = "format"
-
-[tasks.c]
-alias = "check"

@@ -15,26 +15,15 @@ impl LogEvent {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_millis() as u64;
-        Self {
-            timestamp,
-            level: level.to_string(),
-            message,
-        }
+        Self { timestamp, level: level.to_string(), message }
     }
 }
 
 #[derive(Clone, Debug, Serialize, ToSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum InstanceEvent {
-    Created {
-        id: String,
-        torrent_name: String,
-        info_hash: String,
-        auto_started: bool,
-    },
-    Deleted {
-        id: String,
-    },
+    Created { id: String, torrent_name: String, info_hash: String, auto_started: bool },
+    Deleted { id: String },
 }
 
 pub trait EventBroadcaster {

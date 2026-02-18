@@ -5,7 +5,9 @@ use axum::{
     routing::{get, post, put},
     Json, Router,
 };
-use rustatio_core::{FakerConfig, GridImportSettings, InstanceSummary, PresetSettings, TorrentInfo};
+use rustatio_core::{
+    FakerConfig, GridImportSettings, InstanceSummary, PresetSettings, TorrentInfo,
+};
 use serde::{Deserialize, Serialize};
 use tokio::task::JoinSet;
 
@@ -89,30 +91,33 @@ pub async fn grid_import(State(state): State<ServerState>, mut multipart: Multip
                     Ok(text) => match serde_json::from_str::<GridImportSettings>(&text) {
                         Ok(c) => config = c,
                         Err(e) => {
-                            return ApiError::response(StatusCode::BAD_REQUEST, format!("Invalid config JSON: {}", e));
+                            return ApiError::response(
+                                StatusCode::BAD_REQUEST,
+                                format!("Invalid config JSON: {e}"),
+                            );
                         }
                     },
                     Err(e) => {
                         return ApiError::response(
                             StatusCode::BAD_REQUEST,
-                            format!("Failed to read config field: {}", e),
+                            format!("Failed to read config field: {e}"),
                         );
                     }
                 },
-                Some("files") | Some("file") => {
+                Some("files" | "file") => {
                     let filename = field.file_name().unwrap_or("unknown").to_string();
                     match field.bytes().await {
                         Ok(bytes) => match TorrentInfo::from_bytes(&bytes) {
                             Ok(torrent) => {
-                                let id = state.app.next_instance_id().await;
+                                let id = state.app.next_instance_id();
                                 torrents.push((id, torrent));
                             }
                             Err(e) => {
-                                errors.push(format!("{}: {}", filename, e));
+                                errors.push(format!("{filename}: {e}"));
                             }
                         },
                         Err(e) => {
-                            errors.push(format!("{}: failed to read: {}", filename, e));
+                            errors.push(format!("{filename}: failed to read: {e}"));
                         }
                     }
                 }
@@ -120,7 +125,7 @@ pub async fn grid_import(State(state): State<ServerState>, mut multipart: Multip
             },
             Ok(None) => break,
             Err(e) => {
-                errors.push(format!("Multipart parse error: {}", e));
+                errors.push(format!("Multipart parse error: {e}"));
                 break;
             }
         }
@@ -206,7 +211,7 @@ pub async fn grid_import_folder(
         Err(e) => {
             return ApiError::response(
                 StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to read directory: {}", e),
+                format!("Failed to read directory: {e}"),
             );
         }
     };
@@ -224,18 +229,18 @@ pub async fn grid_import_folder(
                 Ok(torrent) => {
                     // Skip if already imported (same info_hash)
                     if state.app.find_instance_by_info_hash(&torrent.info_hash).await.is_some() {
-                        errors.push(format!("{}: already imported", filename));
+                        errors.push(format!("{filename}: already imported"));
                         continue;
                     }
-                    let id = state.app.next_instance_id().await;
+                    let id = state.app.next_instance_id();
                     torrents.push((id, torrent));
                 }
                 Err(e) => {
-                    errors.push(format!("{}: {}", filename, e));
+                    errors.push(format!("{filename}: {e}"));
                 }
             },
             Err(e) => {
-                errors.push(format!("{}: failed to read: {}", filename, e));
+                errors.push(format!("{filename}: failed to read: {e}"));
             }
         }
     }
@@ -294,7 +299,10 @@ pub async fn grid_import_folder(
     ApiSuccess::response(GridImportResponse { imported, errors })
 }
 
-pub async fn grid_start(State(state): State<ServerState>, Json(request): Json<GridIdsRequest>) -> Response {
+pub async fn grid_start(
+    State(state): State<ServerState>,
+    Json(request): Json<GridIdsRequest>,
+) -> Response {
     let ids = request.ids;
     tokio::spawn(async move {
         for id in &ids {
@@ -303,13 +311,13 @@ pub async fn grid_start(State(state): State<ServerState>, Json(request): Json<Gr
             }
         }
     });
-    ApiSuccess::response(GridActionResponse {
-        succeeded: Vec::new(),
-        failed: Vec::new(),
-    })
+    ApiSuccess::response(GridActionResponse { succeeded: Vec::new(), failed: Vec::new() })
 }
 
-pub async fn grid_stop(State(state): State<ServerState>, Json(request): Json<GridIdsRequest>) -> Response {
+pub async fn grid_stop(
+    State(state): State<ServerState>,
+    Json(request): Json<GridIdsRequest>,
+) -> Response {
     let ids = request.ids;
     tokio::spawn(async move {
         for id in &ids {
@@ -318,23 +326,29 @@ pub async fn grid_stop(State(state): State<ServerState>, Json(request): Json<Gri
             }
         }
     });
-    ApiSuccess::response(GridActionResponse {
-        succeeded: Vec::new(),
-        failed: Vec::new(),
-    })
+    ApiSuccess::response(GridActionResponse { succeeded: Vec::new(), failed: Vec::new() })
 }
 
-pub async fn grid_pause(State(state): State<ServerState>, Json(request): Json<GridIdsRequest>) -> Response {
+pub async fn grid_pause(
+    State(state): State<ServerState>,
+    Json(request): Json<GridIdsRequest>,
+) -> Response {
     let (succeeded, failed) = grid_action_concurrent(&state, request.ids, GridAction::Pause).await;
     ApiSuccess::response(GridActionResponse { succeeded, failed })
 }
 
-pub async fn grid_resume(State(state): State<ServerState>, Json(request): Json<GridIdsRequest>) -> Response {
+pub async fn grid_resume(
+    State(state): State<ServerState>,
+    Json(request): Json<GridIdsRequest>,
+) -> Response {
     let (succeeded, failed) = grid_action_concurrent(&state, request.ids, GridAction::Resume).await;
     ApiSuccess::response(GridActionResponse { succeeded, failed })
 }
 
-pub async fn grid_delete(State(state): State<ServerState>, Json(request): Json<GridIdsRequest>) -> Response {
+pub async fn grid_delete(
+    State(state): State<ServerState>,
+    Json(request): Json<GridIdsRequest>,
+) -> Response {
     let (succeeded, failed) = grid_action_concurrent(&state, request.ids, GridAction::Delete).await;
     ApiSuccess::response(GridActionResponse { succeeded, failed })
 }
@@ -351,22 +365,18 @@ pub async fn grid_update_config(
     for id in &request.ids {
         match state.app.update_instance_config(id, faker_config.clone()).await {
             Ok(()) => succeeded.push(id.clone()),
-            Err(e) => failed.push(GridActionError {
-                id: id.clone(),
-                error: e,
-            }),
+            Err(e) => failed.push(GridActionError { id: id.clone(), error: e }),
         }
     }
 
     ApiSuccess::response(GridActionResponse { succeeded, failed })
 }
 
-pub async fn grid_tag(State(state): State<ServerState>, Json(request): Json<GridTagRequest>) -> Response {
-    match state
-        .app
-        .grid_update_tags(&request.ids, &request.add_tags, &request.remove_tags)
-        .await
-    {
+pub async fn grid_tag(
+    State(state): State<ServerState>,
+    Json(request): Json<GridTagRequest>,
+) -> Response {
+    match state.app.grid_update_tags(&request.ids, &request.add_tags, &request.remove_tags).await {
         Ok(count) => ApiSuccess::response(serde_json::json!({ "updated": count })),
         Err(e) => ApiError::response(StatusCode::INTERNAL_SERVER_ERROR, e),
     }
@@ -400,10 +410,8 @@ pub async fn grid_bulk_update_configs(
     let pairs: Vec<(String, FakerConfig)> = entries.into_iter().map(|e| (e.id, e.config)).collect();
     let (succeeded, failed_pairs) = state.app.bulk_update_configs(pairs).await;
 
-    let failed = failed_pairs
-        .into_iter()
-        .map(|(id, error)| GridActionError { id, error })
-        .collect();
+    let failed =
+        failed_pairs.into_iter().map(|(id, error)| GridActionError { id, error }).collect();
 
     ApiSuccess::response(GridActionResponse { succeeded, failed })
 }

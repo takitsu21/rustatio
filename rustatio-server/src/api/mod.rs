@@ -1,4 +1,4 @@
-//! HTTP API module - router assembly, OpenAPI documentation, and shared types.
+//! HTTP API module - router assembly, `OpenAPI` documentation, and shared types.
 
 pub mod common;
 pub mod middleware;
@@ -41,6 +41,7 @@ impl Modify for SecurityAddon {
     }
 }
 
+#[allow(clippy::needless_for_each)]
 #[derive(OpenApi)]
 #[openapi(
     info(

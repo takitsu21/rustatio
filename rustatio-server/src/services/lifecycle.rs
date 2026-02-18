@@ -2,6 +2,7 @@ use super::state::AppState;
 use async_trait::async_trait;
 use rustatio_core::logger::set_instance_context_str;
 use rustatio_core::FakerStats;
+use std::sync::Arc;
 
 #[async_trait]
 pub trait InstanceLifecycle {
@@ -21,7 +22,7 @@ impl InstanceLifecycle for AppState {
         let faker = {
             let instances = self.instances.read().await;
             let instance = instances.get(id).ok_or("Instance not found")?;
-            instance.faker.clone()
+            Arc::clone(&instance.faker)
         };
 
         faker.write().await.start().await.map_err(|e| e.to_string())?;
@@ -35,7 +36,7 @@ impl InstanceLifecycle for AppState {
         let faker = {
             let instances = self.instances.read().await;
             let instance = instances.get(id).ok_or("Instance not found")?;
-            instance.faker.clone()
+            Arc::clone(&instance.faker)
         };
 
         let stats = faker.read().await.get_stats().await;
@@ -59,7 +60,7 @@ impl InstanceLifecycle for AppState {
         let faker = {
             let instances = self.instances.read().await;
             let instance = instances.get(id).ok_or("Instance not found")?;
-            instance.faker.clone()
+            Arc::clone(&instance.faker)
         };
 
         faker.write().await.pause().await.map_err(|e| e.to_string())?;
@@ -73,7 +74,7 @@ impl InstanceLifecycle for AppState {
         let faker = {
             let instances = self.instances.read().await;
             let instance = instances.get(id).ok_or("Instance not found")?;
-            instance.faker.clone()
+            Arc::clone(&instance.faker)
         };
 
         faker.write().await.resume().await.map_err(|e| e.to_string())?;
@@ -87,7 +88,7 @@ impl InstanceLifecycle for AppState {
         let faker = {
             let instances = self.instances.read().await;
             let instance = instances.get(id).ok_or("Instance not found")?;
-            instance.faker.clone()
+            Arc::clone(&instance.faker)
         };
 
         faker.write().await.update().await.map_err(|e| e.to_string())?;
@@ -101,15 +102,10 @@ impl InstanceLifecycle for AppState {
         let faker = {
             let instances = self.instances.read().await;
             let instance = instances.get(id).ok_or("Instance not found")?;
-            instance.faker.clone()
+            Arc::clone(&instance.faker)
         };
 
-        faker
-            .write()
-            .await
-            .update_stats_only()
-            .await
-            .map_err(|e| e.to_string())?;
+        faker.write().await.update_stats_only().await.map_err(|e| e.to_string())?;
         let stats = faker.read().await.get_stats().await;
         Ok(stats)
     }

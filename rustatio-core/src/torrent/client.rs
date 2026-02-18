@@ -1,7 +1,8 @@
 use rand::Rng;
 use serde::{Deserialize, Serialize};
+use std::fmt::Write;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum ClientType {
     #[serde(rename = "utorrent")]
     UTorrent,
@@ -32,14 +33,8 @@ pub struct ClientInfo {
 
 impl ClientType {
     /// Get all available client types
-    pub fn all() -> Vec<ClientType> {
-        vec![
-            ClientType::UTorrent,
-            ClientType::QBittorrent,
-            ClientType::Transmission,
-            ClientType::Deluge,
-            ClientType::BitTorrent,
-        ]
+    pub fn all() -> Vec<Self> {
+        vec![Self::UTorrent, Self::QBittorrent, Self::Transmission, Self::Deluge, Self::BitTorrent]
     }
 
     /// Get all client type IDs as strings
@@ -49,18 +44,18 @@ impl ClientType {
 
     /// Get all client infos
     pub fn all_infos() -> Vec<ClientInfo> {
-        Self::all().iter().map(|c| c.info()).collect()
+        Self::all().iter().map(Self::info).collect()
     }
 
     /// Parse a client type from its string ID
-    pub fn from_id(id: &str) -> Option<ClientType> {
+    pub fn from_id(id: &str) -> Option<Self> {
         Self::all().into_iter().find(|c| c.info().id == id)
     }
 
     /// Get full metadata for this client type
     pub fn info(&self) -> ClientInfo {
         match self {
-            ClientType::UTorrent => ClientInfo {
+            Self::UTorrent => ClientInfo {
                 id: "utorrent".to_string(),
                 name: "µTorrent".to_string(),
                 default_version: "3.5.5".to_string(),
@@ -74,7 +69,7 @@ impl ClientType {
                 ],
                 default_port: 6881,
             },
-            ClientType::QBittorrent => ClientInfo {
+            Self::QBittorrent => ClientInfo {
                 id: "qbittorrent".to_string(),
                 name: "qBittorrent".to_string(),
                 default_version: "5.1.4".to_string(),
@@ -88,7 +83,7 @@ impl ClientType {
                 ],
                 default_port: 6881,
             },
-            ClientType::Transmission => ClientInfo {
+            Self::Transmission => ClientInfo {
                 id: "transmission".to_string(),
                 name: "Transmission".to_string(),
                 default_version: "4.0.5".to_string(),
@@ -102,7 +97,7 @@ impl ClientType {
                 ],
                 default_port: 51413,
             },
-            ClientType::Deluge => ClientInfo {
+            Self::Deluge => ClientInfo {
                 id: "deluge".to_string(),
                 name: "Deluge".to_string(),
                 default_version: "2.1.1".to_string(),
@@ -114,7 +109,7 @@ impl ClientType {
                 ],
                 default_port: 6881,
             },
-            ClientType::BitTorrent => ClientInfo {
+            Self::BitTorrent => ClientInfo {
                 id: "bittorrent".to_string(),
                 name: "BitTorrent".to_string(),
                 default_version: "7.11.0".to_string(),
@@ -173,11 +168,11 @@ impl ClientConfig {
         // Pad to exactly 4 characters
         let padded_version = version_code.pad_to_width_with_char(4, '0');
 
-        ClientConfig {
+        Self {
             client_type: ClientType::UTorrent,
             version: version.clone(),
-            peer_id_prefix: format!("-UT{}-", padded_version),
-            user_agent: format!("uTorrent/{}", version),
+            peer_id_prefix: format!("-UT{padded_version}-"),
+            user_agent: format!("uTorrent/{version}"),
             http_version: HttpVersion::Http11,
             num_want: 200,
             supports_compact: true,
@@ -199,11 +194,11 @@ impl ClientConfig {
         // Pad to exactly 4 characters
         let padded_version = version_code.pad_to_width_with_char(4, '0');
 
-        ClientConfig {
+        Self {
             client_type: ClientType::QBittorrent,
             version: version.clone(),
-            peer_id_prefix: format!("-qB{}-", padded_version),
-            user_agent: format!("qBittorrent/{}", version),
+            peer_id_prefix: format!("-qB{padded_version}-"),
+            user_agent: format!("qBittorrent/{version}"),
             http_version: HttpVersion::Http11,
             num_want: 200,
             supports_compact: true,
@@ -225,11 +220,11 @@ impl ClientConfig {
         // Pad to exactly 4 characters
         let padded_version = version_code.pad_to_width_with_char(4, '0');
 
-        ClientConfig {
+        Self {
             client_type: ClientType::Transmission,
             version: version.clone(),
-            peer_id_prefix: format!("-TR{}-", padded_version),
-            user_agent: format!("Transmission/{}", version),
+            peer_id_prefix: format!("-TR{padded_version}-"),
+            user_agent: format!("Transmission/{version}"),
             http_version: HttpVersion::Http11,
             num_want: 80,
             supports_compact: true,
@@ -251,11 +246,11 @@ impl ClientConfig {
         // Pad to exactly 4 characters
         let padded_version = version_code.pad_to_width_with_char(4, '0');
 
-        ClientConfig {
+        Self {
             client_type: ClientType::Deluge,
             version: version.clone(),
-            peer_id_prefix: format!("-DE{}-", padded_version),
-            user_agent: format!("Deluge/{}", version),
+            peer_id_prefix: format!("-DE{padded_version}-"),
+            user_agent: format!("Deluge/{version}"),
             http_version: HttpVersion::Http11,
             num_want: 200,
             supports_compact: true,
@@ -263,7 +258,7 @@ impl ClientConfig {
         }
     }
 
-    /// BitTorrent client configuration
+    /// `BitTorrent` client configuration
     fn bittorrent(version: Option<String>) -> Self {
         let info = ClientType::BitTorrent.info();
         let version = version.unwrap_or(info.default_version);
@@ -277,11 +272,11 @@ impl ClientConfig {
         // Pad to exactly 4 characters
         let padded_version = version_code.pad_to_width_with_char(4, '0');
 
-        ClientConfig {
+        Self {
             client_type: ClientType::BitTorrent,
             version: version.clone(),
-            peer_id_prefix: format!("-BT{}-", padded_version),
-            user_agent: format!("BitTorrent/{}", version),
+            peer_id_prefix: format!("-BT{padded_version}-"),
+            user_agent: format!("BitTorrent/{version}"),
             http_version: HttpVersion::Http11,
             num_want: 200,
             supports_compact: true,
@@ -305,7 +300,10 @@ impl ClientConfig {
     /// Generate a random key (8 hex characters)
     pub fn generate_key() -> String {
         let mut rng = rand::rng();
-        (0..8).map(|_| format!("{:X}", rng.random_range(0..16))).collect()
+        (0..8).fold(String::new(), |mut acc, _| {
+            let _ = write!(acc, "{:X}", rng.random_range(0..16));
+            acc
+        })
     }
 }
 

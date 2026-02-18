@@ -12,11 +12,11 @@ pub enum GridMode {
 }
 
 impl GridMode {
-    pub fn completion_percent(&self) -> f64 {
+    pub const fn completion_percent(&self) -> f64 {
         match self {
-            GridMode::Seed => 100.0,
-            GridMode::Leech => 0.0,
-            GridMode::Custom(pct) => pct.clamp(0.0, 100.0),
+            Self::Seed => 100.0,
+            Self::Leech => 0.0,
+            Self::Custom(pct) => pct.clamp(0.0, 100.0),
         }
     }
 }
@@ -44,7 +44,7 @@ impl GridImportSettings {
         config.completion_percent = Some(self.mode.completion_percent());
 
         if let Some(ref client) = self.client_type {
-            config.selected_client = Some(client.clone());
+            config.selected_client = Some(*client);
         }
 
         if let Some(ref version) = self.client_version {
@@ -100,10 +100,7 @@ mod tests {
 
     #[test]
     fn test_resolve_for_instance_applies_mode() {
-        let settings = GridImportSettings {
-            mode: GridMode::Leech,
-            ..Default::default()
-        };
+        let settings = GridImportSettings { mode: GridMode::Leech, ..Default::default() };
         let resolved = settings.resolve_for_instance();
         assert_eq!(resolved.completion_percent, Some(0.0));
     }

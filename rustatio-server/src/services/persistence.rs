@@ -40,11 +40,7 @@ pub struct PersistedState {
 
 impl PersistedState {
     pub fn new() -> Self {
-        Self {
-            instances: HashMap::new(),
-            default_config: None,
-            version: 1,
-        }
+        Self { instances: HashMap::new(), default_config: None, version: 1 }
     }
 }
 
@@ -54,9 +50,7 @@ pub struct Persistence {
 
 impl Persistence {
     pub fn new(data_dir: &str) -> Self {
-        Self {
-            state_file: format!("{}/state.json", data_dir),
-        }
+        Self { state_file: format!("{data_dir}/state.json") }
     }
 
     pub async fn load(&self) -> PersistedState {
@@ -99,28 +93,25 @@ impl Persistence {
     pub async fn save(&self, state: &PersistedState) -> Result<(), String> {
         if let Some(parent) = Path::new(&self.state_file).parent() {
             if let Err(e) = fs::create_dir_all(parent).await {
-                return Err(format!("Failed to create data directory: {}", e));
+                return Err(format!("Failed to create data directory: {e}"));
             }
         }
 
-        let json = serde_json::to_string_pretty(state).map_err(|e| format!("Failed to serialize state: {}", e))?;
+        let json = serde_json::to_string_pretty(state)
+            .map_err(|e| format!("Failed to serialize state: {e}"))?;
         let temp_file = format!("{}.tmp", self.state_file);
 
         let mut file = fs::File::create(&temp_file)
             .await
-            .map_err(|e| format!("Failed to create temp file: {}", e))?;
+            .map_err(|e| format!("Failed to create temp file: {e}"))?;
 
-        file.write_all(json.as_bytes())
-            .await
-            .map_err(|e| format!("Failed to write state: {}", e))?;
+        file.write_all(json.as_bytes()).await.map_err(|e| format!("Failed to write state: {e}"))?;
 
-        file.sync_all()
-            .await
-            .map_err(|e| format!("Failed to sync state file: {}", e))?;
+        file.sync_all().await.map_err(|e| format!("Failed to sync state file: {e}"))?;
 
         fs::rename(&temp_file, &self.state_file)
             .await
-            .map_err(|e| format!("Failed to rename state file: {}", e))?;
+            .map_err(|e| format!("Failed to rename state file: {e}"))?;
 
         tracing::debug!("State saved to {}", self.state_file);
         Ok(())
@@ -128,8 +119,5 @@ impl Persistence {
 }
 
 pub fn now_timestamp() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs()
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs()
 }

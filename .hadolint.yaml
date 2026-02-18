@@ -1,0 +1,7 @@
+# hadolint configuration
+# https://github.com/hadolint/hadolint
+
+ignored:
+  # Pinning apt package versions is impractical for multi-stage Docker builds
+  # where exact versions vary across distro releases
+  - DL3008  # Pin versions in apt-get install

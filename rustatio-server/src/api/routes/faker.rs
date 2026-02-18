@@ -169,7 +169,10 @@ pub async fn update_faker(State(state): State<ServerState>, Path(id): Path<Strin
         (status = 404, description = "Instance not found", body = ApiError)
     )
 )]
-pub async fn update_stats_only(State(state): State<ServerState>, Path(id): Path<String>) -> Response {
+pub async fn update_stats_only(
+    State(state): State<ServerState>,
+    Path(id): Path<String>,
+) -> Response {
     match state.app.update_stats_only(&id).await {
         Ok(stats) => ApiSuccess::response(stats),
         Err(e) => ApiError::response(StatusCode::NOT_FOUND, e),

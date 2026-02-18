@@ -19,7 +19,7 @@ pub async fn static_handler(uri: Uri) -> impl IntoResponse {
             .status(StatusCode::OK)
             .header(header::CONTENT_TYPE, mime.as_ref())
             .body(Body::from(content.data.into_owned()))
-            .unwrap();
+            .expect("building static file response");
     }
 
     // For SPA routing, serve index.html for non-asset paths
@@ -29,7 +29,7 @@ pub async fn static_handler(uri: Uri) -> impl IntoResponse {
                 .status(StatusCode::OK)
                 .header(header::CONTENT_TYPE, "text/html")
                 .body(Body::from(content.data.into_owned()))
-                .unwrap();
+                .expect("building index.html response");
         }
     }
 
@@ -37,5 +37,5 @@ pub async fn static_handler(uri: Uri) -> impl IntoResponse {
     Response::builder()
         .status(StatusCode::NOT_FOUND)
         .body(Body::from("Not Found"))
-        .unwrap()
+        .expect("building 404 response")
 }

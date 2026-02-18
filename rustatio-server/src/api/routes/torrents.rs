@@ -49,19 +49,25 @@ pub async fn load_torrent(State(_state): State<ServerState>, mut multipart: Mult
                             Err(e) => {
                                 return ApiError::response(
                                     StatusCode::BAD_REQUEST,
-                                    format!("Failed to parse torrent: {}", e),
+                                    format!("Failed to parse torrent: {e}"),
                                 );
                             }
                         },
                         Err(e) => {
-                            return ApiError::response(StatusCode::BAD_REQUEST, format!("Failed to read file: {}", e));
+                            return ApiError::response(
+                                StatusCode::BAD_REQUEST,
+                                format!("Failed to read file: {e}"),
+                            );
                         }
                     }
                 }
             }
             Ok(None) => break,
             Err(e) => {
-                return ApiError::response(StatusCode::BAD_REQUEST, format!("Failed to parse upload: {}", e));
+                return ApiError::response(
+                    StatusCode::BAD_REQUEST,
+                    format!("Failed to parse upload: {e}"),
+                );
             }
         }
     }

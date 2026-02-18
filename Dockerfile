@@ -1,11 +1,12 @@
 # Build stage for the Rust server
-FROM rust:1.93-slim-bookworm AS builder
+FROM rust:1.93.1-slim-bookworm AS builder
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y \
     pkg-config \
     libssl-dev \
     curl \
+    --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -30,6 +31,7 @@ RUN apt-get update && apt-get install -y \
     ca-certificates \
     curl \
     gosu \
+    --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user (will be modified at runtime via PUID/PGID)

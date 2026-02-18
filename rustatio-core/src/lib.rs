@@ -10,5 +10,7 @@ pub mod validation;
 pub use config::{AppConfig, ClientSettings, ConfigError, FakerSettings, UiSettings};
 pub use faker::{FakerConfig, FakerError, FakerState, FakerStats, PresetSettings, RatioFaker};
 pub use grid::{GridImportSettings, GridMode, InstanceSummary};
-pub use torrent::{ClientConfig, ClientInfo, ClientType, HttpVersion, TorrentError, TorrentFile, TorrentInfo};
+pub use torrent::{
+    ClientConfig, ClientInfo, ClientType, HttpVersion, TorrentError, TorrentFile, TorrentInfo,
+};
 pub use validation::*;

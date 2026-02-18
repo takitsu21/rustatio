@@ -26,7 +26,9 @@ use crate::services::EventBroadcaster;
         (status = 401, description = "Unauthorized", body = crate::api::common::ApiError)
     )
 )]
-pub async fn logs_sse(State(state): State<ServerState>) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+pub async fn logs_sse(
+    State(state): State<ServerState>,
+) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
     let rx = state.app.subscribe_logs();
 
     let stream = BroadcastStream::new(rx).filter_map(|result| {
@@ -53,7 +55,9 @@ pub async fn logs_sse(State(state): State<ServerState>) -> Sse<impl Stream<Item 
         (status = 401, description = "Unauthorized", body = crate::api::common::ApiError)
     )
 )]
-pub async fn instances_sse(State(state): State<ServerState>) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+pub async fn instances_sse(
+    State(state): State<ServerState>,
+) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
     let rx = state.app.subscribe_instance_events();
 
     let stream = BroadcastStream::new(rx).filter_map(|result| {
@@ -69,7 +73,5 @@ pub async fn instances_sse(State(state): State<ServerState>) -> Sse<impl Stream<
 }
 
 pub fn router() -> Router<ServerState> {
-    Router::new()
-        .route("/logs", get(logs_sse))
-        .route("/events", get(instances_sse))
+    Router::new().route("/logs", get(logs_sse)).route("/events", get(instances_sse))
 }

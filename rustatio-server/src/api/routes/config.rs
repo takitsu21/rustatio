@@ -45,7 +45,10 @@ pub async fn get_default_config(State(state): State<ServerState>) -> Response {
         (status = 500, description = "Failed to save configuration", body = ApiError)
     )
 )]
-pub async fn set_default_config(State(state): State<ServerState>, Json(preset): Json<PresetSettings>) -> Response {
+pub async fn set_default_config(
+    State(state): State<ServerState>,
+    Json(preset): Json<PresetSettings>,
+) -> Response {
     let config: FakerConfig = preset.into();
     match state.app.set_default_config(Some(config)).await {
         Ok(()) => ApiSuccess::response(EmptyData {}),

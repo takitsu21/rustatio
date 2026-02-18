@@ -1,7 +1,7 @@
 use crate::cli::ClientArg;
 use crate::json::{
-    AnnounceEvent, AnnounceType, InputCommand, OutputEvent, ScrapeEvent, StartedEvent, StatsEvent, StopReason,
-    StoppedEvent,
+    AnnounceEvent, AnnounceType, InputCommand, OutputEvent, ScrapeEvent, StartedEvent, StatsEvent,
+    StopReason, StoppedEvent,
 };
 use crate::session::Session;
 use anyhow::{Context, Result};
@@ -71,22 +71,19 @@ pub async fn run_json_mode(config: RunnerConfig) -> Result<()> {
 
     // Get client info for started event
     let client_type: ClientType = config.client.into();
-    let client_config = ClientConfig::get(client_type.clone(), config.client_version.clone());
+    let client_config = ClientConfig::get(client_type, config.client_version.clone());
 
     // Create faker
-    let mut faker =
-        RatioFaker::new(torrent, faker_config).map_err(|e| anyhow::anyhow!("Failed to create faker: {}", e))?;
+    let mut faker = RatioFaker::new(torrent, faker_config)
+        .map_err(|e| anyhow::anyhow!("Failed to create faker: {e}"))?;
 
     // Start faker
-    faker
-        .start()
-        .await
-        .map_err(|e| anyhow::anyhow!("Failed to start faker: {}", e))?;
+    faker.start().await.map_err(|e| anyhow::anyhow!("Failed to start faker: {e}"))?;
 
     // Emit started event
     OutputEvent::Started(StartedEvent {
         peer_id: client_config.generate_peer_id(),
-        client: format!("{:?}", client_type),
+        client: format!("{client_type:?}"),
         client_version: client_config.version.clone(),
         port: config.port,
         timestamp: Utc::now(),
@@ -109,7 +106,7 @@ pub async fn run_json_mode(config: RunnerConfig) -> Result<()> {
 
     // Setup shutdown flag
     let shutdown = Arc::new(AtomicBool::new(false));
-    let shutdown_clone = shutdown.clone();
+    let shutdown_clone = Arc::clone(&shutdown);
 
     // Setup Ctrl+C handler
     let cmd_tx_ctrlc = cmd_tx.clone();
@@ -155,7 +152,7 @@ pub async fn run_json_mode(config: RunnerConfig) -> Result<()> {
 
                 // Update stats
                 if let Err(e) = faker.update().await {
-                    OutputEvent::error(format!("Update error: {}", e)).emit();
+                    OutputEvent::error(format!("Update error: {e}")).emit();
                 }
 
                 let stats = faker.get_stats().await;
@@ -174,14 +171,14 @@ pub async fn run_json_mode(config: RunnerConfig) -> Result<()> {
                 match cmd {
                     RunnerCommand::Pause => {
                         if let Err(e) = faker.pause().await {
-                            OutputEvent::error(format!("Pause error: {}", e)).emit();
+                            OutputEvent::error(format!("Pause error: {e}")).emit();
                         } else {
                             OutputEvent::paused().emit();
                         }
                     }
                     RunnerCommand::Resume => {
                         if let Err(e) = faker.resume().await {
-                            OutputEvent::error(format!("Resume error: {}", e)).emit();
+                            OutputEvent::error(format!("Resume error: {e}")).emit();
                         } else {
                             OutputEvent::resumed().emit();
                         }
@@ -201,7 +198,7 @@ pub async fn run_json_mode(config: RunnerConfig) -> Result<()> {
                                 }).emit();
                             }
                             Err(e) => {
-                                OutputEvent::error(format!("Scrape error: {}", e)).emit();
+                                OutputEvent::error(format!("Scrape error: {e}")).emit();
                             }
                         }
                     }
@@ -222,7 +219,7 @@ pub async fn run_json_mode(config: RunnerConfig) -> Result<()> {
     let final_stats = faker.get_stats().await;
 
     if let Err(e) = faker.stop().await {
-        OutputEvent::error(format!("Stop error: {}", e)).emit();
+        OutputEvent::error(format!("Stop error: {e}")).emit();
     }
 
     // Save session if enabled
@@ -233,7 +230,7 @@ pub async fn run_json_mode(config: RunnerConfig) -> Result<()> {
             &config.torrent_name,
             &config.torrent_path.to_string_lossy(),
             config.torrent_size,
-            &format!("{:?}", client_type),
+            &format!("{client_type:?}"),
             config.client_version.clone(),
         );
         session.upload_rate = config.upload_rate;
@@ -249,7 +246,7 @@ pub async fn run_json_mode(config: RunnerConfig) -> Result<()> {
         );
 
         if let Err(e) = session.save_session() {
-            OutputEvent::error(format!("Failed to save session: {}", e)).emit();
+            OutputEvent::error(format!("Failed to save session: {e}")).emit();
         }
     }
 
@@ -274,7 +271,7 @@ pub fn load_torrent(path: &Path) -> Result<TorrentInfo> {
     TorrentInfo::from_file(path).context("Failed to parse torrent file")
 }
 
-/// Create FakerConfig from RunnerConfig
+/// Create `FakerConfig` from `RunnerConfig`
 pub fn create_faker_config(config: &RunnerConfig) -> FakerConfig {
     FakerConfig {
         upload_rate: config.upload_rate,

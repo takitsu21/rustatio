@@ -64,7 +64,7 @@
         <div class="flex justify-between items-center mb-2 flex-wrap gap-2">
           <span class="font-semibold text-foreground text-sm">Ratio</span>
           <span class="text-xs text-muted-foreground"
-            >{stats.session_ratio.toFixed(2)} / {stopAtRatio}</span
+            >{(stats.session_ratio ?? 0).toFixed(2)} / {stopAtRatio}</span
           >
           {#if stats.eta_ratio}
             <span class="text-xs text-muted-foreground italic"
@@ -78,7 +78,7 @@
             style="width: {stats.ratio_progress}%"
           >
             <span class="text-[0.7rem] text-white font-semibold pr-1"
-              >{stats.ratio_progress.toFixed(0)}%</span
+              >{(stats.ratio_progress ?? 0).toFixed(0)}%</span
             >
           </div>
         </div>
@@ -104,7 +104,7 @@
             style="width: {stats.upload_progress}%"
           >
             <span class="text-[0.7rem] text-white font-semibold pr-1"
-              >{stats.upload_progress.toFixed(0)}%</span
+              >{(stats.upload_progress ?? 0).toFixed(0)}%</span
             >
           </div>
         </div>
@@ -125,7 +125,7 @@
             style="width: {stats.download_progress}%"
           >
             <span class="text-[0.7rem] text-white font-semibold pr-1"
-              >{stats.download_progress.toFixed(0)}%</span
+              >{(stats.download_progress ?? 0).toFixed(0)}%</span
             >
           </div>
         </div>
@@ -151,7 +151,7 @@
             style="width: {stats.seed_time_progress}%"
           >
             <span class="text-[0.7rem] text-white font-semibold pr-1"
-              >{stats.seed_time_progress.toFixed(0)}%</span
+              >{(stats.seed_time_progress ?? 0).toFixed(0)}%</span
             >
           </div>
         </div>

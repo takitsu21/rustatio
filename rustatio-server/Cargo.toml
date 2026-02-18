@@ -48,3 +48,6 @@ hex = "0.4"
 # Include static files at compile time (optional, for single binary)
 rust-embed = { version = "8", features = ["interpolate-folder-path"] }
 mime_guess = "2"
+
+[lints]
+workspace = true

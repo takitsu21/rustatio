@@ -1,15 +1,19 @@
-use rustatio_core::*;
+use rustatio_core::{
+    ClientType, FakerConfig, FakerState, GridImportSettings, InstanceSummary, PresetSettings,
+    RatioFaker, TorrentInfo,
+};
 use serde::Serialize;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::fmt::Write;
 use wasm_bindgen::prelude::*;
 
 // Re-export the set_log_callback function from rustatio_core (WASM only)
 #[cfg(target_arch = "wasm32")]
 pub use rustatio_core::logger::set_log_callback;
 
-/// Serialize to JsValue with maps as plain JS objects (not Map instances).
-/// serde_wasm_bindgen's default serializes serde_json::Value::Object as JS Map,
+/// Serialize to `JsValue` with maps as plain JS objects (not Map instances).
+/// `serde_wasm_bindgen`'s default serializes `serde_json::Value::Object` as JS Map,
 /// which breaks property access like `result.imported` in JavaScript.
 fn to_js<T: Serialize>(value: &T) -> Result<JsValue, JsValue> {
     value
@@ -36,10 +40,7 @@ thread_local! {
 
 fn take_instance(id: u32) -> Result<WasmFakerInstance, JsValue> {
     INSTANCES.with(|instances| {
-        instances
-            .borrow_mut()
-            .remove(&id)
-            .ok_or_else(|| JsValue::from_str("Instance not found"))
+        instances.borrow_mut().remove(&id).ok_or_else(|| JsValue::from_str("Instance not found"))
     })
 }
 
@@ -96,7 +97,7 @@ pub fn load_torrent(file_bytes: &[u8]) -> Result<JsValue, JsValue> {
     rustatio_core::log_info!("Loading torrent file ({} bytes)", file_bytes.len());
 
     let torrent = TorrentInfo::from_bytes(file_bytes).map_err(|e| {
-        let error_msg = format!("Failed to load torrent: {}", e);
+        let error_msg = format!("Failed to load torrent: {e}");
         rustatio_core::log_error!("{}", error_msg);
         JsValue::from_str(&error_msg)
     })?;
@@ -112,7 +113,7 @@ pub fn load_instance_torrent(id: u32, file_bytes: &[u8]) -> Result<JsValue, JsVa
     rustatio_core::log_info!("Loading torrent for instance {} ({} bytes)", id, file_bytes.len());
 
     let torrent = TorrentInfo::from_bytes(file_bytes).map_err(|e| {
-        let error_msg = format!("Failed to load torrent: {}", e);
+        let error_msg = format!("Failed to load torrent: {e}");
         rustatio_core::log_error!("{}", error_msg);
         JsValue::from_str(&error_msg)
     })?;
@@ -120,7 +121,8 @@ pub fn load_instance_torrent(id: u32, file_bytes: &[u8]) -> Result<JsValue, JsVa
     let torrent_info_hash = torrent.info_hash;
     let config = FakerConfig::default();
 
-    let faker = RatioFaker::new(torrent.clone(), config.clone()).map_err(|e| JsValue::from_str(&e.to_string()))?;
+    let faker = RatioFaker::new(torrent.clone(), config.clone())
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
 
     INSTANCES.with(|instances| {
         instances.borrow_mut().insert(
@@ -150,18 +152,18 @@ pub fn load_instance_torrent(id: u32, file_bytes: &[u8]) -> Result<JsValue, JsVa
 
 #[wasm_bindgen]
 pub fn update_instance_config(id: u32, config_json: JsValue) -> Result<(), JsValue> {
-    let config: FakerConfig =
-        serde_wasm_bindgen::from_value(config_json).map_err(|e| JsValue::from_str(&e.to_string()))?;
+    let config: FakerConfig = serde_wasm_bindgen::from_value(config_json)
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
 
     INSTANCES.with(|instances| {
         let mut instances_ref = instances.borrow_mut();
         let instance = instances_ref
             .get_mut(&id)
-            .ok_or_else(|| JsValue::from_str(&format!("Instance {} not found", id)))?;
+            .ok_or_else(|| JsValue::from_str(&format!("Instance {id} not found")))?;
 
         // Recreate the faker so stats reflect the new config
         let faker = RatioFaker::new(instance.torrent.clone(), config.clone())
-            .map_err(|e| JsValue::from_str(&format!("Failed to create faker: {}", e)))?;
+            .map_err(|e| JsValue::from_str(&format!("Failed to create faker: {e}")))?;
         instance.config = config;
         instance.faker = faker;
         Ok(())
@@ -169,14 +171,18 @@ pub fn update_instance_config(id: u32, config_json: JsValue) -> Result<(), JsVal
 }
 
 #[wasm_bindgen]
-pub async fn start_faker(id: u32, torrent_json: JsValue, config_json: JsValue) -> Result<(), JsValue> {
+pub async fn start_faker(
+    id: u32,
+    torrent_json: JsValue,
+    config_json: JsValue,
+) -> Result<(), JsValue> {
     rustatio_core::logger::set_instance_context(Some(id));
 
-    let torrent: TorrentInfo =
-        serde_wasm_bindgen::from_value(torrent_json).map_err(|e| JsValue::from_str(&e.to_string()))?;
+    let torrent: TorrentInfo = serde_wasm_bindgen::from_value(torrent_json)
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
 
-    let mut config: FakerConfig =
-        serde_wasm_bindgen::from_value(config_json).map_err(|e| JsValue::from_str(&e.to_string()))?;
+    let mut config: FakerConfig = serde_wasm_bindgen::from_value(config_json)
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
 
     let torrent_info_hash = torrent.info_hash;
 
@@ -213,7 +219,8 @@ pub async fn start_faker(id: u32, torrent_json: JsValue, config_json: JsValue) -
     config.initial_downloaded = cumulative_downloaded;
 
     let stored_config = config.clone();
-    let mut faker = RatioFaker::new(torrent.clone(), config).map_err(|e| JsValue::from_str(&e.to_string()))?;
+    let mut faker =
+        RatioFaker::new(torrent.clone(), config).map_err(|e| JsValue::from_str(&e.to_string()))?;
 
     faker.start().await.map_err(|e| JsValue::from_str(&e.to_string()))?;
 
@@ -282,11 +289,7 @@ pub async fn stop_faker(id: u32) -> Result<(), JsValue> {
     with_instance(id, |mut instance| async move {
         let final_stats = instance.faker.get_stats().await;
 
-        let result = instance
-            .faker
-            .stop()
-            .await
-            .map_err(|e| JsValue::from_str(&e.to_string()));
+        let result = instance.faker.stop().await.map_err(|e| JsValue::from_str(&e.to_string()));
 
         instance.cumulative_uploaded = final_stats.uploaded;
         instance.cumulative_downloaded = final_stats.downloaded;
@@ -306,11 +309,7 @@ pub async fn stop_faker(id: u32) -> Result<(), JsValue> {
 pub async fn pause_faker(id: u32) -> Result<(), JsValue> {
     rustatio_core::logger::set_instance_context(Some(id));
     with_instance(id, |mut instance| async move {
-        let result = instance
-            .faker
-            .pause()
-            .await
-            .map_err(|e| JsValue::from_str(&e.to_string()));
+        let result = instance.faker.pause().await.map_err(|e| JsValue::from_str(&e.to_string()));
         (instance, result)
     })
     .await
@@ -320,11 +319,7 @@ pub async fn pause_faker(id: u32) -> Result<(), JsValue> {
 pub async fn resume_faker(id: u32) -> Result<(), JsValue> {
     rustatio_core::logger::set_instance_context(Some(id));
     with_instance(id, |mut instance| async move {
-        let result = instance
-            .faker
-            .resume()
-            .await
-            .map_err(|e| JsValue::from_str(&e.to_string()));
+        let result = instance.faker.resume().await.map_err(|e| JsValue::from_str(&e.to_string()));
         (instance, result)
     })
     .await
@@ -349,7 +344,7 @@ pub async fn scrape_tracker(id: u32) -> Result<JsValue, JsValue> {
 #[wasm_bindgen]
 pub fn get_client_types() -> JsValue {
     let types = ClientType::all_ids();
-    to_js(&types).unwrap()
+    to_js(&types).expect("serializing client types to JsValue")
 }
 
 #[wasm_bindgen]
@@ -358,7 +353,7 @@ pub fn get_instance_torrent(id: u32) -> Result<JsValue, JsValue> {
         let instances_ref = instances.borrow();
         let instance = instances_ref
             .get(&id)
-            .ok_or_else(|| JsValue::from_str(&format!("Instance {} not found", id)))?;
+            .ok_or_else(|| JsValue::from_str(&format!("Instance {id} not found")))?;
         to_js(&instance.torrent)
     })
 }
@@ -366,18 +361,18 @@ pub fn get_instance_torrent(id: u32) -> Result<JsValue, JsValue> {
 #[wasm_bindgen]
 pub fn get_client_infos() -> JsValue {
     let infos = ClientType::all_infos();
-    to_js(&infos).unwrap()
+    to_js(&infos).expect("serializing client infos to JsValue")
 }
 
 // --- Grid Operations ---
 
 #[wasm_bindgen]
 pub async fn grid_import(torrent_files: JsValue, config_json: JsValue) -> Result<JsValue, JsValue> {
-    let files: Vec<Vec<u8>> =
-        serde_wasm_bindgen::from_value(torrent_files).map_err(|e| JsValue::from_str(&e.to_string()))?;
+    let files: Vec<Vec<u8>> = serde_wasm_bindgen::from_value(torrent_files)
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
 
-    let settings: GridImportSettings =
-        serde_wasm_bindgen::from_value(config_json).map_err(|e| JsValue::from_str(&e.to_string()))?;
+    let settings: GridImportSettings = serde_wasm_bindgen::from_value(config_json)
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
 
     let mut imported: Vec<serde_json::Value> = Vec::new();
     let mut errors: Vec<String> = Vec::new();
@@ -386,7 +381,7 @@ pub async fn grid_import(torrent_files: JsValue, config_json: JsValue) -> Result
         let torrent = match TorrentInfo::from_bytes(file_bytes) {
             Ok(t) => t,
             Err(e) => {
-                errors.push(format!("Failed to parse torrent: {}", e));
+                errors.push(format!("Failed to parse torrent: {e}"));
                 continue;
             }
         };
@@ -398,11 +393,10 @@ pub async fn grid_import(torrent_files: JsValue, config_json: JsValue) -> Result
         config.initial_downloaded = 0;
 
         let name = torrent.name.clone();
-        let info_hash_hex = torrent
-            .info_hash
-            .iter()
-            .map(|b| format!("{:02x}", b))
-            .collect::<String>();
+        let info_hash_hex = torrent.info_hash.iter().fold(String::new(), |mut acc, b| {
+            let _ = write!(acc, "{b:02x}");
+            acc
+        });
         let torrent_info_hash = torrent.info_hash;
         let total_size = torrent.total_size;
 
@@ -410,7 +404,7 @@ pub async fn grid_import(torrent_files: JsValue, config_json: JsValue) -> Result
             Ok(mut faker) => {
                 if settings.auto_start {
                     if let Err(e) = faker.start().await {
-                        errors.push(format!("{}: {}", name, e));
+                        errors.push(format!("{name}: {e}"));
                         continue;
                     }
                 }
@@ -439,7 +433,7 @@ pub async fn grid_import(torrent_files: JsValue, config_json: JsValue) -> Result
                 }));
             }
             Err(e) => {
-                errors.push(format!("{}: {}", name, e));
+                errors.push(format!("{name}: {e}"));
             }
         }
     }
@@ -450,7 +444,8 @@ pub async fn grid_import(torrent_files: JsValue, config_json: JsValue) -> Result
 
 #[wasm_bindgen]
 pub async fn grid_start(ids_json: JsValue) -> Result<JsValue, JsValue> {
-    let ids: Vec<u32> = serde_wasm_bindgen::from_value(ids_json).map_err(|e| JsValue::from_str(&e.to_string()))?;
+    let ids: Vec<u32> =
+        serde_wasm_bindgen::from_value(ids_json).map_err(|e| JsValue::from_str(&e.to_string()))?;
 
     let mut succeeded: Vec<String> = Vec::new();
     let mut failed: Vec<serde_json::Value> = Vec::new();
@@ -459,8 +454,9 @@ pub async fn grid_start(ids_json: JsValue) -> Result<JsValue, JsValue> {
         match take_instance(id) {
             Ok(mut instance) => {
                 match instance.faker.start().await {
-                    Ok(_) => succeeded.push(id.to_string()),
-                    Err(e) => failed.push(serde_json::json!({ "id": id.to_string(), "error": e.to_string() })),
+                    Ok(()) => succeeded.push(id.to_string()),
+                    Err(e) => failed
+                        .push(serde_json::json!({ "id": id.to_string(), "error": e.to_string() })),
                 }
                 put_instance(id, instance);
             }
@@ -476,7 +472,8 @@ pub async fn grid_start(ids_json: JsValue) -> Result<JsValue, JsValue> {
 
 #[wasm_bindgen]
 pub async fn grid_stop(ids_json: JsValue) -> Result<JsValue, JsValue> {
-    let ids: Vec<u32> = serde_wasm_bindgen::from_value(ids_json).map_err(|e| JsValue::from_str(&e.to_string()))?;
+    let ids: Vec<u32> =
+        serde_wasm_bindgen::from_value(ids_json).map_err(|e| JsValue::from_str(&e.to_string()))?;
 
     let mut succeeded: Vec<String> = Vec::new();
     let mut failed: Vec<serde_json::Value> = Vec::new();
@@ -486,12 +483,13 @@ pub async fn grid_stop(ids_json: JsValue) -> Result<JsValue, JsValue> {
             Ok(mut instance) => {
                 let final_stats = instance.faker.get_stats().await;
                 match instance.faker.stop().await {
-                    Ok(_) => {
+                    Ok(()) => {
                         instance.cumulative_uploaded = final_stats.uploaded;
                         instance.cumulative_downloaded = final_stats.downloaded;
                         succeeded.push(id.to_string());
                     }
-                    Err(e) => failed.push(serde_json::json!({ "id": id.to_string(), "error": e.to_string() })),
+                    Err(e) => failed
+                        .push(serde_json::json!({ "id": id.to_string(), "error": e.to_string() })),
                 }
                 put_instance(id, instance);
             }
@@ -507,7 +505,8 @@ pub async fn grid_stop(ids_json: JsValue) -> Result<JsValue, JsValue> {
 
 #[wasm_bindgen]
 pub async fn grid_pause(ids_json: JsValue) -> Result<JsValue, JsValue> {
-    let ids: Vec<u32> = serde_wasm_bindgen::from_value(ids_json).map_err(|e| JsValue::from_str(&e.to_string()))?;
+    let ids: Vec<u32> =
+        serde_wasm_bindgen::from_value(ids_json).map_err(|e| JsValue::from_str(&e.to_string()))?;
 
     let mut succeeded: Vec<String> = Vec::new();
     let mut failed: Vec<serde_json::Value> = Vec::new();
@@ -516,8 +515,9 @@ pub async fn grid_pause(ids_json: JsValue) -> Result<JsValue, JsValue> {
         match take_instance(id) {
             Ok(mut instance) => {
                 match instance.faker.pause().await {
-                    Ok(_) => succeeded.push(id.to_string()),
-                    Err(e) => failed.push(serde_json::json!({ "id": id.to_string(), "error": e.to_string() })),
+                    Ok(()) => succeeded.push(id.to_string()),
+                    Err(e) => failed
+                        .push(serde_json::json!({ "id": id.to_string(), "error": e.to_string() })),
                 }
                 put_instance(id, instance);
             }
@@ -533,7 +533,8 @@ pub async fn grid_pause(ids_json: JsValue) -> Result<JsValue, JsValue> {
 
 #[wasm_bindgen]
 pub async fn grid_resume(ids_json: JsValue) -> Result<JsValue, JsValue> {
-    let ids: Vec<u32> = serde_wasm_bindgen::from_value(ids_json).map_err(|e| JsValue::from_str(&e.to_string()))?;
+    let ids: Vec<u32> =
+        serde_wasm_bindgen::from_value(ids_json).map_err(|e| JsValue::from_str(&e.to_string()))?;
 
     let mut succeeded: Vec<String> = Vec::new();
     let mut failed: Vec<serde_json::Value> = Vec::new();
@@ -542,8 +543,9 @@ pub async fn grid_resume(ids_json: JsValue) -> Result<JsValue, JsValue> {
         match take_instance(id) {
             Ok(mut instance) => {
                 match instance.faker.resume().await {
-                    Ok(_) => succeeded.push(id.to_string()),
-                    Err(e) => failed.push(serde_json::json!({ "id": id.to_string(), "error": e.to_string() })),
+                    Ok(()) => succeeded.push(id.to_string()),
+                    Err(e) => failed
+                        .push(serde_json::json!({ "id": id.to_string(), "error": e.to_string() })),
                 }
                 put_instance(id, instance);
             }
@@ -559,7 +561,8 @@ pub async fn grid_resume(ids_json: JsValue) -> Result<JsValue, JsValue> {
 
 #[wasm_bindgen]
 pub fn grid_delete(ids_json: JsValue) -> Result<JsValue, JsValue> {
-    let ids: Vec<u32> = serde_wasm_bindgen::from_value(ids_json).map_err(|e| JsValue::from_str(&e.to_string()))?;
+    let ids: Vec<u32> =
+        serde_wasm_bindgen::from_value(ids_json).map_err(|e| JsValue::from_str(&e.to_string()))?;
 
     let mut succeeded: Vec<String> = Vec::new();
     let mut failed: Vec<serde_json::Value> = Vec::new();
@@ -581,9 +584,10 @@ pub fn grid_delete(ids_json: JsValue) -> Result<JsValue, JsValue> {
 
 #[wasm_bindgen]
 pub fn grid_update_config(ids_json: JsValue, config_json: JsValue) -> Result<JsValue, JsValue> {
-    let ids: Vec<u32> = serde_wasm_bindgen::from_value(ids_json).map_err(|e| JsValue::from_str(&e.to_string()))?;
-    let preset: PresetSettings =
-        serde_wasm_bindgen::from_value(config_json).map_err(|e| JsValue::from_str(&e.to_string()))?;
+    let ids: Vec<u32> =
+        serde_wasm_bindgen::from_value(ids_json).map_err(|e| JsValue::from_str(&e.to_string()))?;
+    let preset: PresetSettings = serde_wasm_bindgen::from_value(config_json)
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
     let faker_config: FakerConfig = preset.into();
 
     let mut succeeded: Vec<String> = Vec::new();
@@ -623,11 +627,17 @@ pub fn grid_update_config(ids_json: JsValue, config_json: JsValue) -> Result<JsV
 }
 
 #[wasm_bindgen]
-pub fn grid_tag(ids_json: JsValue, add_tags: JsValue, remove_tags: JsValue) -> Result<JsValue, JsValue> {
-    let ids: Vec<u32> = serde_wasm_bindgen::from_value(ids_json).map_err(|e| JsValue::from_str(&e.to_string()))?;
-    let add: Vec<String> = serde_wasm_bindgen::from_value(add_tags).map_err(|e| JsValue::from_str(&e.to_string()))?;
-    let remove: Vec<String> =
-        serde_wasm_bindgen::from_value(remove_tags).map_err(|e| JsValue::from_str(&e.to_string()))?;
+pub fn grid_tag(
+    ids_json: JsValue,
+    add_tags: JsValue,
+    remove_tags: JsValue,
+) -> Result<JsValue, JsValue> {
+    let ids: Vec<u32> =
+        serde_wasm_bindgen::from_value(ids_json).map_err(|e| JsValue::from_str(&e.to_string()))?;
+    let add: Vec<String> =
+        serde_wasm_bindgen::from_value(add_tags).map_err(|e| JsValue::from_str(&e.to_string()))?;
+    let remove: Vec<String> = serde_wasm_bindgen::from_value(remove_tags)
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
 
     let mut updated = 0u32;
 
@@ -654,7 +664,8 @@ pub fn grid_tag(ids_json: JsValue, add_tags: JsValue, remove_tags: JsValue) -> R
 
 #[wasm_bindgen]
 pub fn set_instance_tags(id: u32, tags_json: JsValue) -> Result<(), JsValue> {
-    let tags: Vec<String> = serde_wasm_bindgen::from_value(tags_json).map_err(|e| JsValue::from_str(&e.to_string()))?;
+    let tags: Vec<String> =
+        serde_wasm_bindgen::from_value(tags_json).map_err(|e| JsValue::from_str(&e.to_string()))?;
 
     INSTANCES.with(|instances| {
         let mut instances_ref = instances.borrow_mut();
@@ -663,7 +674,7 @@ pub fn set_instance_tags(id: u32, tags_json: JsValue) -> Result<(), JsValue> {
                 instance.tags = tags;
                 Ok(())
             }
-            None => Err(JsValue::from_str(&format!("Instance {} not found", id))),
+            None => Err(JsValue::from_str(&format!("Instance {id} not found"))),
         }
     })
 }
@@ -678,11 +689,10 @@ pub async fn list_summaries() -> Result<JsValue, JsValue> {
     for id in ids {
         let instance = take_instance(id)?;
         let stats = instance.faker.get_stats().await;
-        let info_hash_hex = instance
-            .torrent_info_hash
-            .iter()
-            .map(|b| format!("{:02x}", b))
-            .collect::<String>();
+        let info_hash_hex = instance.torrent_info_hash.iter().fold(String::new(), |mut acc, b| {
+            let _ = write!(acc, "{b:02x}");
+            acc
+        });
 
         summaries.push(InstanceSummary {
             id: id.to_string(),

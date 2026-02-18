@@ -12,6 +12,33 @@ authors = ["Dylann Batisse <dylann.batisse@protonmail.com>"]
 license = "MIT"
 repository = "https://github.com/takitsu21/rustatio"
 
+[workspace.lints.rust]
+unsafe_code = "deny"
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+must_use_candidate = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+cast_precision_loss = "allow"
+cast_sign_loss = "allow"
+cast_possible_truncation = "allow"
+float_cmp = "allow"
+similar_names = "allow"
+too_many_lines = "allow"
+struct_excessive_bools = "allow"
+significant_drop_tightening = "allow"
+future_not_send = "allow"
+clone_on_ref_ptr = "warn"
+dbg_macro = "warn"
+print_stdout = "warn"
+print_stderr = "warn"
+todo = "warn"
+unimplemented = "warn"
+unwrap_used = "warn"
+
 [profile.release]
 opt-level = 3
 lto = true

@@ -58,7 +58,7 @@ pub struct TorrentLoadedEvent {
 
 impl From<&TorrentInfo> for TorrentLoadedEvent {
     fn from(torrent: &TorrentInfo) -> Self {
-        TorrentLoadedEvent {
+        Self {
             name: torrent.name.clone(),
             size: torrent.total_size,
             info_hash: torrent.info_hash_hex(),
@@ -145,7 +145,7 @@ pub struct StatsEvent {
 
 impl From<&FakerStats> for StatsEvent {
     fn from(stats: &FakerStats) -> Self {
-        StatsEvent {
+        Self {
             uploaded: stats.uploaded,
             downloaded: stats.downloaded,
             left: stats.left,
@@ -238,13 +238,13 @@ impl OutputEvent {
     /// Serialize event to JSON and print to stdout
     pub fn emit(&self) {
         if let Ok(json) = serde_json::to_string(self) {
-            println!("{}", json);
+            println!("{json}");
         }
     }
 
     /// Helper to emit init event
     pub fn init() -> Self {
-        OutputEvent::Init(InitEvent {
+        Self::Init(InitEvent {
             version: env!("CARGO_PKG_VERSION").to_string(),
             timestamp: Utc::now(),
         })
@@ -252,20 +252,17 @@ impl OutputEvent {
 
     /// Helper to emit error event
     pub fn error(message: impl Into<String>) -> Self {
-        OutputEvent::Error(ErrorEvent {
-            message: message.into(),
-            timestamp: Utc::now(),
-        })
+        Self::Error(ErrorEvent { message: message.into(), timestamp: Utc::now() })
     }
 
     /// Helper to emit paused event
     pub fn paused() -> Self {
-        OutputEvent::Paused(PausedEvent { timestamp: Utc::now() })
+        Self::Paused(PausedEvent { timestamp: Utc::now() })
     }
 
     /// Helper to emit resumed event
     pub fn resumed() -> Self {
-        OutputEvent::Resumed(ResumedEvent { timestamp: Utc::now() })
+        Self::Resumed(ResumedEvent { timestamp: Utc::now() })
     }
 }
 
@@ -297,7 +294,7 @@ pub struct FileOutput {
 
 impl From<&TorrentInfo> for TorrentInfoOutput {
     fn from(torrent: &TorrentInfo) -> Self {
-        TorrentInfoOutput {
+        Self {
             name: torrent.name.clone(),
             size: torrent.total_size,
             size_human: format_bytes(torrent.total_size),
@@ -318,9 +315,10 @@ impl From<&TorrentInfo> for TorrentInfoOutput {
                 })
                 .collect(),
             creation_date: torrent.creation_date.map(|ts| {
-                DateTime::from_timestamp(ts, 0)
-                    .map(|dt| dt.format("%Y-%m-%d %H:%M:%S UTC").to_string())
-                    .unwrap_or_else(|| ts.to_string())
+                DateTime::from_timestamp(ts, 0).map_or_else(
+                    || ts.to_string(),
+                    |dt| dt.format("%Y-%m-%d %H:%M:%S UTC").to_string(),
+                )
             }),
             created_by: torrent.created_by.clone(),
             comment: torrent.comment.clone(),
@@ -346,7 +344,7 @@ pub struct ClientInfoOutput {
 
 impl From<rustatio_core::ClientInfo> for ClientInfoOutput {
     fn from(info: rustatio_core::ClientInfo) -> Self {
-        ClientInfoOutput {
+        Self {
             id: info.id,
             name: info.name,
             default_version: info.default_version,
@@ -358,8 +356,8 @@ impl From<rustatio_core::ClientInfo> for ClientInfoOutput {
 
 impl ClientsOutput {
     pub fn new() -> Self {
-        ClientsOutput {
-            clients: ClientType::all_infos().into_iter().map(|i| i.into()).collect(),
+        Self {
+            clients: ClientType::all_infos().into_iter().map(std::convert::Into::into).collect(),
         }
     }
 }
@@ -386,7 +384,7 @@ pub fn format_bytes(bytes: u64) -> String {
     } else if bytes >= KB {
         format!("{:.2} KB", bytes as f64 / KB as f64)
     } else {
-        format!("{} B", bytes)
+        format!("{bytes} B")
     }
 }
 
@@ -397,10 +395,10 @@ pub fn format_duration(secs: u64) -> String {
     let seconds = secs % 60;
 
     if hours > 0 {
-        format!("{}h {:02}m {:02}s", hours, minutes, seconds)
+        format!("{hours}h {minutes:02}m {seconds:02}s")
     } else if minutes > 0 {
-        format!("{}m {:02}s", minutes, seconds)
+        format!("{minutes}m {seconds:02}s")
     } else {
-        format!("{}s", seconds)
+        format!("{seconds}s")
     }
 }

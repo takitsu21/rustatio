@@ -1,5 +1,7 @@
 //! Common API response types.
 
+#![allow(clippy::option_if_let_else)] // False positive from ToSchema derive on generic struct
+
 use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
@@ -16,10 +18,7 @@ pub struct ApiError {
 
 impl ApiError {
     pub fn new(message: impl Into<String>) -> Self {
-        Self {
-            success: false,
-            error: message.into(),
-        }
+        Self { success: false, error: message.into() }
     }
 
     pub fn response(status: StatusCode, message: impl Into<String>) -> Response {
@@ -37,7 +36,7 @@ pub struct ApiSuccess<T> {
 pub struct EmptyData {}
 
 impl<T: Serialize> ApiSuccess<T> {
-    pub fn new(data: T) -> Self {
+    pub const fn new(data: T) -> Self {
         Self { success: true, data }
     }
 

@@ -18,11 +18,7 @@ pub fn emit_log(app: &AppHandle, level: &str, message: String) {
         .unwrap_or_else(|_| std::time::Duration::from_secs(0))
         .as_millis() as u64;
 
-    let log_event = LogEvent {
-        timestamp,
-        level: level.to_string(),
-        message,
-    };
+    let log_event = LogEvent { timestamp, level: level.to_string(), message };
 
     let _ = app.emit("log-event", log_event);
 }

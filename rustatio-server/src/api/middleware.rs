@@ -13,9 +13,7 @@ use std::sync::OnceLock;
 static AUTH_TOKEN: OnceLock<Option<String>> = OnceLock::new();
 
 pub fn get_auth_token() -> Option<&'static str> {
-    AUTH_TOKEN
-        .get_or_init(|| std::env::var("AUTH_TOKEN").ok().filter(|s| !s.is_empty()))
-        .as_deref()
+    AUTH_TOKEN.get_or_init(|| std::env::var("AUTH_TOKEN").ok().filter(|s| !s.is_empty())).as_deref()
 }
 
 pub fn is_auth_enabled() -> bool {
@@ -35,7 +33,8 @@ impl AuthError {
             StatusCode::UNAUTHORIZED,
             Json(Self {
                 success: false,
-                error: "Authentication required. Provide Authorization: Bearer <token> header.".into(),
+                error: "Authentication required. Provide Authorization: Bearer <token> header."
+                    .into(),
                 auth_required: true,
             }),
         )
@@ -55,26 +54,21 @@ impl AuthError {
     }
 }
 
-/// Validates Authorization header or query token against AUTH_TOKEN.
-/// If AUTH_TOKEN is not set, all requests are allowed.
+/// Validates Authorization header or query token against `AUTH_TOKEN`.
+/// If `AUTH_TOKEN` is not set, all requests are allowed.
 pub async fn auth_middleware(request: Request, next: Next) -> Response {
-    let expected_token = match get_auth_token() {
-        Some(token) => token,
-        None => return next.run(request).await,
+    let Some(expected_token) = get_auth_token() else {
+        return next.run(request).await;
     };
 
-    let auth_header = request
-        .headers()
-        .get(AUTHORIZATION)
-        .and_then(|value| value.to_str().ok());
+    let auth_header = request.headers().get(AUTHORIZATION).and_then(|value| value.to_str().ok());
 
     if let Some(header) = auth_header {
         if let Some(provided_token) = header.strip_prefix("Bearer ") {
             if constant_time_eq(provided_token.as_bytes(), expected_token.as_bytes()) {
                 return next.run(request).await;
-            } else {
-                return AuthError::forbidden();
             }
+            return AuthError::forbidden();
         }
     }
 
@@ -85,9 +79,8 @@ pub async fn auth_middleware(request: Request, next: Next) -> Response {
                 let decoded_token = urlencoding::decode(token_value).unwrap_or_default();
                 if constant_time_eq(decoded_token.as_bytes(), expected_token.as_bytes()) {
                     return next.run(request).await;
-                } else {
-                    return AuthError::forbidden();
                 }
+                return AuthError::forbidden();
             }
         }
     }
@@ -95,13 +88,13 @@ pub async fn auth_middleware(request: Request, next: Next) -> Response {
     AuthError::unauthorized()
 }
 
-fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
-    if a.len() != b.len() {
+fn constant_time_eq(expected: &[u8], actual: &[u8]) -> bool {
+    if expected.len() != actual.len() {
         return false;
     }
 
     let mut result = 0u8;
-    for (x, y) in a.iter().zip(b.iter()) {
+    for (x, y) in expected.iter().zip(actual.iter()) {
         result |= x ^ y;
     }
     result == 0

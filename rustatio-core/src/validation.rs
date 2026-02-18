@@ -6,12 +6,7 @@ use std::path::PathBuf;
 pub enum ValidationError {
     InvalidPath(String),
     InvalidFileExtension(String),
-    InvalidRange {
-        field: String,
-        min: f64,
-        max: f64,
-        value: f64,
-    },
+    InvalidRange { field: String, min: f64, max: f64, value: f64 },
     InvalidPort(u16),
     MissingField(String),
 }
@@ -19,17 +14,17 @@ pub enum ValidationError {
 impl Display for ValidationError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ValidationError::InvalidPath(msg) => write!(f, "Invalid path: {}", msg),
-            ValidationError::InvalidFileExtension(ext) => {
-                write!(f, "Invalid file extension. Expected .torrent, got: {}", ext)
+            Self::InvalidPath(msg) => write!(f, "Invalid path: {msg}"),
+            Self::InvalidFileExtension(ext) => {
+                write!(f, "Invalid file extension. Expected .torrent, got: {ext}")
             }
-            ValidationError::InvalidRange { field, min, max, value } => {
-                write!(f, "{} must be between {} and {}, got: {}", field, min, max, value)
+            Self::InvalidRange { field, min, max, value } => {
+                write!(f, "{field} must be between {min} and {max}, got: {value}")
             }
-            ValidationError::InvalidPort(port) => {
-                write!(f, "Invalid port number: {}. Must be between 1024 and 65535", port)
+            Self::InvalidPort(port) => {
+                write!(f, "Invalid port number: {port}. Must be between 1024 and 65535")
             }
-            ValidationError::MissingField(field) => write!(f, "Missing required field: {}", field),
+            Self::MissingField(field) => write!(f, "Missing required field: {field}"),
         }
     }
 }
@@ -78,7 +73,7 @@ pub fn validate_rate(rate: f64, field_name: &str) -> Result<f64, ValidationError
 }
 
 /// Validate port number
-pub fn validate_port(port: u16) -> Result<u16, ValidationError> {
+pub const fn validate_port(port: u16) -> Result<u16, ValidationError> {
     // Ports below 1024 are privileged and shouldn't be used
     if port < 1024 {
         return Err(ValidationError::InvalidPort(port));
@@ -269,13 +264,10 @@ mod tests {
     #[test]
     fn test_validation_error_display() {
         let err = ValidationError::InvalidPath("test".to_string());
-        assert_eq!(format!("{}", err), "Invalid path: test");
+        assert_eq!(format!("{err}"), "Invalid path: test");
 
         let err = ValidationError::InvalidFileExtension("txt".to_string());
-        assert_eq!(
-            format!("{}", err),
-            "Invalid file extension. Expected .torrent, got: txt"
-        );
+        assert_eq!(format!("{err}"), "Invalid file extension. Expected .torrent, got: txt");
 
         let err = ValidationError::InvalidRange {
             field: "rate".to_string(),
@@ -283,15 +275,12 @@ mod tests {
             max: 100.0,
             value: 150.0,
         };
-        assert_eq!(format!("{}", err), "rate must be between 0 and 100, got: 150");
+        assert_eq!(format!("{err}"), "rate must be between 0 and 100, got: 150");
 
         let err = ValidationError::InvalidPort(80);
-        assert_eq!(
-            format!("{}", err),
-            "Invalid port number: 80. Must be between 1024 and 65535"
-        );
+        assert_eq!(format!("{err}"), "Invalid port number: 80. Must be between 1024 and 65535");
 
         let err = ValidationError::MissingField("torrent".to_string());
-        assert_eq!(format!("{}", err), "Missing required field: torrent");
+        assert_eq!(format!("{err}"), "Missing required field: torrent");
     }
 }

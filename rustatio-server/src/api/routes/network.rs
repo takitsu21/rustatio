@@ -43,20 +43,20 @@ struct GluetunPublicIp {
     )
 )]
 pub async fn get_network_status() -> Response {
-    match try_gluetun_detection().await {
-        Some(status) => ApiSuccess::response(status),
-        None => ApiError::response(
-            StatusCode::SERVICE_UNAVAILABLE,
-            "Gluetun not available. Network status requires Docker with gluetun VPN container.",
-        ),
-    }
+    try_gluetun_detection().await.map_or_else(
+        || {
+            ApiError::response(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "Gluetun not available. Network status requires Docker with gluetun VPN container.",
+            )
+        },
+        ApiSuccess::response,
+    )
 }
 
 async fn try_gluetun_detection() -> Option<NetworkStatus> {
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_millis(1000))
-        .build()
-        .ok()?;
+    let client =
+        reqwest::Client::builder().timeout(std::time::Duration::from_millis(1000)).build().ok()?;
 
     // Get VPN status
     let vpn_status = client

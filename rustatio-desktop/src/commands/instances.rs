@@ -24,29 +24,29 @@ pub async fn update_instance_config(
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let mut fakers = state.fakers.write().await;
-    let instance = fakers
-        .get_mut(&instance_id)
-        .ok_or_else(|| format!("Instance {} not found", instance_id))?;
+    let instance =
+        fakers.get_mut(&instance_id).ok_or_else(|| format!("Instance {instance_id} not found"))?;
 
     let stats = instance.faker.read().await.get_stats().await;
-    if matches!(
-        stats.state,
-        FakerState::Running | FakerState::Starting | FakerState::Paused
-    ) {
+    if matches!(stats.state, FakerState::Running | FakerState::Starting | FakerState::Paused) {
         return Err("Cannot update config while faker is running".to_string());
     }
 
     instance.config = config;
 
     let faker = RatioFaker::new(instance.torrent.clone(), instance.config.clone())
-        .map_err(|e| format!("Failed to create faker: {}", e))?;
+        .map_err(|e| format!("Failed to create faker: {e}"))?;
     instance.faker = Arc::new(RwLock::new(faker));
 
     Ok(())
 }
 
 #[tauri::command]
-pub async fn delete_instance(instance_id: u32, state: State<'_, AppState>, app: AppHandle) -> Result<(), String> {
+pub async fn delete_instance(
+    instance_id: u32,
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<(), String> {
     // Remove from HashMap first, then stop — HTTP happens after lock is released
     let removed = {
         let mut fakers = state.fakers.write().await;
@@ -59,7 +59,7 @@ pub async fn delete_instance(instance_id: u32, state: State<'_, AppState>, app: 
         }
         log_and_emit!(&app, info, "Deleted instance {}", instance_id);
     } else {
-        log::info!("Deleted instance {} (was not started)", instance_id);
+        log::info!("Deleted instance {instance_id} (was not started)");
     }
 
     Ok(())
@@ -90,7 +90,7 @@ pub async fn list_instances(state: State<'_, AppState>) -> Result<Vec<InstanceIn
 #[tauri::command]
 pub async fn load_torrent(path: String, app: AppHandle) -> Result<TorrentInfo, String> {
     let validated_path = validation::validate_torrent_path(&path).map_err(|e| {
-        let error_msg = format!("Invalid torrent path: {}", e);
+        let error_msg = format!("Invalid torrent path: {e}");
         log_and_emit!(&app, error, "{}", error_msg);
         error_msg
     })?;
@@ -109,7 +109,7 @@ pub async fn load_torrent(path: String, app: AppHandle) -> Result<TorrentInfo, S
             Ok(torrent)
         }
         Err(e) => {
-            let error_msg = format!("Failed to load torrent: {}", e);
+            let error_msg = format!("Failed to load torrent: {e}");
             log_and_emit!(&app, error, "{}", error_msg);
             Err(error_msg)
         }
@@ -124,16 +124,17 @@ pub async fn load_instance_torrent(
     app: AppHandle,
 ) -> Result<TorrentInfo, String> {
     let validated_path = validation::validate_torrent_path(&path).map_err(|e| {
-        let error_msg = format!("Invalid torrent path: {}", e);
+        let error_msg = format!("Invalid torrent path: {e}");
         log_and_emit!(&app, error, "{}", error_msg);
         error_msg
     })?;
 
-    let torrent = TorrentInfo::from_file(validated_path.to_str().unwrap_or(&path)).map_err(|e| {
-        let error_msg = format!("Failed to load torrent: {}", e);
-        log_and_emit!(&app, error, "{}", error_msg);
-        error_msg
-    })?;
+    let torrent =
+        TorrentInfo::from_file(validated_path.to_str().unwrap_or(&path)).map_err(|e| {
+            let error_msg = format!("Failed to load torrent: {e}");
+            log_and_emit!(&app, error, "{}", error_msg);
+            error_msg
+        })?;
 
     log_and_emit!(
         &app,
@@ -149,7 +150,7 @@ pub async fn load_instance_torrent(
         std::collections::hash_map::Entry::Vacant(entry) => {
             let config = FakerConfig::default();
             let faker = RatioFaker::new(torrent.clone(), config.clone())
-                .map_err(|e| format!("Failed to create faker: {}", e))?;
+                .map_err(|e| format!("Failed to create faker: {e}"))?;
 
             let now = crate::state::now_secs();
 
@@ -166,8 +167,8 @@ pub async fn load_instance_torrent(
         std::collections::hash_map::Entry::Occupied(mut entry) => {
             let instance = entry.get_mut();
             let config = instance.config.clone();
-            let faker =
-                RatioFaker::new(torrent.clone(), config).map_err(|e| format!("Failed to create faker: {}", e))?;
+            let faker = RatioFaker::new(torrent.clone(), config)
+                .map_err(|e| format!("Failed to create faker: {e}"))?;
             instance.torrent = torrent.clone();
             instance.faker = Arc::new(RwLock::new(faker));
         }
@@ -176,10 +177,12 @@ pub async fn load_instance_torrent(
 }
 
 #[tauri::command]
-pub async fn get_instance_torrent(instance_id: u32, state: State<'_, AppState>) -> Result<TorrentInfo, String> {
+pub async fn get_instance_torrent(
+    instance_id: u32,
+    state: State<'_, AppState>,
+) -> Result<TorrentInfo, String> {
     let fakers = state.fakers.read().await;
-    let instance = fakers
-        .get(&instance_id)
-        .ok_or_else(|| format!("Instance {} not found", instance_id))?;
+    let instance =
+        fakers.get(&instance_id).ok_or_else(|| format!("Instance {instance_id} not found"))?;
     Ok(instance.torrent.clone())
 }

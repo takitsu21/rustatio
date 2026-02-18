@@ -1,0 +1,80 @@
+amends "package://github.com/jdx/hk/releases/download/v1.36.0/hk@1.36.0#/Config.pkl"
+import "package://github.com/jdx/hk/releases/download/v1.36.0/hk@1.36.0#/Builtins.pkl"
+
+exclude = List("target", "node_modules", "dist", "ui/src/lib/wasm", "flatpak", "torrents", "nyaa_torrents", ".opencode")
+
+// --- Linters & Formatters ---
+
+local rust_linters = new Mapping<String, Step> {
+  ["cargo-fmt"] = (Builtins.cargo_fmt) {
+    workspace_indicator = "Cargo.toml"
+  }
+  // rustatio-wasm excluded: requires wasm32 target, can't compile natively
+  ["cargo-clippy"] {
+    glob = List("rustatio-core/**/*.rs", "rustatio-cli/**/*.rs", "rustatio-server/**/*.rs", "rustatio-desktop/**/*.rs")
+    check = "cargo clippy -p rustatio-core -p rustatio-cli -p rustatio-server -p rustatio --all-targets -- -D warnings"
+    fix = "cargo clippy -p rustatio-core -p rustatio-cli -p rustatio-server -p rustatio --all-targets --fix --allow-dirty --allow-staged -- -D warnings"
+  }
+}
+
+local frontend_linters = new Mapping<String, Step> {
+  ["prettier"] {
+    glob = List("**/*.js", "**/*.svelte", "**/*.css", "**/*.html", "**/*.json")
+    exclude = List("package-lock.json")
+    check = "prettier --check {{ files }}"
+    fix = "prettier --write {{ files }}"
+    check_list_files = "prettier --list-different {{ files }}"
+    check_first = true
+    batch = true
+    dir = "ui"
+  }
+  ["eslint"] {
+    glob = List("**/*.js", "**/*.svelte")
+    check = "eslint {{ files }}"
+    fix = "eslint --fix {{ files }}"
+    check_first = true
+    batch = true
+    dir = "ui"
+  }
+}
+
+local utility_checks = new Mapping<String, Step> {
+  ["check-merge-conflict"] = Builtins.check_merge_conflict
+  ["trailing-whitespace"] = Builtins.trailing_whitespace
+  ["detect-private-key"] = Builtins.detect_private_key
+  ["check-added-large-files"] = Builtins.check_added_large_files
+  ["check-case-conflict"] = Builtins.check_case_conflict
+  ["end-of-file-fixer"] = Builtins.newlines
+  ["typos"] = Builtins.typos
+}
+
+local infra_linters = new Mapping<String, Step> {
+  ["actionlint"] = Builtins.actionlint
+  ["shellcheck"] = Builtins.shellcheck
+  ["hadolint"] = Builtins.hadolint
+  ["zizmor"] = Builtins.zizmor
+}
+
+local all_linters = new Mapping<String, Step> {
+  ...utility_checks
+  ...infra_linters
+  ...rust_linters
+  ...frontend_linters
+}
+
+// --- Hooks ---
+
+hooks {
+  ["pre-commit"] {
+    fix = true
+    stash = "git"
+    steps = all_linters
+  }
+  ["fix"] {
+    fix = true
+    steps = all_linters
+  }
+  ["check"] {
+    steps = all_linters
+  }
+}

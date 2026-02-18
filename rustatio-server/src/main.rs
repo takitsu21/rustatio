@@ -1,3 +1,6 @@
+// The OpenApi derive macro generates code that triggers this lint
+#![allow(clippy::needless_for_each)]
+
 mod api;
 mod services;
 mod util;
@@ -26,7 +29,10 @@ async fn main() {
 
     let default_filter = "rustatio_server=info,rustatio_core=trace,log=trace,tower_http=info,hyper=info,reqwest=info";
     let subscriber = tracing_subscriber::registry()
-        .with(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| default_filter.into()))
+        .with(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| default_filter.into()),
+        )
         .with(BroadcastLayer::new(state.log_sender.clone()))
         .with(tracing_subscriber::fmt::layer());
 
@@ -44,7 +50,7 @@ async fn main() {
     }
 
     let mut scheduler = Scheduler::new();
-    scheduler.start(state.clone(), state.instances.clone());
+    scheduler.start(state.clone(), Arc::clone(&state.instances));
     let scheduler = Arc::new(tokio::sync::Mutex::new(scheduler));
 
     let (watch_config, disabled_reason) = WatchConfig::from_env();
@@ -71,10 +77,7 @@ async fn main() {
     }
     let watch_service = Arc::new(RwLock::new(watch_service));
 
-    let server_state = ServerState {
-        app: state.clone(),
-        watch: watch_service.clone(),
-    };
+    let server_state = ServerState { app: state.clone(), watch: Arc::clone(&watch_service) };
 
     let port: u16 = std::env::var("PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(8080);
     let cors = CorsLayer::new().allow_origin(Any).allow_methods(Any).allow_headers(Any);
@@ -82,19 +85,14 @@ async fn main() {
     let app = Router::new()
         .route("/health", get(|| async { "OK" }))
         .merge(
-            SwaggerUi::new("/docs")
-                .url("/api-docs/openapi.json", ApiDoc::openapi())
-                .config(
-                    utoipa_swagger_ui::Config::default()
-                        .persist_authorization(true)
-                        .try_it_out_enabled(true),
-                ),
+            SwaggerUi::new("/docs").url("/api-docs/openapi.json", ApiDoc::openapi()).config(
+                utoipa_swagger_ui::Config::default()
+                    .persist_authorization(true)
+                    .try_it_out_enabled(true),
+            ),
         )
         .nest("/api", api::public_router())
-        .nest(
-            "/api",
-            api::router().layer(middleware::from_fn(api::middleware::auth_middleware)),
-        )
+        .nest("/api", api::router().layer(middleware::from_fn(api::middleware::auth_middleware)))
         .fallback(util::static_handler)
         .layer(cors)
         .layer(TraceLayer::new_for_http())
@@ -114,8 +112,8 @@ async fn main() {
 
     let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
     let state_for_shutdown = state.clone();
-    let watch_for_shutdown = watch_service.clone();
-    let scheduler_for_shutdown = scheduler.clone();
+    let watch_for_shutdown = Arc::clone(&watch_service);
+    let scheduler_for_shutdown = Arc::clone(&scheduler);
 
     tokio::spawn(async move {
         shutdown_signal().await;
@@ -139,13 +137,13 @@ async fn main() {
         let _ = shutdown_tx.send(());
     });
 
-    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+    let listener = tokio::net::TcpListener::bind(addr).await.expect("failed to bind TCP listener");
     axum::serve(listener, app)
         .with_graceful_shutdown(async {
             let _ = shutdown_rx.await;
         })
         .await
-        .unwrap();
+        .expect("server error");
 
     tracing::info!("Server shutdown complete");
 }
@@ -167,8 +165,8 @@ async fn shutdown_signal() {
     let terminate = std::future::pending::<()>();
 
     tokio::select! {
-        _ = ctrl_c => {},
-        _ = terminate => {},
+        () = ctrl_c => {},
+        () = terminate => {},
     }
 
     tracing::info!("Shutdown signal received, stopping server...");

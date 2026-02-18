@@ -1,8 +1,13 @@
 use super::events::{EventBroadcaster, InstanceEvent, LogEvent};
 use super::instance::{FakerInstance, InstanceInfo};
-use super::persistence::{now_timestamp, InstanceSource, PersistedInstance, PersistedState, Persistence};
+use super::lifecycle::InstanceLifecycle;
+use super::persistence::{
+    now_timestamp, InstanceSource, PersistedInstance, PersistedState, Persistence,
+};
 use rustatio_core::logger::set_instance_context_str;
-use rustatio_core::{FakerConfig, FakerState, FakerStats, InstanceSummary, RatioFaker, TorrentInfo};
+use rustatio_core::{
+    FakerConfig, FakerState, FakerStats, InstanceSummary, RatioFaker, TorrentInfo,
+};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{broadcast, RwLock};
@@ -109,7 +114,6 @@ impl AppState {
         // Second pass: auto-start instances that were previously running
         if !auto_start_ids.is_empty() {
             tracing::info!("Auto-starting {} instance(s)...", auto_start_ids.len());
-            use super::lifecycle::InstanceLifecycle;
             for id in &auto_start_ids {
                 if let Err(e) = self.start_instance(id).await {
                     tracing::warn!("Failed to auto-start instance {}: {}", id, e);
@@ -154,7 +158,8 @@ impl AppState {
         self.persistence.save(&persisted).await
     }
 
-    pub async fn next_instance_id(&self) -> String {
+    #[allow(clippy::unused_self)]
+    pub fn next_instance_id(&self) -> String {
         nanoid::nanoid!(10)
     }
 
@@ -162,7 +167,11 @@ impl AppState {
         self.instances.read().await.contains_key(id)
     }
 
-    pub async fn update_instance_config(&self, id: &str, config: FakerConfig) -> Result<(), String> {
+    pub async fn update_instance_config(
+        &self,
+        id: &str,
+        config: FakerConfig,
+    ) -> Result<(), String> {
         let mut instances = self.instances.write().await;
         let instance = instances.get_mut(id).ok_or("Instance not found")?;
 
@@ -172,7 +181,8 @@ impl AppState {
         let existing_stats = instance.faker.read().await.get_stats().await;
         faker_config.completion_percent = existing_stats.torrent_completion;
 
-        let faker = RatioFaker::new(instance.torrent.clone(), faker_config).map_err(|e| e.to_string())?;
+        let faker =
+            RatioFaker::new(instance.torrent.clone(), faker_config).map_err(|e| e.to_string())?;
 
         instance.faker = Arc::new(RwLock::new(faker));
         instance.config = config;
@@ -180,14 +190,18 @@ impl AppState {
         Ok(())
     }
 
-    pub async fn update_instance_config_only(&self, id: &str, config: FakerConfig) -> Result<(), String> {
+    pub async fn update_instance_config_only(
+        &self,
+        id: &str,
+        config: FakerConfig,
+    ) -> Result<(), String> {
         let mut instances = self.instances.write().await;
         let instance = instances.get_mut(id).ok_or("Instance not found")?;
         instance.config = config.clone();
 
         // Recreate the faker so stats reflect the new config (e.g. completion_percent)
-        let faker =
-            RatioFaker::new(instance.torrent.clone(), config).map_err(|e| format!("Failed to create faker: {}", e))?;
+        let faker = RatioFaker::new(instance.torrent.clone(), config)
+            .map_err(|e| format!("Failed to create faker: {e}"))?;
         instance.faker = Arc::new(RwLock::new(faker));
 
         Ok(())
@@ -222,7 +236,7 @@ impl AppState {
                     }
                 }
                 None => {
-                    failed.push((id.clone(), format!("Instance {} not found", id)));
+                    failed.push((id.clone(), format!("Instance {id} not found")));
                 }
             }
         }
@@ -230,15 +244,18 @@ impl AppState {
         (succeeded, failed)
     }
 
-    pub async fn create_instance(&self, id: &str, torrent: TorrentInfo, config: FakerConfig) -> Result<(), String> {
-        self.create_instance_internal(id, torrent, config, InstanceSource::Manual)
-            .await
+    pub async fn create_instance(
+        &self,
+        id: &str,
+        torrent: TorrentInfo,
+        config: FakerConfig,
+    ) -> Result<(), String> {
+        self.create_instance_internal(id, torrent, config, InstanceSource::Manual).await
     }
 
     pub async fn create_idle_instance(&self, id: &str, torrent: TorrentInfo) -> Result<(), String> {
         let config = FakerConfig::default();
-        self.create_instance_internal(id, torrent.clone(), config, InstanceSource::Manual)
-            .await?;
+        self.create_instance_internal(id, torrent.clone(), config, InstanceSource::Manual).await?;
 
         self.emit_instance_event(InstanceEvent::Created {
             id: id.to_string(),
@@ -345,7 +362,7 @@ impl AppState {
         let faker = {
             let instances = self.instances.read().await;
             let instance = instances.get(id).ok_or("Instance not found")?;
-            instance.faker.clone()
+            Arc::clone(&instance.faker)
         };
         let stats = faker.read().await.get_stats().await;
         Ok(stats)
@@ -413,7 +430,10 @@ impl AppState {
         result
     }
 
-    pub async fn get_instance_info_for_delete(&self, id: &str) -> Option<(InstanceSource, [u8; 20])> {
+    pub async fn get_instance_info_for_delete(
+        &self,
+        id: &str,
+    ) -> Option<(InstanceSource, [u8; 20])> {
         let instances = self.instances.read().await;
         instances.get(id).map(|inst| (inst.source, inst.torrent_info_hash))
     }
@@ -428,7 +448,11 @@ impl AppState {
         None
     }
 
-    pub async fn update_instance_source(&self, id: &str, source: InstanceSource) -> Result<(), String> {
+    pub async fn update_instance_source(
+        &self,
+        id: &str,
+        source: InstanceSource,
+    ) -> Result<(), String> {
         let mut instances = self.instances.write().await;
         let instance = instances.get_mut(id).ok_or("Instance not found")?;
         instance.source = source;
@@ -446,9 +470,8 @@ impl AppState {
         info_hash: &[u8; 20],
         source: InstanceSource,
     ) -> Result<(), String> {
-        let id = match self.find_instance_by_info_hash(info_hash).await {
-            Some(id) => id,
-            None => return Ok(()),
+        let Some(id) = self.find_instance_by_info_hash(info_hash).await else {
+            return Ok(());
         };
         self.update_instance_source(&id, source).await
     }
@@ -541,6 +564,7 @@ impl AppState {
         result
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn create_instance_with_tags(
         &self,
         id: &str,
@@ -562,9 +586,8 @@ impl AppState {
     }
 
     pub async fn delete_instance_by_info_hash(&self, info_hash: &[u8; 20]) -> Result<(), String> {
-        let id = match self.find_instance_by_info_hash(info_hash).await {
-            Some(id) => id,
-            None => return Ok(()),
+        let Some(id) = self.find_instance_by_info_hash(info_hash).await else {
+            return Ok(());
         };
 
         // Stop the faker if running before removing

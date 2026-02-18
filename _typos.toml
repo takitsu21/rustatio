@@ -1,0 +1,6 @@
+# typos spell-checker configuration
+# https://github.com/crate-ci/typos
+
+[default.extend-words]
+# ratatui is a Rust TUI framework, not a misspelling of "ratatouille"
+ratatui = "ratatui"

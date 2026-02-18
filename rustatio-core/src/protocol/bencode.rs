@@ -25,33 +25,42 @@ pub fn encode<T: Serialize>(value: &T) -> Result<Vec<u8>> {
 }
 
 /// Extract a string value from a bencode dictionary
-pub fn get_string(dict: &HashMap<Vec<u8>, serde_bencode::value::Value>, key: &str) -> Result<String> {
+#[allow(clippy::implicit_hasher)]
+pub fn get_string(
+    dict: &HashMap<Vec<u8>, serde_bencode::value::Value>,
+    key: &str,
+) -> Result<String> {
     dict.get(key.as_bytes())
         .and_then(|v| match v {
             serde_bencode::value::Value::Bytes(b) => Some(String::from_utf8_lossy(b).to_string()),
             _ => None,
         })
-        .ok_or_else(|| BencodeError::InvalidStructure(format!("Missing or invalid key: {}", key)))
+        .ok_or_else(|| BencodeError::InvalidStructure(format!("Missing or invalid key: {key}")))
 }
 
 /// Extract an integer value from a bencode dictionary
+#[allow(clippy::implicit_hasher)]
 pub fn get_int(dict: &HashMap<Vec<u8>, serde_bencode::value::Value>, key: &str) -> Result<i64> {
     dict.get(key.as_bytes())
         .and_then(|v| match v {
             serde_bencode::value::Value::Int(i) => Some(*i),
             _ => None,
         })
-        .ok_or_else(|| BencodeError::InvalidStructure(format!("Missing or invalid key: {}", key)))
+        .ok_or_else(|| BencodeError::InvalidStructure(format!("Missing or invalid key: {key}")))
 }
 
 /// Extract bytes value from a bencode dictionary
-pub fn get_bytes(dict: &HashMap<Vec<u8>, serde_bencode::value::Value>, key: &str) -> Result<Vec<u8>> {
+#[allow(clippy::implicit_hasher)]
+pub fn get_bytes(
+    dict: &HashMap<Vec<u8>, serde_bencode::value::Value>,
+    key: &str,
+) -> Result<Vec<u8>> {
     dict.get(key.as_bytes())
         .and_then(|v| match v {
             serde_bencode::value::Value::Bytes(b) => Some(b.clone()),
             _ => None,
         })
-        .ok_or_else(|| BencodeError::InvalidStructure(format!("Missing or invalid key: {}", key)))
+        .ok_or_else(|| BencodeError::InvalidStructure(format!("Missing or invalid key: {key}")))
 }
 
 #[cfg(test)]

@@ -11,7 +11,7 @@ thread_local! {
 /// Set the instance context for the current thread (string version for server/wasm)
 pub fn set_instance_context_str(instance_id: Option<&str>) {
     INSTANCE_CONTEXT.with(|ctx| {
-        *ctx.borrow_mut() = instance_id.map(|s| s.to_string());
+        *ctx.borrow_mut() = instance_id.map(std::string::ToString::to_string);
     });
 }
 
@@ -25,11 +25,7 @@ pub fn set_instance_context(instance_id: Option<u32>) {
 /// Get the current instance context
 fn get_instance_prefix() -> String {
     INSTANCE_CONTEXT.with(|ctx| {
-        if let Some(ref id) = *ctx.borrow() {
-            format!("[Instance {}] ", id)
-        } else {
-            String::new()
-        }
+        ctx.borrow().as_ref().map_or_else(String::new, |id| format!("[Instance {id}] "))
     })
 }
 
@@ -60,14 +56,17 @@ pub mod native {
         handle: tauri::AppHandle,
     }
 
+    // Safety: tauri::AppHandle is internally Arc-based and thread-safe,
+    // but doesn't implement Send/Sync due to platform abstractions.
+    #[allow(unsafe_code)]
     unsafe impl Send for AppHandleWrapper {}
+    #[allow(unsafe_code)]
     unsafe impl Sync for AppHandleWrapper {}
 
     fn level_to_u8(level: &str) -> u8 {
         match level {
             "error" => 0,
             "warn" => 1,
-            "info" => 2,
             "debug" => 3,
             "trace" => 4,
             _ => 2,
@@ -99,43 +98,39 @@ pub mod native {
                 .unwrap_or_else(|_| std::time::Duration::from_secs(0))
                 .as_millis() as u64;
 
-            let log_event = LogEvent {
-                timestamp,
-                level: level.to_string(),
-                message,
-            };
+            let log_event = LogEvent { timestamp, level: level.to_string(), message };
 
             let _ = wrapper.handle.emit("log-event", log_event);
         }
     }
 
-    pub fn info(message: String) {
+    pub fn info(message: &str) {
         let prefixed = format!("{}{}", super::get_instance_prefix(), message);
-        log::info!("{}", prefixed);
+        log::info!("{prefixed}");
         emit_log("info", prefixed);
     }
 
-    pub fn warn(message: String) {
+    pub fn warn(message: &str) {
         let prefixed = format!("{}{}", super::get_instance_prefix(), message);
-        log::warn!("{}", prefixed);
+        log::warn!("{prefixed}");
         emit_log("warn", prefixed);
     }
 
-    pub fn error(message: String) {
+    pub fn error(message: &str) {
         let prefixed = format!("{}{}", super::get_instance_prefix(), message);
-        log::error!("{}", prefixed);
+        log::error!("{prefixed}");
         emit_log("error", prefixed);
     }
 
-    pub fn debug(message: String) {
+    pub fn debug(message: &str) {
         let prefixed = format!("{}{}", super::get_instance_prefix(), message);
-        log::debug!("{}", prefixed);
+        log::debug!("{prefixed}");
         emit_log("debug", prefixed);
     }
 
-    pub fn trace(message: String) {
+    pub fn trace(message: &str) {
         let prefixed = format!("{}{}", super::get_instance_prefix(), message);
-        log::trace!("{}", prefixed);
+        log::trace!("{prefixed}");
         emit_log("trace", prefixed);
     }
 }
@@ -144,38 +139,38 @@ pub mod native {
 #[cfg(all(not(target_arch = "wasm32"), feature = "native", not(feature = "desktop")))]
 pub mod native {
     /// No-op for CLI (no app handle needed)
-    pub fn init_logger() {
+    pub const fn init_logger() {
         // No initialization needed for CLI
     }
 
     /// Log at info level
-    pub fn info(message: String) {
+    pub fn info(message: &str) {
         let prefixed = format!("{}{}", super::get_instance_prefix(), message);
-        log::info!("{}", prefixed);
+        log::info!("{prefixed}");
     }
 
     /// Log at warn level
-    pub fn warn(message: String) {
+    pub fn warn(message: &str) {
         let prefixed = format!("{}{}", super::get_instance_prefix(), message);
-        log::warn!("{}", prefixed);
+        log::warn!("{prefixed}");
     }
 
     /// Log at error level
-    pub fn error(message: String) {
+    pub fn error(message: &str) {
         let prefixed = format!("{}{}", super::get_instance_prefix(), message);
-        log::error!("{}", prefixed);
+        log::error!("{prefixed}");
     }
 
     /// Log at debug level
-    pub fn debug(message: String) {
+    pub fn debug(message: &str) {
         let prefixed = format!("{}{}", super::get_instance_prefix(), message);
-        log::debug!("{}", prefixed);
+        log::debug!("{prefixed}");
     }
 
     /// Log at trace level
-    pub fn trace(message: String) {
+    pub fn trace(message: &str) {
         let prefixed = format!("{}{}", super::get_instance_prefix(), message);
-        log::trace!("{}", prefixed);
+        log::trace!("{prefixed}");
     }
 }
 
@@ -230,31 +225,31 @@ pub mod wasm {
     }
 
     /// Log at info level to browser console and UI
-    pub fn info(message: String) {
+    pub fn info(message: &str) {
         let prefixed = format!("{}{}", super::get_instance_prefix(), message);
         emit_log("info", &prefixed);
     }
 
     /// Log at warn level to browser console and UI
-    pub fn warn(message: String) {
+    pub fn warn(message: &str) {
         let prefixed = format!("{}{}", super::get_instance_prefix(), message);
         emit_log("warn", &prefixed);
     }
 
     /// Log at error level to browser console and UI
-    pub fn error(message: String) {
+    pub fn error(message: &str) {
         let prefixed = format!("{}{}", super::get_instance_prefix(), message);
         emit_log("error", &prefixed);
     }
 
     /// Log at debug level to browser console and UI
-    pub fn debug(message: String) {
+    pub fn debug(message: &str) {
         let prefixed = format!("{}{}", super::get_instance_prefix(), message);
         emit_log("debug", &prefixed);
     }
 
     /// Log at trace level to browser console and UI
-    pub fn trace(message: String) {
+    pub fn trace(message: &str) {
         let prefixed = format!("{}{}", super::get_instance_prefix(), message);
         emit_log("trace", &prefixed);
     }
@@ -276,34 +271,34 @@ pub use wasm::*;
 #[macro_export]
 macro_rules! log_info {
     ($($arg:tt)*) => {
-        $crate::logger::info(format!($($arg)*))
+        $crate::logger::info(&format!($($arg)*))
     };
 }
 
 #[macro_export]
 macro_rules! log_warn {
     ($($arg:tt)*) => {
-        $crate::logger::warn(format!($($arg)*))
+        $crate::logger::warn(&format!($($arg)*))
     };
 }
 
 #[macro_export]
 macro_rules! log_error {
     ($($arg:tt)*) => {
-        $crate::logger::error(format!($($arg)*))
+        $crate::logger::error(&format!($($arg)*))
     };
 }
 
 #[macro_export]
 macro_rules! log_debug {
     ($($arg:tt)*) => {
-        $crate::logger::debug(format!($($arg)*))
+        $crate::logger::debug(&format!($($arg)*))
     };
 }
 
 #[macro_export]
 macro_rules! log_trace {
     ($($arg:tt)*) => {
-        $crate::logger::trace(format!($($arg)*))
+        $crate::logger::trace(&format!($($arg)*))
     };
 }

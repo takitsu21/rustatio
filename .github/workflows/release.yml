@@ -13,12 +13,6 @@ on:
           - major
         default: "patch"
 
-permissions:
-  contents: write
-  pages: write
-  id-token: write
-  packages: write
-
 env:
   CARGO_TERM_COLOR: always
 
@@ -26,13 +20,16 @@ jobs:
   prepare-release:
     name: Prepare Release
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     outputs:
       version: ${{ steps.new_version.outputs.version }}
       tag: ${{ steps.new_version.outputs.tag }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Get latest tag
         id: latest_tag
@@ -41,19 +38,21 @@ jobs:
           LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
           # Remove 'v' prefix if present
           VERSION=${LATEST_TAG#v}
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Latest version: $VERSION"
 
       - name: Calculate new version
         id: new_version
+        env:
+          CURRENT: ${{ steps.latest_tag.outputs.version }}
+          BUMP_TYPE: ${{ github.event.inputs.bump_type }}
         run: |
-          CURRENT="${{ steps.latest_tag.outputs.version }}"
           IFS='.' read -r -a parts <<< "$CURRENT"
           MAJOR="${parts[0]}"
           MINOR="${parts[1]}"
           PATCH="${parts[2]}"
 
-          case "${{ github.event.inputs.bump_type }}" in
+          case "$BUMP_TYPE" in
             major)
               MAJOR=$((MAJOR + 1))
               MINOR=0
@@ -69,12 +68,12 @@ jobs:
           esac
 
           NEW_VERSION="$MAJOR.$MINOR.$PATCH"
-          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
-          echo "tag=v$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$NEW_VERSION" >> "$GITHUB_OUTPUT"
           echo "New version: $NEW_VERSION"
 
       - name: Create and push tag
-        uses: rickstaa/action-create-tag@v1
+        uses: rickstaa/action-create-tag@a1c7777fcb2fee4f19b0f283ba888afa11678b72 # v1
         with:
           tag: ${{ steps.new_version.outputs.tag }}
           message: "Release ${{ steps.new_version.outputs.tag }}"
@@ -84,23 +83,26 @@ jobs:
     name: Build Web Assets
     needs: prepare-release
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           ref: ${{ needs.prepare-release.outputs.tag }}
+          persist-credentials: false
 
       - name: Install mise
-        uses: jdx/mise-action@v2
+        uses: jdx/mise-action@c37c93293d6b742fc901e1406b8f764f6fb19dac # v2
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           cache: true
 
       - name: Setup mold linker
-        uses: rui314/setup-mold@v1
+        uses: rui314/setup-mold@725a8794d15fc7563f59595bd9556495c0564878 # v1
 
       - name: Cache cargo
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             ~/.cargo/bin/
@@ -115,8 +117,9 @@ jobs:
 
       - name: Update version in package.json
         working-directory: ui
+        env:
+          VERSION: ${{ needs.prepare-release.outputs.version }}
         run: |
-          VERSION="${{ needs.prepare-release.outputs.version }}"
           sed -i "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" package.json
 
       - name: Build Web Version for GitHub Pages
@@ -125,7 +128,7 @@ jobs:
         run: mise run build:web
 
       - name: Upload GitHub Pages artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: web-dist-pages
           path: ui/dist
@@ -138,7 +141,7 @@ jobs:
           cd ui && npm run build
 
       - name: Upload Docker artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: web-dist-docker
           path: ui/dist
@@ -148,22 +151,25 @@ jobs:
     name: Build CLI
     needs: prepare-release
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           ref: ${{ needs.prepare-release.outputs.tag }}
+          persist-credentials: false
 
       - name: Setup mold linker
-        uses: rui314/setup-mold@v1
+        uses: rui314/setup-mold@725a8794d15fc7563f59595bd9556495c0564878 # v1
 
       - name: Install mise
-        uses: jdx/mise-action@v2
+        uses: jdx/mise-action@c37c93293d6b742fc901e1406b8f764f6fb19dac # v2
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           cache: true
 
       - name: Cache cargo
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             ~/.cargo/bin/
@@ -177,15 +183,16 @@ jobs:
         run: rustup target add x86_64-unknown-linux-gnu
 
       - name: Update version in Cargo.toml
+        env:
+          VERSION: ${{ needs.prepare-release.outputs.version }}
         run: |
-          VERSION="${{ needs.prepare-release.outputs.version }}"
           sed -i "s/^version = \".*\"/version = \"$VERSION\"/" Cargo.toml
 
       - name: Build CLI
         run: cargo build --release --target x86_64-unknown-linux-gnu -p rustatio-cli
 
       - name: Upload CLI binary to release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2
         with:
           tag_name: ${{ needs.prepare-release.outputs.tag }}
           files: target/x86_64-unknown-linux-gnu/release/rustatio
@@ -205,23 +212,26 @@ jobs:
           - platform: linux/arm64
             runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.runner }}
+    permissions:
+      packages: write
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           ref: ${{ needs.prepare-release.outputs.tag }}
+          persist-credentials: false
 
       - name: Download web dist artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: web-dist-docker
           path: ./ui/dist
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
       - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -229,13 +239,14 @@ jobs:
 
       - name: Extract platform short name
         id: platform
+        env:
+          PLATFORM: ${{ matrix.platform }}
         run: |
-          PLATFORM="${{ matrix.platform }}"
-          echo "short=${PLATFORM//\//-}" >> $GITHUB_OUTPUT
+          echo "short=${PLATFORM//\//-}" >> "$GITHUB_OUTPUT"
 
       - name: Build and push Docker image by digest
         id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: .
           push: true
@@ -248,13 +259,14 @@ jobs:
           cache-to: type=gha,mode=max,scope=${{ matrix.platform }}
 
       - name: Export digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
         run: |
           mkdir -p /tmp/digests
-          digest="${{ steps.build.outputs.digest }}"
-          touch "/tmp/digests/${digest#sha256:}"
+          touch "/tmp/digests/${DIGEST#sha256:}"
 
       - name: Upload digest
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: digests-${{ steps.platform.outputs.short }}
           path: /tmp/digests/*
@@ -265,19 +277,21 @@ jobs:
     name: Merge Docker Manifests
     needs: [prepare-release, build-docker]
     runs-on: ubuntu-latest
+    permissions:
+      packages: write
     steps:
       - name: Download digests
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           path: /tmp/digests
           pattern: digests-*
           merge-multiple: true
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
       - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -285,7 +299,7 @@ jobs:
 
       - name: Extract metadata for Docker
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
@@ -296,12 +310,15 @@ jobs:
       - name: Create manifest list and push
         working-directory: /tmp/digests
         run: |
-          docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
-            $(printf 'ghcr.io/${{ github.repository }}@sha256:%s ' *)
+          # shellcheck disable=SC2046
+          docker buildx imagetools create "$(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON")" \
+            $(printf 'ghcr.io/${{ github.repository }}@sha256:%s ' ./*)
 
       - name: Inspect image
+        env:
+          VERSION: ${{ needs.prepare-release.outputs.version }}
         run: |
-          docker buildx imagetools inspect ghcr.io/${{ github.repository }}:${{ needs.prepare-release.outputs.version }}
+          docker buildx imagetools inspect "ghcr.io/${{ github.repository }}:${VERSION}"
 
   build-tauri:
     needs: prepare-release
@@ -330,20 +347,26 @@ jobs:
             os_name: "Windows"
 
     runs-on: ${{ matrix.platform }}
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           ref: ${{ needs.prepare-release.outputs.tag }}
+          persist-credentials: false
 
       - name: Extract target from args
         id: target
         shell: bash
+        env:
+          ARGS: ${{ matrix.args }}
         run: |
-          if [[ "${{ matrix.args }}" == *"--target"* ]]; then
-            TARGET=$(echo "${{ matrix.args }}" | sed 's/.*--target \([^ ]*\).*/\1/')
-            echo "target=$TARGET" >> $GITHUB_OUTPUT
+          if [[ "$ARGS" == *"--target"* ]]; then
+            TARGET="${ARGS##*--target }"
+            TARGET="${TARGET%% *}"
+            echo "target=$TARGET" >> "$GITHUB_OUTPUT"
           else
-            echo "target=" >> $GITHUB_OUTPUT
+            echo "target=" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Install system dependencies (Ubuntu)
@@ -364,10 +387,10 @@ jobs:
 
       - name: Setup mold linker (Ubuntu)
         if: matrix.platform == 'ubuntu-24.04'
-        uses: rui314/setup-mold@v1
+        uses: rui314/setup-mold@725a8794d15fc7563f59595bd9556495c0564878 # v1
 
       - name: Install mise
-        uses: jdx/mise-action@v2
+        uses: jdx/mise-action@c37c93293d6b742fc901e1406b8f764f6fb19dac # v2
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           cache: true
@@ -380,15 +403,17 @@ jobs:
 
       - name: Update version in Cargo.toml
         shell: bash
+        env:
+          VERSION: ${{ needs.prepare-release.outputs.version }}
         run: |
-          VERSION="${{ needs.prepare-release.outputs.version }}"
           sed -i.bak "s/^version = \".*\"/version = \"$VERSION\"/" rustatio-desktop/Cargo.toml
           rm rustatio-desktop/Cargo.toml.bak || true
 
       - name: Update version in tauri.conf.json
         shell: bash
+        env:
+          VERSION: ${{ needs.prepare-release.outputs.version }}
         run: |
-          VERSION="${{ needs.prepare-release.outputs.version }}"
           if [[ "$OSTYPE" == "darwin"* ]]; then
             sed -i '' "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" rustatio-desktop/tauri.conf.json
           else
@@ -396,7 +421,7 @@ jobs:
           fi
 
       - name: Cache cargo
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             ~/.cargo/bin/
@@ -408,13 +433,16 @@ jobs:
 
       - name: Install Rust target
         if: steps.target.outputs.target != ''
-        run: rustup target add ${{ steps.target.outputs.target }}
+        env:
+          TARGET: ${{ steps.target.outputs.target }}
+        run: rustup target add "$TARGET"
 
       - name: Update version in package.json
         working-directory: ui
         shell: bash
+        env:
+          VERSION: ${{ needs.prepare-release.outputs.version }}
         run: |
-          VERSION="${{ needs.prepare-release.outputs.version }}"
           if [[ "$OSTYPE" == "darwin"* ]]; then
             sed -i '' "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" package.json
           else
@@ -422,7 +450,7 @@ jobs:
           fi
 
       - name: Build Tauri App
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@73fb865345c54760d875b94642314f8c0c894afa # v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
@@ -441,18 +469,20 @@ jobs:
     name: Prepare GitHub Pages
     needs: [prepare-release, build-web-assets]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Download web dist artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: web-dist-pages
           path: ./ui/dist
 
       - name: Setup Pages
-        uses: actions/configure-pages@v4
+        uses: actions/configure-pages@1f0c5cde4bc74cd7e1254d0cb4de8d49e9068c7d # v4
 
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
         with:
           path: './ui/dist'
 
@@ -460,9 +490,11 @@ jobs:
     name: Publish Release
     needs: [prepare-release, build-tauri, build-cli, merge-docker]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Publish release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2
         with:
           tag_name: ${{ needs.prepare-release.outputs.tag }}
           name: ${{ needs.prepare-release.outputs.tag }}
@@ -474,23 +506,30 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Release published
+        env:
+          TAG: ${{ needs.prepare-release.outputs.tag }}
         run: |
-          echo "✅ Release ${{ needs.prepare-release.outputs.tag }} has been published!"
-          echo "🎉 Binaries are now available on GitHub Releases"
+          echo "Release ${TAG} has been published!"
+          echo "Binaries are now available on GitHub Releases"
 
   deploy-pages:
     name: Deploy to GitHub Pages
     needs: [prepare-release, prepare-pages]
     runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
 
       - name: Pages deployed
+        env:
+          PAGE_URL: ${{ steps.deployment.outputs.page_url }}
         run: |
-          echo "✅ Web version deployed to GitHub Pages!"
-          echo "🌐 URL: ${{ steps.deployment.outputs.page_url }}"
+          echo "Web version deployed to GitHub Pages!"
+          echo "URL: ${PAGE_URL}"

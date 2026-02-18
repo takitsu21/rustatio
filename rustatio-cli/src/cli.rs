@@ -14,7 +14,7 @@ pub struct Cli {
 impl Cli {
     /// Generate shell completions and print to stdout
     pub fn generate_completions(shell: Shell) {
-        let mut cmd = Cli::command();
+        let mut cmd = Self::command();
         generate(shell, &mut cmd, "rustatio", &mut io::stdout());
     }
 }
@@ -179,7 +179,7 @@ pub enum Commands {
         json: bool,
     },
 
-    /// List supported BitTorrent clients
+    /// List supported `BitTorrent` clients
     Clients {
         /// Output as JSON
         #[arg(long)]
@@ -244,11 +244,11 @@ pub enum ClientArg {
 impl From<ClientArg> for rustatio_core::ClientType {
     fn from(client: ClientArg) -> Self {
         match client {
-            ClientArg::Qbittorrent => rustatio_core::ClientType::QBittorrent,
-            ClientArg::Utorrent => rustatio_core::ClientType::UTorrent,
-            ClientArg::Transmission => rustatio_core::ClientType::Transmission,
-            ClientArg::Deluge => rustatio_core::ClientType::Deluge,
-            ClientArg::Bittorrent => rustatio_core::ClientType::BitTorrent,
+            ClientArg::Qbittorrent => Self::QBittorrent,
+            ClientArg::Utorrent => Self::UTorrent,
+            ClientArg::Transmission => Self::Transmission,
+            ClientArg::Deluge => Self::Deluge,
+            ClientArg::Bittorrent => Self::BitTorrent,
         }
     }
 }
@@ -265,11 +265,11 @@ pub enum ShellArg {
 impl From<ShellArg> for Shell {
     fn from(shell: ShellArg) -> Self {
         match shell {
-            ShellArg::Bash => Shell::Bash,
-            ShellArg::Zsh => Shell::Zsh,
-            ShellArg::Fish => Shell::Fish,
-            ShellArg::PowerShell => Shell::PowerShell,
-            ShellArg::Elvish => Shell::Elvish,
+            ShellArg::Bash => Self::Bash,
+            ShellArg::Zsh => Self::Zsh,
+            ShellArg::Fish => Self::Fish,
+            ShellArg::PowerShell => Self::PowerShell,
+            ShellArg::Elvish => Self::Elvish,
         }
     }
 }

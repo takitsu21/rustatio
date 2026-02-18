@@ -127,53 +127,53 @@ pub struct UiSettings {
 }
 
 // Default values
-fn default_client_type() -> ClientType {
+const fn default_client_type() -> ClientType {
     ClientType::QBittorrent
 }
 
-fn default_port() -> u16 {
+const fn default_port() -> u16 {
     6881
 }
 
-fn default_num_want() -> u32 {
+const fn default_num_want() -> u32 {
     50
 }
 
-fn default_upload_rate() -> f64 {
+const fn default_upload_rate() -> f64 {
     50.0
 }
 
-fn default_download_rate() -> f64 {
+const fn default_download_rate() -> f64 {
     100.0
 }
 
-fn default_announce_interval() -> u64 {
+const fn default_announce_interval() -> u64 {
     1800 // 30 minutes
 }
 
-fn default_update_interval() -> u64 {
+const fn default_update_interval() -> u64 {
     5 // 5 seconds
 }
 
-fn default_window_width() -> u32 {
+const fn default_window_width() -> u32 {
     1200
 }
 
-fn default_window_height() -> u32 {
+const fn default_window_height() -> u32 {
     800
 }
 
-fn default_dark_mode() -> bool {
+const fn default_dark_mode() -> bool {
     true
 }
 
-fn default_show_logs() -> bool {
+const fn default_show_logs() -> bool {
     false
 }
 
 impl Default for ClientSettings {
     fn default() -> Self {
-        ClientSettings {
+        Self {
             default_type: default_client_type(),
             default_version: None,
             default_port: default_port(),
@@ -184,7 +184,7 @@ impl Default for ClientSettings {
 
 impl Default for FakerSettings {
     fn default() -> Self {
-        FakerSettings {
+        Self {
             default_upload_rate: default_upload_rate(),
             default_download_rate: default_download_rate(),
             default_announce_interval: default_announce_interval(),
@@ -195,7 +195,7 @@ impl Default for FakerSettings {
 
 impl Default for UiSettings {
     fn default() -> Self {
-        UiSettings {
+        Self {
             window_width: default_window_width(),
             window_height: default_window_height(),
             dark_mode: default_dark_mode(),
@@ -208,7 +208,7 @@ impl AppConfig {
     /// Load configuration from a TOML file
     pub fn load<P: AsRef<Path>>(path: P) -> Result<Self> {
         let content = fs::read_to_string(path)?;
-        let config: AppConfig = toml::from_str(&content)?;
+        let config: Self = toml::from_str(&content)?;
         Ok(config)
     }
 
@@ -221,11 +221,10 @@ impl AppConfig {
 
     /// Get the default config file path
     pub fn default_path() -> PathBuf {
-        if let Some(config_dir) = dirs::config_dir() {
-            config_dir.join("rustatio").join("config.toml")
-        } else {
-            PathBuf::from("rustatio.toml")
-        }
+        dirs::config_dir().map_or_else(
+            || PathBuf::from("rustatio.toml"),
+            |config_dir| config_dir.join("rustatio").join("config.toml"),
+        )
     }
 
     /// Load from default path or create default config if not exists
@@ -234,7 +233,7 @@ impl AppConfig {
 
         if path.exists() {
             Self::load(&path).unwrap_or_else(|e| {
-                log::warn!("Failed to load config from {:?}: {}. Using defaults.", path, e);
+                log::warn!("Failed to load config from {}: {e}. Using defaults.", path.display());
                 Self::default()
             })
         } else {
@@ -243,14 +242,14 @@ impl AppConfig {
             // Try to create config directory and save default config
             if let Some(parent) = path.parent() {
                 if let Err(e) = fs::create_dir_all(parent) {
-                    log::warn!("Failed to create config directory: {}", e);
+                    log::warn!("Failed to create config directory: {e}");
                 }
             }
 
             if let Err(e) = config.save(&path) {
-                log::warn!("Failed to save default config: {}", e);
+                log::warn!("Failed to save default config: {e}");
             } else {
-                log::info!("Created default config at {:?}", path);
+                log::info!("Created default config at {}", path.display());
             }
 
             config
@@ -271,11 +270,7 @@ mod dirs {
     use std::path::PathBuf;
 
     pub fn config_dir() -> Option<PathBuf> {
-        if let Ok(home) = std::env::var("HOME") {
-            Some(PathBuf::from(home).join(".config"))
-        } else {
-            None
-        }
+        std::env::var("HOME").ok().map(|home| PathBuf::from(home).join(".config"))
     }
 }
 

@@ -76,9 +76,9 @@ export default {
     // Get target URL from query parameter
     const url = new URL(request.url);
     const targetUrl = url.searchParams.get('url');
-    
+
     if (!targetUrl) {
-      return new Response('Missing url parameter', { 
+      return new Response('Missing url parameter', {
         status: 400,
         headers: { 'Access-Control-Allow-Origin': '*' }
       });
@@ -92,16 +92,16 @@ export default {
           'User-Agent': 'RustatioWeb/1.0'
         }
       });
-      
+
       // Create new response with CORS headers
       const newResponse = new Response(response.body, {
         status: response.status,
         statusText: response.statusText,
       });
-      
+
       newResponse.headers.set('Access-Control-Allow-Origin', '*');
       newResponse.headers.set('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
-      
+
       return newResponse;
     } catch (error) {
       return new Response('Proxy error: ' + error.message, {

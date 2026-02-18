@@ -71,8 +71,8 @@ Rustatio is available in **three versions**:
 
 **macOS**
 
-1. Download the latest `Rustatio_*.dmg` file from [Releases](https://github.com/takitsu21/rustatio/releases) 
-2. Open the downloaded file and drag Rustatio to your Applications folder 
+1. Download the latest `Rustatio_*.dmg` file from [Releases](https://github.com/takitsu21/rustatio/releases)
+2. Open the downloaded file and drag Rustatio to your Applications folder
 3. Launch Rustatio from Applications (you may need to allow it in System Preferences → Security & Privacy)
 
 **Linux**
@@ -266,7 +266,7 @@ volumes:
 
 **Live Demo**: [https://takitsu21.github.io/rustatio/](https://takitsu21.github.io/rustatio/)
 
-The web version runs entirely in your browser using WebAssembly. 
+The web version runs entirely in your browser using WebAssembly.
 
 ⚠️ **CORS Setup Required**: Most BitTorrent trackers don't allow browser requests. You'll need to set up a free CORS proxy (takes 5 minutes).
 
