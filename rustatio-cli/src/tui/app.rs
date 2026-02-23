@@ -1,6 +1,6 @@
 use crate::json::{format_bytes, format_duration};
 use crate::runner::RunnerConfig;
-use crate::session::Session;
+use crate::session::{Session, SessionInit};
 use anyhow::Result;
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind},
@@ -18,6 +18,7 @@ use ratatui::{
 use rustatio_core::{ClientConfig, ClientType, FakerState, FakerStats, RatioFaker, TorrentInfo};
 use std::io;
 use std::sync::mpsc;
+use std::sync::Arc;
 use std::thread;
 use std::time::{Duration as StdDuration, Instant};
 use tokio::time::{interval, Duration};
@@ -98,15 +99,16 @@ enum KeyCommand {
 pub async fn run_tui_mode(config: RunnerConfig) -> Result<()> {
     // Load torrent
     let torrent = crate::runner::load_torrent(&config.torrent_path)?;
+    let torrent = Arc::new(torrent);
 
     // Create app state
-    let mut app = App::new(torrent.clone(), &config);
+    let mut app = App::new((*torrent).clone(), &config);
 
     // Create faker config
     let faker_config = crate::runner::create_faker_config(&config);
 
     // Create faker
-    let mut faker = RatioFaker::new(torrent, faker_config)
+    let mut faker = RatioFaker::new(torrent, faker_config, None)
         .map_err(|e| anyhow::anyhow!("Failed to create faker: {e}"))?;
 
     // Setup terminal
@@ -275,14 +277,14 @@ pub async fn run_tui_mode(config: RunnerConfig) -> Result<()> {
     if config.save_session {
         if let Some(ref stats) = app.stats {
             let client_type: ClientType = config.client.into();
-            let mut session = Session::new(
-                &config.info_hash,
-                &config.torrent_name,
-                &config.torrent_path.to_string_lossy(),
-                config.torrent_size,
-                &format!("{client_type:?}"),
-                config.client_version.clone(),
-            );
+            let mut session = Session::new(SessionInit {
+                info_hash: config.info_hash.clone(),
+                torrent_name: config.torrent_name.clone(),
+                torrent_path: config.torrent_path.to_string_lossy().into_owned(),
+                torrent_size: config.torrent_size,
+                client: format!("{client_type:?}"),
+                client_version: config.client_version.clone(),
+            });
             session.upload_rate = config.upload_rate;
             session.download_rate = config.download_rate;
             session.port = config.port;

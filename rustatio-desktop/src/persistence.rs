@@ -1,4 +1,4 @@
-use rustatio_core::{FakerConfig, FakerState, TorrentInfo};
+use rustatio_core::{FakerConfig, FakerState, TorrentSummary};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PersistedInstance {
     pub id: u32,
-    pub torrent: TorrentInfo,
+    pub torrent: TorrentSummary,
     pub config: FakerConfig,
     pub cumulative_uploaded: u64,
     pub cumulative_downloaded: u64,
@@ -82,15 +82,13 @@ pub fn save_state(state: &PersistedState) -> Result<(), String> {
             .map_err(|e| format!("Failed to create data directory: {e}"))?;
     }
 
-    let json = serde_json::to_string_pretty(state)
-        .map_err(|e| format!("Failed to serialize state: {e}"))?;
-
     let unique_id = COUNTER.fetch_add(1, Ordering::Relaxed);
     let temp_name = format!("desktop-state.json.{}.{}.tmp", std::process::id(), unique_id);
     let temp_path = path.with_file_name(temp_name);
 
-    std::fs::write(&temp_path, json.as_bytes())
-        .map_err(|e| format!("Failed to write temp file: {e}"))?;
+    let json = serde_json::to_vec(state).map_err(|e| format!("Failed to serialize state: {e}"))?;
+
+    std::fs::write(&temp_path, &json).map_err(|e| format!("Failed to write temp file: {e}"))?;
 
     // sync via opening the file and syncing
     if let Ok(file) = std::fs::File::open(&temp_path) {

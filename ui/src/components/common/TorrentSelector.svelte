@@ -122,9 +122,13 @@
           <div class="text-xs text-muted-foreground flex items-center gap-2 mt-0.5">
             <span>{formatBytes(torrent.total_size)}</span>
             <span class="text-border">•</span>
-            <span
-              >{torrent.files?.length || 1} file{(torrent.files?.length || 1) > 1 ? 's' : ''}</span
-            >
+            <span>
+              {torrent.file_count || torrent.files?.length || 1} file{(torrent.file_count ||
+                torrent.files?.length ||
+                1) > 1
+                ? 's'
+                : ''}
+            </span>
             <span class="text-border">•</span>
             <span>{trackers.length} tracker{trackers.length !== 1 ? 's' : ''}</span>
           </div>
@@ -156,7 +160,9 @@
         </div>
         <div class="p-2 text-center">
           <div class="text-xs text-muted-foreground mb-0.5">Files</div>
-          <div class="text-sm font-medium">{torrent.files?.length || 1}</div>
+          <div class="text-sm font-medium">
+            {torrent.file_count || torrent.files?.length || 1}
+          </div>
         </div>
       </div>
 

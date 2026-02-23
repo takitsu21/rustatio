@@ -1,4 +1,4 @@
-use rustatio_core::{FakerConfig, RatioFaker, TorrentInfo};
+use rustatio_core::{FakerConfig, RatioFaker, TorrentInfo, TorrentSummary};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt::Write;
@@ -7,7 +7,8 @@ use tokio::sync::RwLock;
 
 pub struct FakerInstance {
     pub faker: Arc<RwLock<RatioFaker>>,
-    pub torrent: TorrentInfo,
+    pub torrent: Arc<TorrentInfo>,
+    pub summary: Arc<TorrentSummary>,
     pub config: FakerConfig,
     pub cumulative_uploaded: u64,
     pub cumulative_downloaded: u64,
@@ -27,6 +28,7 @@ pub struct AppState {
     pub fakers: Arc<RwLock<HashMap<u32, FakerInstance>>>,
     pub next_instance_id: Arc<RwLock<u32>>,
     pub config: Arc<RwLock<rustatio_core::AppConfig>>,
+    pub http_client: rustatio_core::reqwest::Client,
 }
 
 pub fn now_secs() -> u64 {

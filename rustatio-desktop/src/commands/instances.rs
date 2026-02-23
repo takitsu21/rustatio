@@ -1,5 +1,5 @@
 use rustatio_core::validation;
-use rustatio_core::{FakerConfig, FakerState, RatioFaker, TorrentInfo};
+use rustatio_core::{FakerConfig, FakerState, RatioFaker, TorrentInfo, TorrentSummary};
 use std::sync::Arc;
 use tauri::{AppHandle, State};
 use tokio::sync::RwLock;
@@ -34,9 +34,12 @@ pub async fn update_instance_config(
 
     instance.config = config;
 
-    let faker = RatioFaker::new(instance.torrent.clone(), instance.config.clone())
-        .map_err(|e| format!("Failed to create faker: {e}"))?;
-    instance.faker = Arc::new(RwLock::new(faker));
+    instance
+        .faker
+        .write()
+        .await
+        .update_config(instance.config.clone(), Some(state.http_client.clone()))
+        .map_err(|e| format!("Failed to update faker config: {e}"))?;
 
     Ok(())
 }
@@ -74,7 +77,7 @@ pub async fn list_instances(state: State<'_, AppState>) -> Result<Vec<InstanceIn
         let stats = instance.faker.read().await.get_stats().await;
         instances.push(InstanceInfo {
             id: *id,
-            torrent_name: Some(instance.torrent.name.clone()),
+            torrent_name: Some(instance.summary.name.clone()),
             is_running: matches!(
                 stats.state,
                 FakerState::Starting | FakerState::Running | FakerState::Stopping
@@ -97,7 +100,7 @@ pub async fn load_torrent(path: String, app: AppHandle) -> Result<TorrentInfo, S
 
     log_and_emit!(&app, info, "Loading torrent from: {}", validated_path.display());
 
-    match TorrentInfo::from_file(validated_path.to_str().unwrap_or(&path)) {
+    match TorrentInfo::from_file_summary(validated_path.to_str().unwrap_or(&path)) {
         Ok(torrent) => {
             log_and_emit!(
                 &app,
@@ -129,8 +132,8 @@ pub async fn load_instance_torrent(
         error_msg
     })?;
 
-    let torrent =
-        TorrentInfo::from_file(validated_path.to_str().unwrap_or(&path)).map_err(|e| {
+    let torrent = TorrentInfo::from_file_summary(validated_path.to_str().unwrap_or(&path))
+        .map_err(|e| {
             let error_msg = format!("Failed to load torrent: {e}");
             log_and_emit!(&app, error, "{}", error_msg);
             error_msg
@@ -146,17 +149,25 @@ pub async fn load_instance_torrent(
     );
 
     let mut fakers = state.fakers.write().await;
+    let response_torrent = torrent.clone();
+    let torrent_arc = Arc::new(torrent.without_files());
+    let summary_arc = Arc::new(torrent_arc.summary());
     match fakers.entry(instance_id) {
         std::collections::hash_map::Entry::Vacant(entry) => {
             let config = FakerConfig::default();
-            let faker = RatioFaker::new(torrent.clone(), config.clone())
-                .map_err(|e| format!("Failed to create faker: {e}"))?;
+            let faker = RatioFaker::new(
+                Arc::clone(&torrent_arc),
+                config.clone(),
+                Some(state.http_client.clone()),
+            )
+            .map_err(|e| format!("Failed to create faker: {e}"))?;
 
             let now = crate::state::now_secs();
 
             entry.insert(FakerInstance {
                 faker: Arc::new(RwLock::new(faker)),
-                torrent: torrent.clone(),
+                torrent: torrent_arc,
+                summary: summary_arc,
                 config,
                 cumulative_uploaded: 0,
                 cumulative_downloaded: 0,
@@ -167,13 +178,15 @@ pub async fn load_instance_torrent(
         std::collections::hash_map::Entry::Occupied(mut entry) => {
             let instance = entry.get_mut();
             let config = instance.config.clone();
-            let faker = RatioFaker::new(torrent.clone(), config)
-                .map_err(|e| format!("Failed to create faker: {e}"))?;
-            instance.torrent = torrent.clone();
+            let faker =
+                RatioFaker::new(Arc::clone(&torrent_arc), config, Some(state.http_client.clone()))
+                    .map_err(|e| format!("Failed to create faker: {e}"))?;
+            instance.torrent = torrent_arc;
+            instance.summary = summary_arc;
             instance.faker = Arc::new(RwLock::new(faker));
         }
     }
-    Ok(torrent)
+    Ok(response_torrent)
 }
 
 #[tauri::command]
@@ -184,5 +197,16 @@ pub async fn get_instance_torrent(
     let fakers = state.fakers.read().await;
     let instance =
         fakers.get(&instance_id).ok_or_else(|| format!("Instance {instance_id} not found"))?;
-    Ok(instance.torrent.clone())
+    Ok((*instance.torrent).clone())
+}
+
+#[tauri::command]
+pub async fn get_instance_summary(
+    instance_id: u32,
+    state: State<'_, AppState>,
+) -> Result<TorrentSummary, String> {
+    let fakers = state.fakers.read().await;
+    let instance =
+        fakers.get(&instance_id).ok_or_else(|| format!("Instance {instance_id} not found"))?;
+    Ok((*instance.summary).clone())
 }

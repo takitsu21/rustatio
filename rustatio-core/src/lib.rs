@@ -12,5 +12,10 @@ pub use faker::{FakerConfig, FakerError, FakerState, FakerStats, PresetSettings,
 pub use grid::{GridImportSettings, GridMode, InstanceSummary};
 pub use torrent::{
     ClientConfig, ClientInfo, ClientType, HttpVersion, TorrentError, TorrentFile, TorrentInfo,
+    TorrentSummary,
 };
 pub use validation::*;
+
+// Re-export reqwest::Client for downstream crates that need shared HTTP clients
+#[cfg(any(feature = "native", feature = "wasm"))]
+pub use reqwest;

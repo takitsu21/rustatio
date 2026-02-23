@@ -10,5 +10,5 @@ pub use events::{EventBroadcaster, InstanceEvent, LogEvent};
 pub use instance::InstanceInfo;
 pub use lifecycle::InstanceLifecycle;
 pub use scheduler::Scheduler;
-pub use state::AppState;
+pub use state::{AppState, InstanceBuildContext};
 pub use watch::{WatchConfig, WatchDisabledReason, WatchService};

@@ -1,5 +1,5 @@
 use super::persistence::InstanceSource;
-use rustatio_core::{FakerConfig, FakerStats, RatioFaker, TorrentInfo};
+use rustatio_core::{FakerConfig, FakerStats, RatioFaker, TorrentInfo, TorrentSummary};
 use serde::Serialize;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -7,7 +7,8 @@ use utoipa::ToSchema;
 
 pub struct FakerInstance {
     pub faker: Arc<RwLock<RatioFaker>>,
-    pub torrent: TorrentInfo,
+    pub torrent: Arc<TorrentInfo>,
+    pub summary: Arc<TorrentSummary>,
     pub config: FakerConfig,
     pub torrent_info_hash: [u8; 20],
     pub cumulative_uploaded: u64,
@@ -21,7 +22,7 @@ pub struct FakerInstance {
 pub struct InstanceInfo {
     pub id: String,
     #[schema(value_type = Object)]
-    pub torrent: TorrentInfo,
+    pub torrent: Arc<TorrentSummary>,
     #[schema(value_type = Object)]
     pub config: FakerConfig,
     #[schema(value_type = Object)]

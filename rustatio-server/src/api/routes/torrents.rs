@@ -7,7 +7,7 @@ use axum::{
     routing::post,
     Router,
 };
-use rustatio_core::TorrentInfo;
+use rustatio_core::TorrentSummary;
 use serde::Serialize;
 use utoipa::ToSchema;
 
@@ -19,7 +19,7 @@ use crate::api::{
 #[derive(Serialize, ToSchema)]
 pub struct LoadTorrentResponse {
     #[schema(value_type = Object)]
-    pub torrent: TorrentInfo,
+    pub torrent: TorrentSummary,
 }
 
 #[utoipa::path(
@@ -27,7 +27,7 @@ pub struct LoadTorrentResponse {
     path = "/torrent/load",
     tag = "torrents",
     summary = "Load a torrent file",
-    description = "Uploads and parses a .torrent file. Returns the parsed torrent information.",
+    description = "Uploads and parses a .torrent file. Returns the parsed torrent summary.",
     security(("bearer_auth" = [])),
     request_body(content_type = "multipart/form-data", description = "Torrent file upload (field name: file)"),
     responses(
@@ -42,7 +42,7 @@ pub async fn load_torrent(State(_state): State<ServerState>, mut multipart: Mult
             Ok(Some(field)) => {
                 if field.name() == Some("file") {
                     match field.bytes().await {
-                        Ok(bytes) => match TorrentInfo::from_bytes(&bytes) {
+                        Ok(bytes) => match TorrentSummary::from_bytes(&bytes) {
                             Ok(torrent) => {
                                 return ApiSuccess::response(LoadTorrentResponse { torrent });
                             }

@@ -256,7 +256,7 @@ async fn main() -> Result<()> {
                 std::process::exit(1);
             }
 
-            let torrent_info = runner::load_torrent(&torrent)?;
+            let torrent_info = rustatio_core::TorrentInfo::from_file(&torrent)?;
 
             if json {
                 let output = TorrentInfoOutput::from(&torrent_info);
@@ -545,7 +545,9 @@ fn print_torrent_info(torrent: &rustatio_core::TorrentInfo) {
     if torrent.is_single_file {
         println!("Type:        Single file");
     } else {
-        println!("Type:        Multi-file ({} files)", torrent.files.len());
+        let file_count =
+            if torrent.file_count > 0 { torrent.file_count } else { torrent.files.len() };
+        println!("Type:        Multi-file ({file_count} files)");
         println!();
         println!("Files:");
         for file in &torrent.files {

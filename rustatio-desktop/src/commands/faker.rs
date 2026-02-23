@@ -78,7 +78,15 @@ pub async fn start_faker(
     let cumulative_uploaded = config_with_cumulative.initial_uploaded;
     let cumulative_downloaded = config_with_cumulative.initial_downloaded;
 
-    let mut faker = RatioFaker::new(torrent.clone(), config_with_cumulative).map_err(|e| {
+    let torrent_arc = Arc::new(torrent.without_files());
+    let summary_arc = Arc::new(torrent_arc.summary());
+
+    let mut faker = RatioFaker::new(
+        Arc::clone(&torrent_arc),
+        config_with_cumulative,
+        Some(state.http_client.clone()),
+    )
+    .map_err(|e| {
         let error_msg = format!("Failed to create faker: {e}");
         log_and_emit!(&app, instance_id, error, "{}", error_msg);
         error_msg
@@ -97,7 +105,8 @@ pub async fn start_faker(
         instance_id,
         FakerInstance {
             faker: Arc::new(RwLock::new(faker)),
-            torrent,
+            torrent: torrent_arc,
+            summary: summary_arc,
             config,
             cumulative_uploaded,
             cumulative_downloaded,

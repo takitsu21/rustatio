@@ -512,8 +512,10 @@
       const torrentPath = isTauri ? file : file.name;
 
       // Update instance with torrent info
+      const summary = await api.getInstanceSummary($activeInstance.id).catch(() => null);
+
       instanceActions.updateInstance($activeInstance.id, {
-        torrent,
+        torrent: summary || torrent,
         torrentPath,
         statusMessage: 'Torrent loaded successfully',
         statusType: 'success',

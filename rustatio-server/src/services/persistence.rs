@@ -1,9 +1,10 @@
-use rustatio_core::{FakerConfig, FakerState, TorrentInfo};
+use rustatio_core::{FakerConfig, FakerState, TorrentSummary};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
 use tokio::fs;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::AsyncReadExt;
+use tokio::io::AsyncWriteExt;
 use utoipa::ToSchema;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default, ToSchema)]
@@ -17,7 +18,7 @@ pub enum InstanceSource {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PersistedInstance {
     pub id: String,
-    pub torrent: TorrentInfo,
+    pub torrent: TorrentSummary,
     pub config: FakerConfig,
     pub cumulative_uploaded: u64,
     pub cumulative_downloaded: u64,
@@ -97,15 +98,16 @@ impl Persistence {
             }
         }
 
-        let json = serde_json::to_string_pretty(state)
-            .map_err(|e| format!("Failed to serialize state: {e}"))?;
         let temp_file = format!("{}.tmp", self.state_file);
 
         let mut file = fs::File::create(&temp_file)
             .await
             .map_err(|e| format!("Failed to create temp file: {e}"))?;
 
-        file.write_all(json.as_bytes()).await.map_err(|e| format!("Failed to write state: {e}"))?;
+        let json =
+            serde_json::to_vec(state).map_err(|e| format!("Failed to serialize state: {e}"))?;
+
+        file.write_all(&json).await.map_err(|e| format!("Failed to write state: {e}"))?;
 
         file.sync_all().await.map_err(|e| format!("Failed to sync state file: {e}"))?;
 

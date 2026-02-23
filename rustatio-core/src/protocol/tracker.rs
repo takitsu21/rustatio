@@ -96,18 +96,32 @@ pub struct TrackerClient {
 }
 
 impl TrackerClient {
-    pub fn new(client_config: ClientConfig) -> Result<Self> {
+    /// Create a new `TrackerClient`.
+    ///
+    /// If `shared_client` is provided, it will be reused (saving ~1-5 MB per instance).
+    /// User-Agent is set per-request so different instances can emulate different BT clients.
+    pub fn new(
+        client_config: ClientConfig,
+        shared_client: Option<reqwest::Client>,
+    ) -> Result<Self> {
         log_debug!("Creating TrackerClient with User-Agent: {}", client_config.user_agent);
 
-        #[cfg(not(target_arch = "wasm32"))]
-        let client = reqwest::Client::builder()
-            .user_agent(&client_config.user_agent)
-            .timeout(std::time::Duration::from_secs(30))
-            .gzip(true)
-            .build()?;
+        let client = if let Some(c) = shared_client {
+            c
+        } else {
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                reqwest::Client::builder()
+                    .timeout(std::time::Duration::from_secs(30))
+                    .gzip(true)
+                    .build()?
+            }
 
-        #[cfg(target_arch = "wasm32")]
-        let client = reqwest::Client::builder().user_agent(&client_config.user_agent).build()?;
+            #[cfg(target_arch = "wasm32")]
+            {
+                reqwest::Client::builder().build()?
+            }
+        };
 
         Ok(Self { client, client_config })
     }
@@ -154,7 +168,12 @@ impl TrackerClient {
         log_info!("Announcing to tracker: {}", tracker_url);
         log_debug!("Full announce URL: {}", final_url);
 
-        let response = self.client.get(&final_url).send().await?;
+        let response = self
+            .client
+            .get(&final_url)
+            .header(reqwest::header::USER_AGENT, &self.client_config.user_agent)
+            .send()
+            .await?;
 
         let status = response.status();
         log_trace!("Tracker response status: {}", status);
@@ -180,7 +199,12 @@ impl TrackerClient {
 
         log_info!("Scraping tracker: {}", scrape_url);
 
-        let response = self.client.get(&scrape_url).send().await?;
+        let response = self
+            .client
+            .get(&scrape_url)
+            .header(reqwest::header::USER_AGENT, &self.client_config.user_agent)
+            .send()
+            .await?;
 
         if !response.status().is_success() {
             let err = response

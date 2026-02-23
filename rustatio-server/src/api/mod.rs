@@ -70,6 +70,8 @@ impl Modify for SecurityAddon {
         routes::instances::create_instance,
         routes::instances::delete_instance,
         routes::instances::load_instance_torrent,
+        routes::instances::get_instance_torrent,
+        routes::instances::get_instance_torrent_summary,
         routes::instances::update_instance_config,
         // Torrents
         routes::torrents::load_torrent,

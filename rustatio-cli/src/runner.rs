@@ -3,7 +3,7 @@ use crate::json::{
     AnnounceEvent, AnnounceType, InputCommand, OutputEvent, ScrapeEvent, StartedEvent, StatsEvent,
     StopReason, StoppedEvent,
 };
-use crate::session::Session;
+use crate::session::{Session, SessionInit};
 use anyhow::{Context, Result};
 use chrono::Utc;
 use rustatio_core::{ClientConfig, ClientType, FakerConfig, FakerState, RatioFaker, TorrentInfo};
@@ -74,7 +74,7 @@ pub async fn run_json_mode(config: RunnerConfig) -> Result<()> {
     let client_config = ClientConfig::get(client_type, config.client_version.clone());
 
     // Create faker
-    let mut faker = RatioFaker::new(torrent, faker_config)
+    let mut faker = RatioFaker::new(Arc::new(torrent), faker_config, None)
         .map_err(|e| anyhow::anyhow!("Failed to create faker: {e}"))?;
 
     // Start faker
@@ -225,14 +225,14 @@ pub async fn run_json_mode(config: RunnerConfig) -> Result<()> {
     // Save session if enabled
     if config.save_session {
         let client_type: ClientType = config.client.into();
-        let mut session = Session::new(
-            &config.info_hash,
-            &config.torrent_name,
-            &config.torrent_path.to_string_lossy(),
-            config.torrent_size,
-            &format!("{client_type:?}"),
-            config.client_version.clone(),
-        );
+        let mut session = Session::new(SessionInit {
+            info_hash: config.info_hash.clone(),
+            torrent_name: config.torrent_name.clone(),
+            torrent_path: config.torrent_path.to_string_lossy().into_owned(),
+            torrent_size: config.torrent_size,
+            client: format!("{client_type:?}"),
+            client_version: config.client_version.clone(),
+        });
         session.upload_rate = config.upload_rate;
         session.download_rate = config.download_rate;
         session.port = config.port;
@@ -268,7 +268,7 @@ pub async fn run_json_mode(config: RunnerConfig) -> Result<()> {
 
 /// Load torrent file from path
 pub fn load_torrent(path: &Path) -> Result<TorrentInfo> {
-    TorrentInfo::from_file(path).context("Failed to parse torrent file")
+    TorrentInfo::from_file_summary(path).context("Failed to parse torrent file")
 }
 
 /// Create `FakerConfig` from `RunnerConfig`

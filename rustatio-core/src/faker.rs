@@ -6,11 +6,9 @@ use crate::{log_debug, log_info, log_trace, log_warn};
 use instant::Instant;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use std::time::Duration;
 use thiserror::Error;
-
-#[cfg(not(target_arch = "wasm32"))]
-use std::sync::Arc;
 
 #[cfg(not(target_arch = "wasm32"))]
 use tokio::sync::RwLock;
@@ -334,7 +332,7 @@ pub struct FakerStats {
 
 #[cfg(not(target_arch = "wasm32"))]
 pub struct RatioFaker {
-    torrent: TorrentInfo,
+    torrent: Arc<TorrentInfo>,
     config: FakerConfig,
     tracker_client: TrackerClient,
 
@@ -359,7 +357,7 @@ pub struct RatioFaker {
 
 #[cfg(target_arch = "wasm32")]
 pub struct RatioFaker {
-    torrent: TorrentInfo,
+    torrent: Arc<TorrentInfo>,
     config: FakerConfig,
     tracker_client: TrackerClient,
 
@@ -383,7 +381,16 @@ pub struct RatioFaker {
 }
 
 impl RatioFaker {
-    pub fn new(torrent: TorrentInfo, config: FakerConfig) -> Result<Self> {
+    /// Create a new `RatioFaker`.
+    ///
+    /// * `torrent` — shared torrent metadata (`Arc` avoids duplicating large data per instance).
+    /// * `config` — faker configuration (rates, stop conditions, etc.).
+    /// * `http_client` — if `Some`, reuses the provided `reqwest::Client`.
+    pub fn new(
+        torrent: Arc<TorrentInfo>,
+        config: FakerConfig,
+        http_client: Option<reqwest::Client>,
+    ) -> Result<Self> {
         log_debug!(
             "Creating RatioFaker for '{}' (size: {} bytes)",
             torrent.name,
@@ -406,7 +413,7 @@ impl RatioFaker {
         log_trace!("Generated peer_id: {}, key: {}", peer_id, key);
 
         // Create tracker client
-        let tracker_client = TrackerClient::new(client_config)
+        let tracker_client = TrackerClient::new(client_config, http_client)
             .map_err(|e| FakerError::ConfigError(e.to_string()))?;
 
         // Calculate how much of THIS torrent is already downloaded
@@ -752,6 +759,49 @@ impl RatioFaker {
         read_lock!(self.stats).clone()
     }
 
+    /// Build a stats snapshot from config without cloning runtime stats
+    pub fn stats_from_config(config: &FakerConfig) -> FakerStats {
+        FakerStats {
+            uploaded: config.initial_uploaded,
+            downloaded: config.initial_downloaded,
+            ratio: if config.initial_downloaded > 0 {
+                config.initial_uploaded as f64 / config.initial_downloaded as f64
+            } else {
+                0.0
+            },
+            left: 0,
+            torrent_completion: config.completion_percent.clamp(0.0, 100.0),
+            seeders: 0,
+            leechers: 0,
+            state: FakerState::Stopped,
+            is_idling: false,
+            idling_reason: None,
+            session_uploaded: 0,
+            session_downloaded: 0,
+            session_ratio: 0.0,
+            elapsed_time: Duration::from_secs(0),
+            current_upload_rate: 0.0,
+            current_download_rate: 0.0,
+            average_upload_rate: 0.0,
+            average_download_rate: 0.0,
+            upload_progress: 0.0,
+            download_progress: 0.0,
+            ratio_progress: 0.0,
+            seed_time_progress: 0.0,
+            eta_ratio: None,
+            eta_uploaded: None,
+            eta_seed_time: None,
+            eta_download_completion: None,
+            upload_rate_history: Vec::new(),
+            download_rate_history: Vec::new(),
+            ratio_history: Vec::new(),
+            history_timestamps: Vec::new(),
+            last_announce: None,
+            next_announce: None,
+            announce_count: 0,
+        }
+    }
+
     /// Non-async stats snapshot (for synchronous exit-save contexts)
     #[cfg(not(target_arch = "wasm32"))]
     pub fn stats_snapshot(&self) -> Option<FakerStats> {
@@ -759,8 +809,33 @@ impl RatioFaker {
     }
 
     /// Get torrent info
-    pub const fn get_torrent(&self) -> &TorrentInfo {
+    pub const fn get_torrent(&self) -> &Arc<TorrentInfo> {
         &self.torrent
+    }
+
+    /// Update the faker's configuration in-place without recreating the entire struct.
+    ///
+    /// This avoids re-allocating the `reqwest::Client` and other internal state.
+    /// Only recreates the `TrackerClient` if the `client_type` changed (which changes peer ID / User-Agent).
+    pub fn update_config(
+        &mut self,
+        config: FakerConfig,
+        http_client: Option<reqwest::Client>,
+    ) -> Result<()> {
+        let client_type_changed = config.client_type != self.config.client_type
+            || config.client_version != self.config.client_version;
+
+        if client_type_changed {
+            let client_config =
+                ClientConfig::get(config.client_type, config.client_version.clone());
+            self.peer_id = client_config.generate_peer_id();
+            self.key = ClientConfig::generate_key();
+            self.tracker_client = TrackerClient::new(client_config, http_client)
+                .map_err(|e| FakerError::ConfigError(e.to_string()))?;
+        }
+
+        self.config = config;
+        Ok(())
     }
 
     /// Send an announce to the tracker

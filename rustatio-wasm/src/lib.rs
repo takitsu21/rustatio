@@ -1,11 +1,12 @@
 use rustatio_core::{
     ClientType, FakerConfig, FakerState, GridImportSettings, InstanceSummary, PresetSettings,
-    RatioFaker, TorrentInfo,
+    RatioFaker, TorrentInfo, TorrentSummary,
 };
 use serde::Serialize;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt::Write;
+use std::sync::Arc;
 use wasm_bindgen::prelude::*;
 
 // Re-export the set_log_callback function from rustatio_core (WASM only)
@@ -23,7 +24,8 @@ fn to_js<T: Serialize>(value: &T) -> Result<JsValue, JsValue> {
 
 struct WasmFakerInstance {
     faker: RatioFaker,
-    torrent: TorrentInfo,
+    torrent: Arc<TorrentInfo>,
+    summary: Arc<TorrentSummary>,
     config: FakerConfig,
     torrent_info_hash: [u8; 20],
     cumulative_uploaded: u64,
@@ -96,7 +98,7 @@ pub fn delete_instance(id: u32) -> Result<(), JsValue> {
 pub fn load_torrent(file_bytes: &[u8]) -> Result<JsValue, JsValue> {
     rustatio_core::log_info!("Loading torrent file ({} bytes)", file_bytes.len());
 
-    let torrent = TorrentInfo::from_bytes(file_bytes).map_err(|e| {
+    let torrent = TorrentInfo::from_bytes_summary(file_bytes).map_err(|e| {
         let error_msg = format!("Failed to load torrent: {e}");
         rustatio_core::log_error!("{}", error_msg);
         JsValue::from_str(&error_msg)
@@ -112,7 +114,7 @@ pub fn load_instance_torrent(id: u32, file_bytes: &[u8]) -> Result<JsValue, JsVa
     rustatio_core::logger::set_instance_context(Some(id));
     rustatio_core::log_info!("Loading torrent for instance {} ({} bytes)", id, file_bytes.len());
 
-    let torrent = TorrentInfo::from_bytes(file_bytes).map_err(|e| {
+    let torrent = TorrentInfo::from_bytes_summary(file_bytes).map_err(|e| {
         let error_msg = format!("Failed to load torrent: {e}");
         rustatio_core::log_error!("{}", error_msg);
         JsValue::from_str(&error_msg)
@@ -120,8 +122,12 @@ pub fn load_instance_torrent(id: u32, file_bytes: &[u8]) -> Result<JsValue, JsVa
 
     let torrent_info_hash = torrent.info_hash;
     let config = FakerConfig::default();
+    let response_torrent = torrent.clone();
 
-    let faker = RatioFaker::new(torrent.clone(), config.clone())
+    let torrent = Arc::new(torrent.without_files());
+    let summary = Arc::new(torrent.summary());
+
+    let faker = RatioFaker::new(Arc::clone(&torrent), config.clone(), None)
         .map_err(|e| JsValue::from_str(&e.to_string()))?;
 
     INSTANCES.with(|instances| {
@@ -129,7 +135,8 @@ pub fn load_instance_torrent(id: u32, file_bytes: &[u8]) -> Result<JsValue, JsVa
             id,
             WasmFakerInstance {
                 faker,
-                torrent: torrent.clone(),
+                torrent: Arc::clone(&torrent),
+                summary,
                 config,
                 torrent_info_hash,
                 cumulative_uploaded: 0,
@@ -147,7 +154,7 @@ pub fn load_instance_torrent(id: u32, file_bytes: &[u8]) -> Result<JsValue, JsVa
         torrent.total_size
     );
 
-    to_js(&torrent)
+    to_js(&response_torrent)
 }
 
 #[wasm_bindgen]
@@ -161,11 +168,11 @@ pub fn update_instance_config(id: u32, config_json: JsValue) -> Result<(), JsVal
             .get_mut(&id)
             .ok_or_else(|| JsValue::from_str(&format!("Instance {id} not found")))?;
 
-        // Recreate the faker so stats reflect the new config
-        let faker = RatioFaker::new(instance.torrent.clone(), config.clone())
-            .map_err(|e| JsValue::from_str(&format!("Failed to create faker: {e}")))?;
+        instance
+            .faker
+            .update_config(config.clone(), None)
+            .map_err(|e| JsValue::from_str(&format!("Failed to update faker config: {e}")))?;
         instance.config = config;
-        instance.faker = faker;
         Ok(())
     })
 }
@@ -219,8 +226,10 @@ pub async fn start_faker(
     config.initial_downloaded = cumulative_downloaded;
 
     let stored_config = config.clone();
-    let mut faker =
-        RatioFaker::new(torrent.clone(), config).map_err(|e| JsValue::from_str(&e.to_string()))?;
+    let torrent = Arc::new(torrent.without_files());
+    let summary = Arc::new(torrent.summary());
+    let mut faker = RatioFaker::new(Arc::clone(&torrent), config, None)
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
 
     faker.start().await.map_err(|e| JsValue::from_str(&e.to_string()))?;
 
@@ -230,6 +239,7 @@ pub async fn start_faker(
             WasmFakerInstance {
                 faker,
                 torrent,
+                summary,
                 config: stored_config,
                 torrent_info_hash,
                 cumulative_uploaded,
@@ -354,7 +364,18 @@ pub fn get_instance_torrent(id: u32) -> Result<JsValue, JsValue> {
         let instance = instances_ref
             .get(&id)
             .ok_or_else(|| JsValue::from_str(&format!("Instance {id} not found")))?;
-        to_js(&instance.torrent)
+        to_js(&*instance.torrent)
+    })
+}
+
+#[wasm_bindgen]
+pub fn get_instance_summary(id: u32) -> Result<JsValue, JsValue> {
+    INSTANCES.with(|instances| {
+        let instances_ref = instances.borrow();
+        let instance = instances_ref
+            .get(&id)
+            .ok_or_else(|| JsValue::from_str(&format!("Instance {id} not found")))?;
+        to_js(&*instance.summary)
     })
 }
 
@@ -378,7 +399,7 @@ pub async fn grid_import(torrent_files: JsValue, config_json: JsValue) -> Result
     let mut errors: Vec<String> = Vec::new();
 
     for file_bytes in &files {
-        let torrent = match TorrentInfo::from_bytes(file_bytes) {
+        let torrent = match TorrentInfo::from_bytes_summary(file_bytes) {
             Ok(t) => t,
             Err(e) => {
                 errors.push(format!("Failed to parse torrent: {e}"));
@@ -400,7 +421,10 @@ pub async fn grid_import(torrent_files: JsValue, config_json: JsValue) -> Result
         let torrent_info_hash = torrent.info_hash;
         let total_size = torrent.total_size;
 
-        match RatioFaker::new(torrent.clone(), config.clone()) {
+        let torrent = Arc::new(torrent.without_files());
+        let summary = Arc::new(torrent.summary());
+
+        match RatioFaker::new(Arc::clone(&torrent), config.clone(), None) {
             Ok(mut faker) => {
                 if settings.auto_start {
                     if let Err(e) = faker.start().await {
@@ -415,6 +439,7 @@ pub async fn grid_import(torrent_files: JsValue, config_json: JsValue) -> Result
                         WasmFakerInstance {
                             faker,
                             torrent,
+                            summary,
                             config,
                             torrent_info_hash,
                             cumulative_uploaded: 0,
@@ -602,9 +627,8 @@ pub fn grid_update_config(ids_json: JsValue, config_json: JsValue) -> Result<JsV
                     new_config.initial_uploaded = instance.cumulative_uploaded;
                     new_config.initial_downloaded = instance.cumulative_downloaded;
 
-                    match RatioFaker::new(instance.torrent.clone(), new_config) {
-                        Ok(faker) => {
-                            instance.faker = faker;
+                    match instance.faker.update_config(new_config, None) {
+                        Ok(()) => {
                             instance.config = faker_config.clone();
                             succeeded.push(id.to_string());
                         }

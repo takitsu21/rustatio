@@ -620,6 +620,9 @@ const serverApi = {
   getInstanceTorrent: async id => {
     return serverFetch(`/instances/${id}/torrent`, { method: 'GET' });
   },
+  getInstanceSummary: async id => {
+    return serverFetch(`/instances/${id}/torrent-summary`, { method: 'GET' });
+  },
   browseFolders: async (path = '/') => {
     return serverFetch(`/browse?path=${encodeURIComponent(path)}`, { method: 'GET' });
   },
@@ -935,6 +938,10 @@ const tauriApi = {
     const { invoke } = await import('@tauri-apps/api/core');
     return invoke('get_instance_torrent', { instanceId: Number(id) });
   },
+  getInstanceSummary: async id => {
+    const { invoke } = await import('@tauri-apps/api/core');
+    return invoke('get_instance_summary', { instanceId: Number(id) });
+  },
   browseFolders: async () => ({ path: '/', parent: null, entries: [] }),
   setLogLevel: async level => {
     const { invoke } = await import('@tauri-apps/api/core');
@@ -1069,6 +1076,7 @@ const wasmApi = {
   listSummaries: async () => wasm.list_summaries(),
   setInstanceTags: async (id, tags) => wasm.set_instance_tags(Number(id), tags),
   getInstanceTorrent: async id => wasm.get_instance_torrent(Number(id)),
+  getInstanceSummary: async id => wasm.get_instance_summary(Number(id)),
   browseFolders: async () => ({ path: '/', parent: null, entries: [] }),
   setLogLevel: async () => {
     // No-op for WASM — no IPC overhead concern

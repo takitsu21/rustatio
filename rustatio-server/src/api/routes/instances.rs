@@ -7,7 +7,7 @@ use axum::{
     routing::{delete, get, patch},
     Json, Router,
 };
-use rustatio_core::{FakerConfig, TorrentInfo};
+use rustatio_core::{FakerConfig, TorrentSummary};
 use serde::Deserialize;
 use utoipa::ToSchema;
 
@@ -131,10 +131,12 @@ pub async fn load_instance_torrent(
             Ok(Some(field)) => {
                 if field.name() == Some("file") {
                     match field.bytes().await {
-                        Ok(bytes) => match TorrentInfo::from_bytes(&bytes) {
-                            Ok(torrent) => {
+                        Ok(bytes) => match TorrentSummary::from_bytes(&bytes) {
+                            Ok(summary) => {
+                                let response_torrent = summary.clone();
+                                let compact_torrent = summary.to_info();
                                 if let Err(e) =
-                                    state.app.create_idle_instance(&id, torrent.clone()).await
+                                    state.app.create_idle_instance(&id, compact_torrent).await
                                 {
                                     return ApiError::response(
                                         StatusCode::INTERNAL_SERVER_ERROR,
@@ -142,7 +144,9 @@ pub async fn load_instance_torrent(
                                     );
                                 }
 
-                                return ApiSuccess::response(LoadTorrentResponse { torrent });
+                                return ApiSuccess::response(LoadTorrentResponse {
+                                    torrent: response_torrent,
+                                });
                             }
                             Err(e) => {
                                 return ApiError::response(
@@ -226,9 +230,35 @@ pub async fn get_instance_torrent(
     }
 }
 
+#[utoipa::path(
+    get,
+    path = "/instances/{id}/torrent-summary",
+    tag = "instances",
+    summary = "Get torrent summary for an instance",
+    security(("bearer_auth" = [])),
+    params(
+        ("id" = String, Path, description = "Instance ID")
+    ),
+    responses(
+        (status = 200, description = "Torrent summary", body = Object),
+        (status = 401, description = "Unauthorized", body = ApiError),
+        (status = 404, description = "Instance not found", body = ApiError)
+    )
+)]
+pub async fn get_instance_torrent_summary(
+    State(state): State<ServerState>,
+    Path(id): Path<String>,
+) -> Response {
+    match state.app.get_instance_summary(&id).await {
+        Ok(summary) => ApiSuccess::response(summary),
+        Err(e) => ApiError::response(StatusCode::NOT_FOUND, e),
+    }
+}
+
 pub fn router() -> Router<ServerState> {
     Router::new()
         .route("/instances/{id}/torrent", get(get_instance_torrent).post(load_instance_torrent))
+        .route("/instances/{id}/torrent-summary", get(get_instance_torrent_summary))
         .layer(DefaultBodyLimit::max(500 * 1024 * 1024))
         .route("/instances", get(list_instances).post(create_instance))
         .route("/instances/{id}", delete(delete_instance))

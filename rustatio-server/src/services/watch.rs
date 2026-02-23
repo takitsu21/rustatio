@@ -2,7 +2,7 @@ use super::lifecycle::InstanceLifecycle;
 use super::persistence::InstanceSource;
 use super::state::AppState;
 use notify::{Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
-use rustatio_core::TorrentInfo;
+use rustatio_core::TorrentSummary;
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -176,7 +176,7 @@ impl WatchService {
                 continue;
             };
 
-            let Ok(torrent) = TorrentInfo::from_bytes(&data) else {
+            let Ok(torrent) = TorrentSummary::from_bytes(&data) else {
                 continue;
             };
 
@@ -229,10 +229,15 @@ impl WatchService {
         let path_to_hash = Arc::clone(&self.path_to_hash);
 
         tokio::spawn(async move {
-            if let Err(e) =
-                run_watcher(watch_dir, auto_start, state, loaded_hashes, path_to_hash, shutdown_rx)
-                    .await
-            {
+            let runner = WatchRunner {
+                watch_dir,
+                auto_start,
+                state,
+                loaded_hashes,
+                path_to_hash,
+                shutdown_rx,
+            };
+            if let Err(e) = runner.run().await {
                 tracing::error!("Watch service error: {}", e);
             }
         });
@@ -328,7 +333,7 @@ impl WatchService {
             // Try to parse the torrent to get info
             let (status, info_hash, name) =
                 std::fs::read(&path).map_or((WatchedFileStatus::Invalid, None, None), |data| {
-                    match TorrentInfo::from_bytes(&data) {
+                    match TorrentSummary::from_bytes(&data) {
                         Ok(torrent) => {
                             let hash = torrent.info_hash;
                             let hash_hex = hex::encode(hash);
@@ -434,7 +439,7 @@ impl WatchService {
                     continue;
                 };
 
-                let Ok(torrent) = TorrentInfo::from_bytes(&data) else {
+                let Ok(torrent) = TorrentSummary::from_bytes(&data) else {
                     continue;
                 };
 
@@ -531,7 +536,7 @@ async fn process_torrent_file(
 
     // Parse torrent
     let torrent =
-        TorrentInfo::from_bytes(&data).map_err(|e| format!("Failed to parse torrent: {e}"))?;
+        TorrentSummary::from_bytes(&data).map_err(|e| format!("Failed to parse torrent: {e}"))?;
 
     let info_hash = torrent.info_hash;
 
@@ -555,7 +560,7 @@ async fn process_torrent_file(
     let config = state.get_default_config().await.unwrap_or_default();
 
     // Use create_instance_with_event so connected frontends get notified
-    state.create_instance_with_event(&instance_id, torrent.clone(), config, auto_start).await?;
+    state.create_instance_with_event(&instance_id, torrent.to_info(), config, auto_start).await?;
 
     // Track as loaded
     loaded_hashes.write().await.insert(info_hash);
@@ -582,126 +587,129 @@ async fn process_torrent_file(
     Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
-async fn run_watcher(
+struct WatchRunner {
     watch_dir: PathBuf,
     auto_start: bool,
     state: AppState,
     loaded_hashes: Arc<RwLock<HashSet<[u8; 20]>>>,
     path_to_hash: Arc<RwLock<HashMap<PathBuf, [u8; 20]>>>,
-    mut shutdown_rx: mpsc::Receiver<()>,
-) -> Result<(), String> {
-    let (tx, mut rx) = mpsc::channel(100);
+    shutdown_rx: mpsc::Receiver<()>,
+}
 
-    // Create watcher
-    let mut watcher = RecommendedWatcher::new(
-        move |res: Result<Event, notify::Error>| {
-            if let Ok(event) = res {
-                let _ = tx.blocking_send(event);
-            }
-        },
-        Config::default(),
-    )
-    .map_err(|e| format!("Failed to create watcher: {e}"))?;
+impl WatchRunner {
+    async fn run(mut self) -> Result<(), String> {
+        let (tx, mut rx) = mpsc::channel(100);
 
-    // Start watching
-    watcher
-        .watch(&watch_dir, RecursiveMode::NonRecursive)
-        .map_err(|e| format!("Failed to watch directory: {e}"))?;
+        // Create watcher
+        let mut watcher = RecommendedWatcher::new(
+            move |res: Result<Event, notify::Error>| {
+                if let Ok(event) = res {
+                    let _ = tx.blocking_send(event);
+                }
+            },
+            Config::default(),
+        )
+        .map_err(|e| format!("Failed to create watcher: {e}"))?;
 
-    tracing::debug!("File watcher started for {:?}", watch_dir);
+        // Start watching
+        watcher
+            .watch(&self.watch_dir, RecursiveMode::NonRecursive)
+            .map_err(|e| format!("Failed to watch directory: {e}"))?;
 
-    loop {
-        tokio::select! {
-            _ = shutdown_rx.recv() => {
-                tracing::debug!("File watcher received shutdown signal");
-                break;
-            }
-            Some(event) = rx.recv() => {
-                // Process create and modify events for .torrent files
-                if matches!(event.kind, EventKind::Create(_) | EventKind::Modify(_)) {
-                    for path in event.paths {
-                        if is_torrent_file(&path) {
-                            // Small delay to ensure file is fully written
-                            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        tracing::debug!("File watcher started for {:?}", self.watch_dir);
 
-                            if let Err(e) = process_torrent_file(
-                                &path,
-                                auto_start,
-                                &state,
-                                &loaded_hashes,
-                                &path_to_hash,
-                            ).await {
-                                tracing::warn!("Failed to process {:?}: {}", path, e);
+        loop {
+            tokio::select! {
+                _ = self.shutdown_rx.recv() => {
+                    tracing::debug!("File watcher received shutdown signal");
+                    break;
+                }
+                Some(event) = rx.recv() => {
+                    // Process create and modify events for .torrent files
+                    if matches!(event.kind, EventKind::Create(_) | EventKind::Modify(_)) {
+                        for path in event.paths {
+                            if is_torrent_file(&path) {
+                                // Small delay to ensure file is fully written
+                                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+                                if let Err(e) = process_torrent_file(
+                                    &path,
+                                    self.auto_start,
+                                    &self.state,
+                                    &self.loaded_hashes,
+                                    &self.path_to_hash,
+                                ).await {
+                                    tracing::warn!("Failed to process {:?}: {}", path, e);
+                                }
                             }
                         }
                     }
-                }
-                // Handle file removal events
-                else if matches!(event.kind, EventKind::Remove(_)) {
-                    for path in event.paths {
-                        // Check if this was a torrent file we were tracking
-                        // Note: We can't canonicalize the path because the file no longer exists
-                        // So we need to search for it by matching the path or filename
+                    // Handle file removal events
+                    else if matches!(event.kind, EventKind::Remove(_)) {
+                        for path in event.paths {
+                            // Check if this was a torrent file we were tracking
+                            // Note: We can't canonicalize the path because the file no longer exists
+                            // So we need to search for it by matching the path or filename
 
-                        // Try to find the info_hash for this path
-                        let (info_hash, matched_path) = {
-                            let mapping = path_to_hash.read().await;
+                            // Try to find the info_hash for this path
+                            let (info_hash, matched_path) = {
+                                let mapping = self.path_to_hash.read().await;
 
-                            // First try exact match with the path as given
-                            if let Some(&hash) = mapping.get(&path) {
-                                (Some(hash), Some(path.clone()))
-                            } else {
-                                // Try to find by matching filename in watch directory
-                                // This handles the case where notify gives us a non-canonical path
-                                // but we stored the canonical version
-                                let filename = path.file_name();
-                                filename.map_or((None, None), |fname| {
-                                    let mut found = None;
-                                    for (stored_path, &hash) in mapping.iter() {
-                                        if stored_path.file_name() == Some(fname) {
-                                            found = Some((hash, stored_path.clone()));
-                                            break;
+                                // First try exact match with the path as given
+                                if let Some(&hash) = mapping.get(&path) {
+                                    (Some(hash), Some(path.clone()))
+                                } else {
+                                    // Try to find by matching filename in watch directory
+                                    // This handles the case where notify gives us a non-canonical path
+                                    // but we stored the canonical version
+                                    let filename = path.file_name();
+                                    filename.map_or((None, None), |fname| {
+                                        let mut found = None;
+                                        for (stored_path, &hash) in mapping.iter() {
+                                            if stored_path.file_name() == Some(fname) {
+                                                found = Some((hash, stored_path.clone()));
+                                                break;
+                                            }
                                         }
-                                    }
-                                    match found {
-                                        Some((hash, stored_path)) => (Some(hash), Some(stored_path)),
-                                        None => (None, None),
-                                    }
-                                })
-                            }
-                        };
+                                        match found {
+                                            Some((hash, stored_path)) => (Some(hash), Some(stored_path)),
+                                            None => (None, None),
+                                        }
+                                    })
+                                }
+                            };
 
-                        if let Some(hash) = info_hash {
-                            tracing::info!("Torrent file removed from watch folder: {:?}", path);
+                            if let Some(hash) = info_hash {
+                                tracing::info!("Torrent file removed from watch folder: {:?}", path);
 
-                            // Remove from path_to_hash mapping
-                            if let Some(stored_path) = matched_path {
-                                path_to_hash.write().await.remove(&stored_path);
-                            }
+                                // Remove from path_to_hash mapping
+                                if let Some(stored_path) = matched_path {
+                                    self.path_to_hash.write().await.remove(&stored_path);
+                                }
 
-                            // Remove from loaded_hashes
-                            loaded_hashes.write().await.remove(&hash);
+                                // Remove from loaded_hashes
+                                self.loaded_hashes.write().await.remove(&hash);
 
-                            // First, change the instance source to Manual
-                            // This ensures it can be deleted via UI if the delete below fails
-                            if let Err(e) = state
-                                .update_instance_source_by_info_hash(&hash, InstanceSource::Manual)
-                                .await
-                            {
-                                tracing::warn!("Failed to update instance source: {}", e);
-                            }
+                                // First, change the instance source to Manual
+                                // This ensures it can be deleted via UI if the delete below fails
+                                if let Err(e) = self.state
+                                    .update_instance_source_by_info_hash(&hash, InstanceSource::Manual)
+                                    .await
+                                {
+                                    tracing::warn!("Failed to update instance source: {}", e);
+                                }
 
-                            // Then delete the corresponding instance
-                            if let Err(e) = state.delete_instance_by_info_hash(&hash).await {
-                                tracing::warn!("Failed to delete instance for removed torrent: {}", e);
+                                // Then delete the corresponding instance
+                                if let Err(e) = self.state.delete_instance_by_info_hash(&hash).await {
+                                    tracing::warn!("Failed to delete instance for removed torrent: {}", e);
+                                }
                             }
                         }
                     }
                 }
             }
         }
-    }
 
-    Ok(())
+        Ok(())
+    }
 }

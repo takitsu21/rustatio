@@ -6,7 +6,7 @@ use axum::{
     Json, Router,
 };
 use rustatio_core::{
-    FakerConfig, GridImportSettings, InstanceSummary, PresetSettings, TorrentInfo,
+    FakerConfig, GridImportSettings, InstanceSummary, PresetSettings, TorrentSummary,
 };
 use serde::{Deserialize, Serialize};
 use tokio::task::JoinSet;
@@ -17,6 +17,7 @@ use crate::api::{
 };
 use crate::services::events::{EventBroadcaster, InstanceEvent};
 use crate::services::persistence::InstanceSource;
+use crate::services::InstanceBuildContext;
 use crate::services::InstanceLifecycle;
 
 #[derive(Deserialize)]
@@ -80,7 +81,7 @@ pub struct GridActionError {
 }
 
 pub async fn grid_import(State(state): State<ServerState>, mut multipart: Multipart) -> Response {
-    let mut torrents: Vec<(String, TorrentInfo)> = Vec::new();
+    let mut torrents: Vec<(String, TorrentSummary)> = Vec::new();
     let mut config = GridImportSettings::default();
     let mut errors: Vec<String> = Vec::new();
 
@@ -107,10 +108,10 @@ pub async fn grid_import(State(state): State<ServerState>, mut multipart: Multip
                 Some("files" | "file") => {
                     let filename = field.file_name().unwrap_or("unknown").to_string();
                     match field.bytes().await {
-                        Ok(bytes) => match TorrentInfo::from_bytes(&bytes) {
-                            Ok(torrent) => {
+                        Ok(bytes) => match TorrentSummary::from_bytes(&bytes) {
+                            Ok(summary) => {
                                 let id = state.app.next_instance_id();
-                                torrents.push((id, torrent));
+                                torrents.push((id, summary));
                             }
                             Err(e) => {
                                 errors.push(format!("{filename}: {e}"));
@@ -137,37 +138,29 @@ pub async fn grid_import(State(state): State<ServerState>, mut multipart: Multip
 
     let mut imported = Vec::new();
 
-    for (id, torrent) in &torrents {
+    for (id, summary) in &torrents {
         let preset = config.resolve_for_instance();
         let faker_config: FakerConfig = preset.into();
 
-        match state
-            .app
-            .create_instance_with_tags(
-                id,
-                torrent.clone(),
-                faker_config,
-                config.tags.clone(),
-                InstanceSource::Manual,
-            )
-            .await
-        {
+        let context =
+            InstanceBuildContext::new(id, summary.to_info(), faker_config, InstanceSource::Manual);
+        match state.app.create_instance_with_tags(context, config.tags.clone()).await {
             Ok(()) => {
                 imported.push(GridImportedInstance {
                     id: id.clone(),
-                    name: torrent.name.clone(),
-                    info_hash: hex::encode(torrent.info_hash),
+                    name: summary.name.clone(),
+                    info_hash: hex::encode(summary.info_hash),
                 });
 
                 state.app.emit_instance_event(InstanceEvent::Created {
                     id: id.clone(),
-                    torrent_name: torrent.name.clone(),
-                    info_hash: hex::encode(torrent.info_hash),
+                    torrent_name: summary.name.clone(),
+                    info_hash: hex::encode(summary.info_hash),
                     auto_started: config.auto_start,
                 });
             }
             Err(e) => {
-                errors.push(format!("{}: {}", torrent.name, e));
+                errors.push(format!("{}: {}", summary.name, e));
             }
         }
     }
@@ -203,7 +196,7 @@ pub async fn grid_import_folder(
         );
     }
 
-    let mut torrents: Vec<(String, TorrentInfo)> = Vec::new();
+    let mut torrents: Vec<(String, TorrentSummary)> = Vec::new();
     let mut errors: Vec<String> = Vec::new();
 
     let entries = match std::fs::read_dir(path) {
@@ -225,15 +218,15 @@ pub async fn grid_import_folder(
         let filename = file_path.file_name().unwrap_or_default().to_string_lossy().to_string();
 
         match std::fs::read(&file_path) {
-            Ok(bytes) => match TorrentInfo::from_bytes(&bytes) {
-                Ok(torrent) => {
+            Ok(bytes) => match TorrentSummary::from_bytes(&bytes) {
+                Ok(summary) => {
                     // Skip if already imported (same info_hash)
-                    if state.app.find_instance_by_info_hash(&torrent.info_hash).await.is_some() {
+                    if state.app.find_instance_by_info_hash(&summary.info_hash).await.is_some() {
                         errors.push(format!("{filename}: already imported"));
                         continue;
                     }
                     let id = state.app.next_instance_id();
-                    torrents.push((id, torrent));
+                    torrents.push((id, summary));
                 }
                 Err(e) => {
                     errors.push(format!("{filename}: {e}"));
@@ -248,37 +241,29 @@ pub async fn grid_import_folder(
     let config = request.config;
     let mut imported = Vec::new();
 
-    for (id, torrent) in &torrents {
+    for (id, summary) in &torrents {
         let preset = config.resolve_for_instance();
         let faker_config: FakerConfig = preset.into();
 
-        match state
-            .app
-            .create_instance_with_tags(
-                id,
-                torrent.clone(),
-                faker_config,
-                config.tags.clone(),
-                InstanceSource::Manual,
-            )
-            .await
-        {
+        let context =
+            InstanceBuildContext::new(id, summary.to_info(), faker_config, InstanceSource::Manual);
+        match state.app.create_instance_with_tags(context, config.tags.clone()).await {
             Ok(()) => {
                 imported.push(GridImportedInstance {
                     id: id.clone(),
-                    name: torrent.name.clone(),
-                    info_hash: hex::encode(torrent.info_hash),
+                    name: summary.name.clone(),
+                    info_hash: hex::encode(summary.info_hash),
                 });
 
                 state.app.emit_instance_event(InstanceEvent::Created {
                     id: id.clone(),
-                    torrent_name: torrent.name.clone(),
-                    info_hash: hex::encode(torrent.info_hash),
+                    torrent_name: summary.name.clone(),
+                    info_hash: hex::encode(summary.info_hash),
                     auto_started: config.auto_start,
                 });
             }
             Err(e) => {
-                errors.push(format!("{}: {}", torrent.name, e));
+                errors.push(format!("{}: {}", summary.name, e));
             }
         }
     }

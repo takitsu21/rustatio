@@ -68,29 +68,31 @@ pub struct Session {
     pub stop_at_uploaded_gb: Option<f64>,
 }
 
+#[derive(Debug, Clone)]
+pub struct SessionInit {
+    pub info_hash: String,
+    pub torrent_name: String,
+    pub torrent_path: String,
+    pub torrent_size: u64,
+    pub client: String,
+    pub client_version: Option<String>,
+}
+
 impl Session {
     /// Current session format version
     pub const VERSION: u32 = 1;
 
     /// Create a new session
-    #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        info_hash: &str,
-        torrent_name: &str,
-        torrent_path: &str,
-        torrent_size: u64,
-        client: &str,
-        client_version: Option<String>,
-    ) -> Self {
+    pub fn new(init: SessionInit) -> Self {
         let now = Utc::now();
         Self {
             version: Self::VERSION,
-            info_hash: info_hash.to_string(),
-            torrent_name: torrent_name.to_string(),
-            torrent_path: torrent_path.to_string(),
-            torrent_size,
-            client: client.to_string(),
-            client_version,
+            info_hash: init.info_hash,
+            torrent_name: init.torrent_name,
+            torrent_path: init.torrent_path,
+            torrent_size: init.torrent_size,
+            client: init.client,
+            client_version: init.client_version,
             uploaded: 0,
             downloaded: 0,
             upload_rate: 50.0,
@@ -134,8 +136,10 @@ impl Session {
 
         // Migrate old sessions: try to get torrent_size from the torrent file
         if session.torrent_size == 0 {
-            if let Ok(torrent) = rustatio_core::TorrentInfo::from_file(&session.torrent_path) {
-                session.torrent_size = torrent.total_size;
+            if let Ok(data) = fs::read(&session.torrent_path) {
+                if let Ok(torrent) = rustatio_core::TorrentInfo::from_bytes_summary(&data) {
+                    session.torrent_size = torrent.total_size;
+                }
             }
         }
 
@@ -272,14 +276,14 @@ mod tests {
     fn test_session_create_and_update() {
         // torrent_size = 50 MB, so 100 MB uploaded = ratio 2.0
         let torrent_size = 1024 * 1024 * 50; // 50 MB
-        let mut session = Session::new(
-            "abcdef1234567890",
-            "Test Torrent",
-            "/path/to/test.torrent",
+        let mut session = Session::new(SessionInit {
+            info_hash: "abcdef1234567890".to_string(),
+            torrent_name: "Test Torrent".to_string(),
+            torrent_path: "/path/to/test.torrent".to_string(),
             torrent_size,
-            "qbittorrent",
-            Some("5.1.4".to_string()),
-        );
+            client: "qbittorrent".to_string(),
+            client_version: Some("5.1.4".to_string()),
+        });
 
         assert_eq!(session.uploaded, 0);
         assert_eq!(session.ratio(), 0.0);
@@ -295,14 +299,14 @@ mod tests {
         let dir = tempdir().unwrap();
         let path = dir.path().join("test_session.json");
 
-        let session = Session::new(
-            "abcdef1234567890",
-            "Test Torrent",
-            "/path/to/test.torrent",
-            1024 * 1024 * 100, // 100 MB
-            "qbittorrent",
-            Some("5.1.4".to_string()),
-        );
+        let session = Session::new(SessionInit {
+            info_hash: "abcdef1234567890".to_string(),
+            torrent_name: "Test Torrent".to_string(),
+            torrent_path: "/path/to/test.torrent".to_string(),
+            torrent_size: 1024 * 1024 * 100, // 100 MB
+            client: "qbittorrent".to_string(),
+            client_version: Some("5.1.4".to_string()),
+        });
 
         session.save(&path).unwrap();
         assert!(path.exists());

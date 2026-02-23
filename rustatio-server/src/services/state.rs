@@ -6,7 +6,7 @@ use super::persistence::{
 };
 use rustatio_core::logger::set_instance_context_str;
 use rustatio_core::{
-    FakerConfig, FakerState, FakerStats, InstanceSummary, RatioFaker, TorrentInfo,
+    FakerConfig, FakerState, FakerStats, InstanceSummary, RatioFaker, TorrentInfo, TorrentSummary,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -19,6 +19,36 @@ pub struct AppState {
     pub instance_sender: broadcast::Sender<InstanceEvent>,
     persistence: Arc<Persistence>,
     default_config: Arc<RwLock<Option<FakerConfig>>>,
+    http_client: reqwest::Client,
+}
+
+pub struct InstanceBuildContext {
+    id: String,
+    torrent: Arc<TorrentInfo>,
+    summary: Arc<TorrentSummary>,
+    config: FakerConfig,
+    source: InstanceSource,
+}
+
+impl InstanceBuildContext {
+    pub fn new(
+        id: &str,
+        torrent: TorrentInfo,
+        config: FakerConfig,
+        source: InstanceSource,
+    ) -> Self {
+        let summary = Arc::new(torrent.summary());
+        Self { id: id.to_string(), torrent: Arc::new(torrent), summary, config, source }
+    }
+}
+
+struct ExistingInstanceState {
+    cumulative_uploaded: u64,
+    cumulative_downloaded: u64,
+    created_at: u64,
+    source: InstanceSource,
+    tags: Vec<String>,
+    completion_percent: Option<f64>,
 }
 
 impl AppState {
@@ -31,6 +61,7 @@ impl AppState {
             instance_sender,
             persistence: Arc::new(Persistence::new(data_dir)),
             default_config: Arc::new(RwLock::new(None)),
+            http_client: reqwest::Client::new(),
         }
     }
 
@@ -72,11 +103,19 @@ impl AppState {
             faker_config.initial_uploaded = persisted.cumulative_uploaded;
             faker_config.initial_downloaded = persisted.cumulative_downloaded;
 
-            match RatioFaker::new(persisted.torrent.clone(), faker_config) {
+            let summary = Arc::new(persisted.torrent.clone());
+            let torrent = Arc::new(persisted.torrent.to_info());
+
+            match RatioFaker::new(
+                Arc::clone(&torrent),
+                faker_config,
+                Some(self.http_client.clone()),
+            ) {
                 Ok(faker) => {
                     let instance = FakerInstance {
                         faker: Arc::new(RwLock::new(faker)),
-                        torrent: persisted.torrent.clone(),
+                        torrent,
+                        summary,
                         config: persisted.config.clone(),
                         torrent_info_hash: persisted.torrent.info_hash,
                         cumulative_uploaded: persisted.cumulative_uploaded,
@@ -134,7 +173,12 @@ impl AppState {
         };
 
         for (id, instance) in instances.iter() {
-            let stats = instance.faker.read().await.get_stats().await;
+            let stats = instance
+                .faker
+                .read()
+                .await
+                .stats_snapshot()
+                .unwrap_or_else(|| RatioFaker::stats_from_config(&instance.config));
             let mut config = instance.config.clone();
             config.completion_percent = stats.torrent_completion;
 
@@ -142,7 +186,7 @@ impl AppState {
                 id.clone(),
                 PersistedInstance {
                     id: id.clone(),
-                    torrent: instance.torrent.clone(),
+                    torrent: (*instance.summary).clone(),
                     config,
                     cumulative_uploaded: stats.uploaded,
                     cumulative_downloaded: stats.downloaded,
@@ -178,13 +222,20 @@ impl AppState {
         let mut faker_config = config.clone();
         faker_config.initial_uploaded = instance.cumulative_uploaded;
         faker_config.initial_downloaded = instance.cumulative_downloaded;
-        let existing_stats = instance.faker.read().await.get_stats().await;
+        let existing_stats = instance
+            .faker
+            .read()
+            .await
+            .stats_snapshot()
+            .unwrap_or_else(|| RatioFaker::stats_from_config(&instance.config));
         faker_config.completion_percent = existing_stats.torrent_completion;
 
-        let faker =
-            RatioFaker::new(instance.torrent.clone(), faker_config).map_err(|e| e.to_string())?;
-
-        instance.faker = Arc::new(RwLock::new(faker));
+        instance
+            .faker
+            .write()
+            .await
+            .update_config(faker_config, Some(self.http_client.clone()))
+            .map_err(|e| e.to_string())?;
         instance.config = config;
 
         Ok(())
@@ -199,10 +250,12 @@ impl AppState {
         let instance = instances.get_mut(id).ok_or("Instance not found")?;
         instance.config = config.clone();
 
-        // Recreate the faker so stats reflect the new config (e.g. completion_percent)
-        let faker = RatioFaker::new(instance.torrent.clone(), config)
-            .map_err(|e| format!("Failed to create faker: {e}"))?;
-        instance.faker = Arc::new(RwLock::new(faker));
+        instance
+            .faker
+            .write()
+            .await
+            .update_config(config, Some(self.http_client.clone()))
+            .map_err(|e| format!("Failed to update faker config: {e}"))?;
 
         Ok(())
     }
@@ -221,12 +274,21 @@ impl AppState {
                     let mut faker_config = config.clone();
                     faker_config.initial_uploaded = instance.cumulative_uploaded;
                     faker_config.initial_downloaded = instance.cumulative_downloaded;
-                    let existing_stats = instance.faker.read().await.get_stats().await;
+                    let existing_stats = instance
+                        .faker
+                        .read()
+                        .await
+                        .stats_snapshot()
+                        .unwrap_or_else(|| RatioFaker::stats_from_config(&instance.config));
                     faker_config.completion_percent = existing_stats.torrent_completion;
 
-                    match RatioFaker::new(instance.torrent.clone(), faker_config) {
-                        Ok(faker) => {
-                            instance.faker = Arc::new(RwLock::new(faker));
+                    let result = instance
+                        .faker
+                        .write()
+                        .await
+                        .update_config(faker_config, Some(self.http_client.clone()));
+                    match result {
+                        Ok(()) => {
                             instance.config = config;
                             succeeded.push(id);
                         }
@@ -250,16 +312,19 @@ impl AppState {
         torrent: TorrentInfo,
         config: FakerConfig,
     ) -> Result<(), String> {
-        self.create_instance_internal(id, torrent, config, InstanceSource::Manual).await
+        let context = InstanceBuildContext::new(id, torrent, config, InstanceSource::Manual);
+        self.create_instance_internal(context).await
     }
 
     pub async fn create_idle_instance(&self, id: &str, torrent: TorrentInfo) -> Result<(), String> {
         let config = FakerConfig::default();
-        self.create_instance_internal(id, torrent.clone(), config, InstanceSource::Manual).await?;
+        let context = InstanceBuildContext::new(id, torrent, config, InstanceSource::Manual);
+        let torrent = Arc::clone(&context.torrent);
+        self.create_instance_internal(context).await?;
 
         self.emit_instance_event(InstanceEvent::Created {
             id: id.to_string(),
-            torrent_name: torrent.name,
+            torrent_name: torrent.name.clone(),
             info_hash: hex::encode(torrent.info_hash),
             auto_started: false,
         });
@@ -274,12 +339,13 @@ impl AppState {
         config: FakerConfig,
         auto_started: bool,
     ) -> Result<(), String> {
-        self.create_instance_internal(id, torrent.clone(), config, InstanceSource::WatchFolder)
-            .await?;
+        let context = InstanceBuildContext::new(id, torrent, config, InstanceSource::WatchFolder);
+        let torrent = Arc::clone(&context.torrent);
+        self.create_instance_internal(context).await?;
 
         self.emit_instance_event(InstanceEvent::Created {
             id: id.to_string(),
-            torrent_name: torrent.name,
+            torrent_name: torrent.name.clone(),
             info_hash: hex::encode(torrent.info_hash),
             auto_started,
         });
@@ -287,75 +353,14 @@ impl AppState {
         Ok(())
     }
 
-    async fn create_instance_internal(
-        &self,
-        id: &str,
-        torrent: TorrentInfo,
-        config: FakerConfig,
-        source: InstanceSource,
-    ) -> Result<(), String> {
-        set_instance_context_str(Some(id));
+    async fn create_instance_internal(&self, context: InstanceBuildContext) -> Result<(), String> {
+        set_instance_context_str(Some(&context.id));
 
-        let torrent_info_hash = torrent.info_hash;
-
-        let (
-            cumulative_uploaded,
-            cumulative_downloaded,
-            created_at,
-            existing_source,
-            existing_tags,
-            existing_completion,
-        ) = {
-            let instances = self.instances.read().await;
-            if let Some(existing) = instances.get(id) {
-                if existing.torrent_info_hash == torrent_info_hash {
-                    let stats = existing.faker.read().await.get_stats().await;
-                    (
-                        existing.cumulative_uploaded,
-                        existing.cumulative_downloaded,
-                        existing.created_at,
-                        Some(existing.source),
-                        existing.tags.clone(),
-                        Some(stats.torrent_completion),
-                    )
-                } else {
-                    (0, 0, now_timestamp(), None, Vec::new(), None)
-                }
-            } else {
-                (0, 0, now_timestamp(), None, Vec::new(), None)
-            }
-        };
-
-        let final_source = existing_source.unwrap_or(source);
-
-        let mut faker_config = config.clone();
-        faker_config.initial_uploaded = cumulative_uploaded;
-        faker_config.initial_downloaded = cumulative_downloaded;
-        if let Some(completion) = existing_completion {
-            faker_config.completion_percent = completion;
-        }
-
-        let faker = RatioFaker::new(torrent.clone(), faker_config).map_err(|e| e.to_string())?;
-
-        let instance = FakerInstance {
-            faker: Arc::new(RwLock::new(faker)),
-            torrent: torrent.clone(),
-            config,
-            torrent_info_hash,
-            cumulative_uploaded,
-            cumulative_downloaded,
-            created_at,
-            source: final_source,
-            tags: existing_tags,
-        };
-
-        self.instances.write().await.insert(id.to_string(), instance);
-
-        if let Err(e) = self.save_state().await {
-            tracing::warn!("Failed to save state after creating instance: {}", e);
-        }
-
-        Ok(())
+        let id = context.id.clone();
+        let existing = self.collect_existing_instance_state(&context).await;
+        let faker_config = Self::build_faker_config(&context, &existing);
+        let instance = self.build_instance(context, faker_config, existing)?;
+        self.insert_instance(id, instance).await
     }
 
     pub async fn get_stats(&self, id: &str) -> Result<FakerStats, String> {
@@ -371,7 +376,13 @@ impl AppState {
     pub async fn get_instance_torrent(&self, id: &str) -> Result<TorrentInfo, String> {
         let instances = self.instances.read().await;
         let instance = instances.get(id).ok_or("Instance not found")?;
-        Ok(instance.torrent.clone())
+        Ok((*instance.torrent).clone())
+    }
+
+    pub async fn get_instance_summary(&self, id: &str) -> Result<TorrentSummary, String> {
+        let instances = self.instances.read().await;
+        let instance = instances.get(id).ok_or("Instance not found")?;
+        Ok((*instance.summary).clone())
     }
 
     pub async fn delete_instance(&self, id: &str, force: bool) -> Result<(), String> {
@@ -414,11 +425,16 @@ impl AppState {
         let mut result = Vec::new();
 
         for (id, instance) in instances.iter() {
-            let stats = instance.faker.read().await.get_stats().await;
+            let stats = instance
+                .faker
+                .read()
+                .await
+                .stats_snapshot()
+                .unwrap_or_else(|| RatioFaker::stats_from_config(&instance.config));
 
             result.push(InstanceInfo {
                 id: id.clone(),
-                torrent: instance.torrent.clone(),
+                torrent: Arc::clone(&instance.summary),
                 config: instance.config.clone(),
                 stats,
                 created_at: instance.created_at,
@@ -523,7 +539,12 @@ impl AppState {
         let mut result = Vec::with_capacity(instances.len());
 
         for (id, instance) in instances.iter() {
-            let stats = instance.faker.read().await.get_stats().await;
+            let stats = instance
+                .faker
+                .read()
+                .await
+                .stats_snapshot()
+                .unwrap_or_else(|| RatioFaker::stats_from_config(&instance.config));
 
             let source = match instance.source {
                 InstanceSource::Manual => "manual",
@@ -542,11 +563,11 @@ impl AppState {
 
             result.push(InstanceSummary {
                 id: id.clone(),
-                name: instance.torrent.name.clone(),
+                name: instance.summary.name.clone(),
                 info_hash: hex::encode(instance.torrent_info_hash),
                 state: state.to_string(),
                 tags: instance.tags.clone(),
-                total_size: instance.torrent.total_size,
+                total_size: instance.summary.total_size,
                 uploaded: stats.uploaded,
                 downloaded: stats.downloaded,
                 ratio: stats.ratio,
@@ -564,22 +585,105 @@ impl AppState {
         result
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub async fn create_instance_with_tags(
         &self,
-        id: &str,
-        torrent: TorrentInfo,
-        config: FakerConfig,
+        context: InstanceBuildContext,
         tags: Vec<String>,
-        source: InstanceSource,
     ) -> Result<(), String> {
-        self.create_instance_internal(id, torrent, config, source).await?;
+        let id = context.id.clone();
+        self.create_instance_internal(context).await?;
 
         if !tags.is_empty() {
             let mut instances = self.instances.write().await;
-            if let Some(instance) = instances.get_mut(id) {
+            if let Some(instance) = instances.get_mut(&id) {
                 instance.tags = tags;
             }
+        }
+
+        Ok(())
+    }
+
+    async fn collect_existing_instance_state(
+        &self,
+        context: &InstanceBuildContext,
+    ) -> ExistingInstanceState {
+        let torrent_info_hash = context.torrent.info_hash;
+        let instances = self.instances.read().await;
+        if let Some(existing) = instances.get(&context.id) {
+            if existing.torrent_info_hash == torrent_info_hash {
+                let stats = existing
+                    .faker
+                    .read()
+                    .await
+                    .stats_snapshot()
+                    .unwrap_or_else(|| RatioFaker::stats_from_config(&existing.config));
+                return ExistingInstanceState {
+                    cumulative_uploaded: existing.cumulative_uploaded,
+                    cumulative_downloaded: existing.cumulative_downloaded,
+                    created_at: existing.created_at,
+                    source: existing.source,
+                    tags: existing.tags.clone(),
+                    completion_percent: Some(stats.torrent_completion),
+                };
+            }
+        }
+
+        ExistingInstanceState {
+            cumulative_uploaded: 0,
+            cumulative_downloaded: 0,
+            created_at: now_timestamp(),
+            source: context.source,
+            tags: Vec::new(),
+            completion_percent: None,
+        }
+    }
+
+    fn build_faker_config(
+        context: &InstanceBuildContext,
+        existing: &ExistingInstanceState,
+    ) -> FakerConfig {
+        let mut faker_config = context.config.clone();
+        faker_config.initial_uploaded = existing.cumulative_uploaded;
+        faker_config.initial_downloaded = existing.cumulative_downloaded;
+        if let Some(completion) = existing.completion_percent {
+            faker_config.completion_percent = completion;
+        }
+        faker_config
+    }
+
+    fn build_instance(
+        &self,
+        context: InstanceBuildContext,
+        faker_config: FakerConfig,
+        existing: ExistingInstanceState,
+    ) -> Result<FakerInstance, String> {
+        let torrent_info_hash = context.torrent.info_hash;
+        let faker = RatioFaker::new(
+            Arc::clone(&context.torrent),
+            faker_config,
+            Some(self.http_client.clone()),
+        )
+        .map_err(|e| e.to_string())?;
+
+        Ok(FakerInstance {
+            faker: Arc::new(RwLock::new(faker)),
+            torrent: context.torrent,
+            summary: context.summary,
+            config: context.config,
+            torrent_info_hash,
+            cumulative_uploaded: existing.cumulative_uploaded,
+            cumulative_downloaded: existing.cumulative_downloaded,
+            created_at: existing.created_at,
+            source: existing.source,
+            tags: existing.tags,
+        })
+    }
+
+    async fn insert_instance(&self, id: String, instance: FakerInstance) -> Result<(), String> {
+        self.instances.write().await.insert(id, instance);
+
+        if let Err(e) = self.save_state().await {
+            tracing::warn!("Failed to save state after creating instance: {}", e);
         }
 
         Ok(())
@@ -619,7 +723,9 @@ impl AppState {
         let instances = self.instances.read().await;
         for (id, instance) in instances.iter() {
             let mut faker = instance.faker.write().await;
-            let stats = faker.get_stats().await;
+            let stats = faker
+                .stats_snapshot()
+                .unwrap_or_else(|| RatioFaker::stats_from_config(&FakerConfig::default()));
             if matches!(
                 stats.state,
                 FakerState::Starting | FakerState::Running | FakerState::Paused

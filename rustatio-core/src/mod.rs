@@ -9,5 +9,5 @@ pub mod validation;
 pub use config::AppConfig;
 pub use faker::{FakerConfig, FakerState, FakerStats, RatioFaker};
 pub use protocol::{TrackerClient, TrackerError};
-pub use torrent::{ClientConfig, ClientType, TorrentInfo};
+pub use torrent::{ClientConfig, ClientType, TorrentInfo, TorrentSummary};
 pub use validation::ValidationError;

@@ -59,7 +59,7 @@ async fn import_torrent_files(
     let mut fakers_lock = state.fakers.write().await;
 
     for (i, path) in paths.iter().enumerate() {
-        let torrent = match TorrentInfo::from_file(path) {
+        let torrent = match TorrentInfo::from_file_summary(path) {
             Ok(t) => t,
             Err(e) => {
                 errors.push(format!("{}: {}", path.display(), e));
@@ -72,7 +72,14 @@ async fn import_torrent_files(
         let torrent_name = torrent.name.clone();
         let torrent_info_hash = torrent.info_hash;
 
-        let faker = match RatioFaker::new(torrent.clone(), faker_config.clone()) {
+        let torrent_arc = Arc::new(torrent.without_files());
+        let summary_arc = Arc::new(torrent_arc.summary());
+
+        let faker = match RatioFaker::new(
+            Arc::clone(&torrent_arc),
+            faker_config.clone(),
+            Some(state.http_client.clone()),
+        ) {
             Ok(f) => f,
             Err(e) => {
                 errors.push(format!("{torrent_name}: {e}"));
@@ -87,7 +94,8 @@ async fn import_torrent_files(
             instance_id,
             FakerInstance {
                 faker: Arc::new(RwLock::new(faker)),
-                torrent,
+                torrent: torrent_arc,
+                summary: summary_arc,
                 config: faker_config,
                 cumulative_uploaded: 0,
                 cumulative_downloaded: 0,
@@ -494,9 +502,13 @@ pub async fn grid_update_config(
                 let existing_stats = instance.faker.read().await.get_stats().await;
                 new_config.completion_percent = existing_stats.torrent_completion;
 
-                match RatioFaker::new(instance.torrent.clone(), new_config) {
-                    Ok(faker) => {
-                        instance.faker = Arc::new(RwLock::new(faker));
+                let result = instance
+                    .faker
+                    .write()
+                    .await
+                    .update_config(new_config, Some(state.http_client.clone()));
+                match result {
+                    Ok(()) => {
                         instance.config = faker_config.clone();
                         log_and_emit!(&app, id, info, "Config updated via grid action");
                         succeeded.push(id);
@@ -542,9 +554,13 @@ pub async fn bulk_update_configs(
                 let existing_stats = instance.faker.read().await.get_stats().await;
                 new_config.completion_percent = existing_stats.torrent_completion;
 
-                match RatioFaker::new(instance.torrent.clone(), new_config) {
-                    Ok(faker) => {
-                        instance.faker = Arc::new(RwLock::new(faker));
+                let result = instance
+                    .faker
+                    .write()
+                    .await
+                    .update_config(new_config, Some(state.http_client.clone()));
+                match result {
+                    Ok(()) => {
                         instance.config = entry.config;
                         log_and_emit!(&app, entry.id, info, "Config synced before bulk start");
                         succeeded.push(entry.id);
@@ -625,10 +641,10 @@ pub async fn list_summaries(state: State<'_, AppState>) -> Result<Vec<InstanceSu
                 (
                     *id,
                     Arc::clone(&instance.faker),
-                    instance.torrent.name.clone(),
-                    hex_info_hash(&instance.torrent.info_hash),
+                    instance.summary.name.clone(),
+                    hex_info_hash(&instance.summary.info_hash),
                     instance.tags.clone(),
-                    instance.torrent.total_size,
+                    instance.summary.total_size,
                     instance.created_at,
                 )
             })

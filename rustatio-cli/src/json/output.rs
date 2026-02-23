@@ -66,7 +66,11 @@ impl From<&TorrentInfo> for TorrentLoadedEvent {
             num_pieces: torrent.num_pieces,
             piece_length: torrent.piece_length,
             is_single_file: torrent.is_single_file,
-            file_count: torrent.files.len(),
+            file_count: if torrent.file_count > 0 {
+                torrent.file_count
+            } else {
+                torrent.files.len()
+            },
             timestamp: Utc::now(),
         }
     }

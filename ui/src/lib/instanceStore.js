@@ -325,9 +325,10 @@ export const instanceActions = {
                 scrapeInterval: serverInst.config.scrape_interval || 60,
               });
 
-              // Set torrent info
-              instance.torrent = serverInst.torrent;
-              instance.torrentPath = serverInst.torrent.name;
+              // Set torrent info (server returns summary)
+              const summary = serverInst.torrent;
+              instance.torrent = summary;
+              instance.torrentPath = summary.name;
               instance.stats = serverInst.stats;
 
               // Set running state based on server state
@@ -394,7 +395,7 @@ export const instanceActions = {
               // Get full torrent data from backend
               let torrent = null;
               try {
-                torrent = await api.getInstanceTorrent(instanceId);
+                torrent = await api.getInstanceSummary(instanceId);
               } catch {
                 // Instance may have been partially restored
               }
@@ -853,7 +854,7 @@ export const instanceActions = {
       }
 
       try {
-        const torrent = await api.getInstanceTorrent(id);
+        const torrent = await api.getInstanceSummary(id);
         if (torrent) {
           instance.torrent = torrent;
           instance.torrentPath = gridSummary.name || torrent.name || '';
@@ -903,7 +904,7 @@ export const instanceActions = {
     const instance = createDefaultInstance(id, defaults);
 
     try {
-      const torrent = await api.getInstanceTorrent(id);
+      const torrent = await api.getInstanceSummary(id);
       if (torrent) {
         instance.torrent = torrent;
         instance.torrentPath = name || torrent.name || '';

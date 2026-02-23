@@ -63,6 +63,20 @@ pub fn get_bytes(
         .ok_or_else(|| BencodeError::InvalidStructure(format!("Missing or invalid key: {key}")))
 }
 
+/// Extract byte length from a bencode dictionary
+#[allow(clippy::implicit_hasher)]
+pub fn get_bytes_len(
+    dict: &HashMap<Vec<u8>, serde_bencode::value::Value>,
+    key: &str,
+) -> Result<usize> {
+    dict.get(key.as_bytes())
+        .and_then(|v| match v {
+            serde_bencode::value::Value::Bytes(b) => Some(b.len()),
+            _ => None,
+        })
+        .ok_or_else(|| BencodeError::InvalidStructure(format!("Missing or invalid key: {key}")))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

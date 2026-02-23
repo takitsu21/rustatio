@@ -43,7 +43,7 @@ fn save_state_sync(
             *id,
             persistence::PersistedInstance {
                 id: *id,
-                torrent: instance.torrent.clone(),
+                torrent: (*instance.summary).clone(),
                 config,
                 cumulative_uploaded: stats.uploaded,
                 cumulative_downloaded: stats.downloaded,
@@ -84,6 +84,7 @@ fn main() {
         fakers: Arc::clone(&fakers_for_exit),
         next_instance_id: Arc::clone(&next_id_for_exit),
         config: Arc::new(RwLock::new(config)),
+        http_client: rustatio_core::reqwest::Client::new(),
     };
 
     let app = tauri::Builder::default()
@@ -100,6 +101,7 @@ fn main() {
             commands::load_torrent,
             commands::load_instance_torrent,
             commands::get_instance_torrent,
+            commands::get_instance_summary,
             commands::update_instance_config,
             commands::get_config,
             commands::update_config,
@@ -136,6 +138,7 @@ fn main() {
 
             let fakers_arc = Arc::clone(&state.fakers);
             let restored_instances = saved_instances;
+            let http_client = state.http_client.clone();
 
             tauri::async_runtime::spawn(async move {
                 let mut auto_start_ids: Vec<u32> = Vec::new();
@@ -145,7 +148,10 @@ fn main() {
                     config.initial_uploaded = persisted.cumulative_uploaded;
                     config.initial_downloaded = persisted.cumulative_downloaded;
 
-                    match RatioFaker::new(persisted.torrent.clone(), config) {
+                    let summary = Arc::new(persisted.torrent.clone());
+                    let torrent = Arc::new(persisted.torrent.to_info());
+
+                    match RatioFaker::new(Arc::clone(&torrent), config, Some(http_client.clone())) {
                         Ok(faker) => {
                             let was_running = matches!(
                                 persisted.state,
@@ -156,7 +162,8 @@ fn main() {
                                 *id,
                                 FakerInstance {
                                     faker: Arc::new(RwLock::new(faker)),
-                                    torrent: persisted.torrent.clone(),
+                                    torrent,
+                                    summary,
                                     config: persisted.config.clone(),
                                     cumulative_uploaded: persisted.cumulative_uploaded,
                                     cumulative_downloaded: persisted.cumulative_downloaded,
@@ -248,7 +255,7 @@ fn main() {
                             *id,
                             persistence::PersistedInstance {
                                 id: *id,
-                                torrent: instance.torrent.clone(),
+                                torrent: (*instance.summary).clone(),
                                 config,
                                 cumulative_uploaded: stats.uploaded,
                                 cumulative_downloaded: stats.downloaded,
