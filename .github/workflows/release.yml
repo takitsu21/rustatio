@@ -309,10 +309,26 @@ jobs:
 
       - name: Create manifest list and push
         working-directory: /tmp/digests
+        shell: bash
         run: |
-          # shellcheck disable=SC2046
-          docker buildx imagetools create "$(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON")" \
-            $(printf 'ghcr.io/${{ github.repository }}@sha256:%s ' ./*)
+          tags=()
+          while read -r tag; do
+            tags+=("-t" "$tag")
+          done < <(jq -cr '.tags[]' <<< "$DOCKER_METADATA_OUTPUT_JSON")
+
+          shopt -s nullglob
+          digest_files=(./*)
+          if [ ${#digest_files[@]} -eq 0 ]; then
+            echo "No digest files found in /tmp/digests" >&2
+            exit 1
+          fi
+
+          digests=()
+          for file in "${digest_files[@]}"; do
+            digests+=("ghcr.io/${{ github.repository }}@sha256:${file##*/}")
+          done
+
+          docker buildx imagetools create "${tags[@]}" "${digests[@]}"
 
       - name: Inspect image
         env:
@@ -433,6 +449,7 @@ jobs:
 
       - name: Install Rust target
         if: steps.target.outputs.target != ''
+        shell: bash
         env:
           TARGET: ${{ steps.target.outputs.target }}
         run: rustup target add "$TARGET"
