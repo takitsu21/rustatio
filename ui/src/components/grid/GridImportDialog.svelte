@@ -254,11 +254,19 @@
     folderPath = path;
   }
 
+  function parseNumber(value, fallback) {
+    const parsed = parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  }
+
   function buildConfig() {
     const tags = tagsInput
       .split(',')
       .map(t => t.trim())
       .filter(Boolean);
+
+    const resolvedUploadRate = parseNumber(uploadRate, 50);
+    const resolvedDownloadRate = parseNumber(downloadRate, 0);
 
     const config = {
       tags,
@@ -282,8 +290,8 @@
     }
 
     config.baseConfig = {
-      uploadRate: parseFloat(uploadRate) || 50,
-      downloadRate: parseFloat(downloadRate) || 0,
+      uploadRate: resolvedUploadRate,
+      downloadRate: resolvedDownloadRate,
       port: parseInt(port) || 6881,
       selectedClient: selectedClient || undefined,
       selectedClientVersion: selectedVersion || undefined,
@@ -840,8 +848,8 @@
               <RandomizationSettings
                 bind:enabled={randomizeRates}
                 bind:rangePercent={randomRangePercent}
-                uploadRate={parseFloat(uploadRate) || 50}
-                downloadRate={parseFloat(downloadRate) || 0}
+                uploadRate={parseNumber(uploadRate, 50)}
+                downloadRate={parseNumber(downloadRate, 0)}
               />
 
               <ProgressiveRateSettings
@@ -849,8 +857,8 @@
                 bind:durationHours={progressiveDurationHours}
                 bind:targetUploadRate
                 bind:targetDownloadRate
-                uploadRate={parseFloat(uploadRate) || 50}
-                downloadRate={parseFloat(downloadRate) || 0}
+                uploadRate={parseNumber(uploadRate, 50)}
+                downloadRate={parseNumber(downloadRate, 0)}
               />
 
               <div>
