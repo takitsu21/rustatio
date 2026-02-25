@@ -7,8 +7,9 @@ mod state;
 
 use rustatio_core::{AppConfig, FakerState, RatioFaker};
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use tauri::{Emitter, Manager, RunEvent};
+use tauri::{Emitter, Manager, RunEvent, WindowEvent};
 use tokio::sync::RwLock;
 
 use logging::log_and_emit;
@@ -65,6 +66,95 @@ fn save_state_sync(
     }
 }
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn show_exit_prompt(
+    app: &tauri::AppHandle,
+    should_exit: &Arc<AtomicBool>,
+    prompt_open: &Arc<AtomicBool>,
+) {
+    use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
+
+    if prompt_open.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire).is_err() {
+        return;
+    }
+
+    let app_handle = app.clone();
+    let should_exit = Arc::clone(should_exit);
+    let prompt_open = Arc::clone(prompt_open);
+
+    let dialog = app_handle
+        .dialog()
+        .message("Do you want to quit Rustatio or close it to the tray?")
+        .kind(MessageDialogKind::Info)
+        .buttons(MessageDialogButtons::OkCancelCustom(
+            "Quit".to_string(),
+            "Close to Tray".to_string(),
+        ));
+
+    let dialog = if let Some(window) = app_handle.get_webview_window("main") {
+        dialog.parent(&window)
+    } else {
+        dialog
+    };
+
+    dialog.show(move |quit| {
+        prompt_open.store(false, Ordering::Relaxed);
+        if let Some(window) = app_handle.get_webview_window("main") {
+            ensure_window_interactive(&window);
+        }
+
+        if quit {
+            should_exit.store(true, Ordering::Relaxed);
+            app_handle.exit(0);
+        } else if let Some(window) = app_handle.get_webview_window("main") {
+            let _ = window.hide();
+        }
+    });
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn toggle_main_window(app: &tauri::AppHandle) {
+    let Some(window) = app.get_webview_window("main") else {
+        return;
+    };
+
+    let is_visible = window.is_visible().unwrap_or(true);
+    if is_visible {
+        let _ = window.hide();
+    } else {
+        let _ = window.show();
+        let _ = window.unminimize();
+        ensure_window_interactive(&window);
+        let _ = window.set_focus();
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn ensure_window_interactive(window: &tauri::WebviewWindow) {
+    let _ = window.set_enabled(true);
+    let _ = window.set_closable(true);
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn handle_tray_menu_event(app: &tauri::AppHandle, id: &str, should_exit: &AtomicBool) {
+    match id {
+        "tray-show" => toggle_main_window(app),
+        "tray-quit" => {
+            should_exit.store(true, Ordering::Relaxed);
+            app.exit(0);
+        }
+        _ => {}
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn handle_tray_icon_event(app: &tauri::AppHandle, event: &tauri::tray::TrayIconEvent) {
+    if let tauri::tray::TrayIconEvent::Click { button: tauri::tray::MouseButton::Left, .. } = event
+    {
+        toggle_main_window(app);
+    }
+}
+
 fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
@@ -86,6 +176,10 @@ fn main() {
         config: Arc::new(RwLock::new(config)),
         http_client: rustatio_core::reqwest::Client::new(),
     };
+
+    let should_exit = Arc::new(AtomicBool::new(false));
+    let close_prompt_open = Arc::new(AtomicBool::new(false));
+    let should_exit_for_tray = Arc::clone(&should_exit);
 
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -132,6 +226,37 @@ fn main() {
         ])
         .setup(move |app| {
             rustatio_core::logger::init_logger(app.handle().clone());
+
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            {
+                use tauri::menu::{Menu, MenuItem};
+                use tauri::tray::TrayIconBuilder;
+
+                let show_item =
+                    MenuItem::with_id(app, "tray-show", "Show/Hide", true, None::<&str>)?;
+                let quit_item = MenuItem::with_id(app, "tray-quit", "Quit", true, None::<&str>)?;
+                let menu = Menu::with_items(app, &[&show_item, &quit_item])?;
+                let menu_state = Arc::clone(&should_exit_for_tray);
+
+                let tray_icon = TrayIconBuilder::with_id("main-tray")
+                    .menu(&menu)
+                    .show_menu_on_left_click(false)
+                    .on_menu_event(move |app, event| {
+                        handle_tray_menu_event(app, event.id().as_ref(), &menu_state);
+                    })
+                    .on_tray_icon_event(|tray, event| {
+                        handle_tray_icon_event(tray.app_handle(), &event);
+                    })
+                    .icon(
+                        app.default_window_icon()
+                            .cloned()
+                            .expect("default window icon is required for tray"),
+                    )
+                    .tooltip("Rustatio")
+                    .build(app)?;
+
+                let _ = tray_icon;
+            }
 
             let app_handle = app.handle().clone();
             let state: tauri::State<'_, AppState> = app.state();
@@ -284,6 +409,20 @@ fn main() {
             });
 
             Ok(())
+        })
+        .on_window_event({
+            let should_exit = Arc::clone(&should_exit);
+            let close_prompt_open = Arc::clone(&close_prompt_open);
+            move |window, event| {
+                if let WindowEvent::CloseRequested { api, .. } = event {
+                    if should_exit.load(Ordering::Relaxed) {
+                        return;
+                    }
+
+                    api.prevent_close();
+                    show_exit_prompt(window.app_handle(), &should_exit, &close_prompt_open);
+                }
+            }
         })
         .build(tauri::generate_context!())
         .expect("error while building tauri application");

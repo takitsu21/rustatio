@@ -13,7 +13,7 @@ path = "src/main.rs"
 [dependencies]
 rustatio-core = { path = "../rustatio-core", features = ["desktop"] }
 
-tauri = { version = "2.9", features = [] }
+tauri = { version = "2.9", features = ["tray-icon"] }
 tauri-plugin-dialog = "2.0"
 tauri-plugin-updater = "2.0"
 tauri-plugin-process = "2.0"
