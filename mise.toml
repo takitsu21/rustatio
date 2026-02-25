@@ -6,8 +6,7 @@ lockfile = true
 jobs = 1  # Run tasks synchronously (one at a time)
 
 [tools]
-# Node.js for UI development
-node = "latest"
+
 
 # Rust toolchain with components
 rust = { version = "latest", components = "rustfmt,clippy" }
@@ -29,9 +28,6 @@ zizmor = "latest"
 [env]
 CARGO_TERM_COLOR = "always"
 RUST_BACKTRACE = "1"
-
-# Project-specific paths
-_.path = ["./node_modules/.bin", "./ui/node_modules/.bin"]
 
 [tasks.install-tools]
 description = "Install mise tools (Rust + Node)"

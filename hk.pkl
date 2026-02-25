@@ -21,17 +21,17 @@ local frontend_linters = new Mapping<String, Step> {
   ["prettier"] {
     glob = List("**/*.js", "**/*.svelte", "**/*.css", "**/*.html", "**/*.json")
     exclude = List("package-lock.json")
-    check = "prettier --check {{ files }}"
-    fix = "prettier --write {{ files }}"
-    check_list_files = "prettier --list-different {{ files }}"
+    check = "npx prettier --check {{ files }}"
+    fix = "npx prettier --write {{ files }}"
+    check_list_files = "npx prettier --list-different {{ files }}"
     check_first = true
     batch = true
     dir = "ui"
   }
   ["eslint"] {
     glob = List("**/*.js", "**/*.svelte")
-    check = "eslint {{ files }}"
-    fix = "eslint --fix {{ files }}"
+    check = "npx eslint {{ files }}"
+    fix = "npx eslint --fix {{ files }}"
     check_first = true
     batch = true
     dir = "ui"
