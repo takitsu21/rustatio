@@ -223,6 +223,10 @@ services:
       # Provider-specific settings (example for ProtonVPN WireGuard)
       - WIREGUARD_PRIVATE_KEY=${WIREGUARD_PRIVATE_KEY}
       - SERVER_COUNTRIES=${SERVER_COUNTRIES:-Switzerland}
+      # Gluetun control server auth (v3.39.1+ defaults to private routes)
+      # If you want to have your network status available you have to disable the gluetun auth
+      # Since the control server is only reachable within the container network namespace it is safe
+      - HTTP_CONTROL_SERVER_AUTH_DEFAULT_ROLE={"auth":"none"}
     ports:
       - "${WEBUI_PORT:-8080}:8080"  # Rustatio Web UI
     restart: unless-stopped
