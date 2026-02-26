@@ -6,7 +6,8 @@ lockfile = true
 jobs = 1  # Run tasks synchronously (one at a time)
 
 [tools]
-
+# To run npm checks
+node = "latest"
 
 # Rust toolchain with components
 rust = { version = "latest", components = "rustfmt,clippy" }
@@ -64,6 +65,8 @@ run = [
 description = "Build WASM for web version"
 depends = ["install-wasm-pack"]
 dir = "rustatio-wasm"
+sources = ["rustatio-wasm/src/**/*.rs", "rustatio-wasm/Cargo.toml", "rustatio-core/src/**/*.rs", "rustatio-core/Cargo.toml"]
+outputs = { auto = true }
 run = [
     "echo '🏗️  Building WASM...'",
     "wasm-pack build --target web --out-dir ../ui/src/lib/wasm --release",
@@ -189,6 +192,24 @@ run = "cd ui && npm ci"
 [tasks."ui:build"]
 description = "Build UI for production"
 depends = ["ui:install", "build:wasm"]
+sources = [
+    "ui/src/*.js",
+    "ui/src/*.css",
+    "ui/src/*.svelte",
+    "ui/src/components/**/*",
+    "ui/src/lib/*.js",
+    "ui/src/lib/*.svelte.js",
+    "ui/src/lib/*.css",
+    "ui/src/lib/components/**/*",
+    "ui/src/lib/presets/**/*",
+    "ui/index.html",
+    "ui/package.json",
+    "ui/vite.config.js",
+    "ui/svelte.config.js",
+    "ui/tailwind.config.js",
+    "ui/postcss.config.js",
+]
+outputs = { auto = true }
 run = "cd ui && npm run build"
 
 # CLI tasks
