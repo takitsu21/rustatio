@@ -39,7 +39,7 @@ nanoid = "0.4"
 urlencoding = "2.1"
 
 # HTTP client for network status
-reqwest = { version = "0.12", features = ["json"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 
 # File system watcher for watch folder feature
 notify = "6.1"
