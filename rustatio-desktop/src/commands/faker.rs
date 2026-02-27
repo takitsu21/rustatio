@@ -48,8 +48,6 @@ pub async fn start_faker(
             if existing.torrent.info_hash == torrent_info_hash {
                 config_with_cumulative.initial_uploaded = existing.cumulative_uploaded;
                 config_with_cumulative.initial_downloaded = existing.cumulative_downloaded;
-                let existing_stats = existing.faker.read().await.get_stats().await;
-                config_with_cumulative.completion_percent = existing_stats.torrent_completion;
                 log_and_emit!(
                     &app,
                     instance_id,
@@ -57,7 +55,7 @@ pub async fn start_faker(
                     "Same torrent detected - continuing with cumulative stats: uploaded={} bytes, downloaded={} bytes, completion={:.1}%",
                     existing.cumulative_uploaded,
                     existing.cumulative_downloaded,
-                    existing_stats.torrent_completion
+                    config_with_cumulative.completion_percent
                 );
             } else {
                 log_and_emit!(

@@ -834,6 +834,31 @@ impl RatioFaker {
                 .map_err(|e| FakerError::ConfigError(e.to_string()))?;
         }
 
+        // Recompute left/torrent_completion from the new completion_percent.
+        // This ensures that changing completion_percent in the UI takes effect
+        // without having to recreate the faker.
+        let completion = config.completion_percent.clamp(0.0, 100.0) / 100.0;
+        let torrent_downloaded = (self.torrent.total_size as f64 * completion) as u64;
+        let new_left = self.torrent.total_size.saturating_sub(torrent_downloaded);
+        let new_torrent_completion = if self.torrent.total_size > 0 {
+            ((self.torrent.total_size - new_left) as f64 / self.torrent.total_size as f64) * 100.0
+        } else {
+            100.0
+        };
+
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Ok(mut stats) = self.stats.try_write() {
+            stats.left = new_left;
+            stats.torrent_completion = new_torrent_completion;
+        }
+
+        #[cfg(target_arch = "wasm32")]
+        {
+            let mut stats = self.stats.borrow_mut();
+            stats.left = new_left;
+            stats.torrent_completion = new_torrent_completion;
+        }
+
         self.config = config;
         Ok(())
     }

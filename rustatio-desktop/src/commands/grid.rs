@@ -499,8 +499,6 @@ pub async fn grid_update_config(
                 let mut new_config = faker_config.clone();
                 new_config.initial_uploaded = instance.cumulative_uploaded;
                 new_config.initial_downloaded = instance.cumulative_downloaded;
-                let existing_stats = instance.faker.read().await.get_stats().await;
-                new_config.completion_percent = existing_stats.torrent_completion;
 
                 let result = instance
                     .faker
@@ -551,8 +549,6 @@ pub async fn bulk_update_configs(
                 let mut new_config = entry.config.clone();
                 new_config.initial_uploaded = instance.cumulative_uploaded;
                 new_config.initial_downloaded = instance.cumulative_downloaded;
-                let existing_stats = instance.faker.read().await.get_stats().await;
-                new_config.completion_percent = existing_stats.torrent_completion;
 
                 let result = instance
                     .faker

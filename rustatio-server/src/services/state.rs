@@ -222,13 +222,6 @@ impl AppState {
         let mut faker_config = config.clone();
         faker_config.initial_uploaded = instance.cumulative_uploaded;
         faker_config.initial_downloaded = instance.cumulative_downloaded;
-        let existing_stats = instance
-            .faker
-            .read()
-            .await
-            .stats_snapshot()
-            .unwrap_or_else(|| RatioFaker::stats_from_config(&instance.config));
-        faker_config.completion_percent = existing_stats.torrent_completion;
 
         instance
             .faker
@@ -274,13 +267,6 @@ impl AppState {
                     let mut faker_config = config.clone();
                     faker_config.initial_uploaded = instance.cumulative_uploaded;
                     faker_config.initial_downloaded = instance.cumulative_downloaded;
-                    let existing_stats = instance
-                        .faker
-                        .read()
-                        .await
-                        .stats_snapshot()
-                        .unwrap_or_else(|| RatioFaker::stats_from_config(&instance.config));
-                    faker_config.completion_percent = existing_stats.torrent_completion;
 
                     let result = instance
                         .faker
