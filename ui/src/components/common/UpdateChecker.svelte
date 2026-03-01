@@ -16,6 +16,20 @@
   // Check if we're running in Tauri
   const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
+  async function resolveLinuxPackageType() {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const detected = await invoke('detect_linux_package_type');
+      if (detected === 'rpm' || detected === 'deb') {
+        return detected;
+      }
+    } catch (e) {
+      console.error('Failed to detect Linux package type:', e);
+    }
+
+    return 'unknown';
+  }
+
   async function detectInstallMethod() {
     if (!isTauri) return;
 
@@ -38,8 +52,7 @@
         installMethod = 'appimage';
       } else if (exePath.includes('/usr/') || exePath.includes('/opt/')) {
         // Installed via package manager - try to detect which one
-        // Default to .deb for Debian-based systems
-        installMethod = 'deb';
+        installMethod = await resolveLinuxPackageType();
       } else {
         installMethod = 'unknown';
       }
@@ -126,8 +139,8 @@
 
     // Detect if system uses rpm or deb
     if (installMethod === 'unknown') {
-      // Try to detect from common package manager files
-      installMethod = 'deb'; // Default to deb
+      const detected = await resolveLinuxPackageType();
+      installMethod = detected === 'unknown' ? 'deb' : detected;
     }
 
     // Build download URL based on install method

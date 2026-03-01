@@ -211,6 +211,7 @@ fn main() {
             commands::get_client_infos,
             commands::write_file,
             commands::set_log_level,
+            commands::detect_linux_package_type,
             commands::grid_import_folder,
             commands::grid_import_files,
             commands::grid_start,
