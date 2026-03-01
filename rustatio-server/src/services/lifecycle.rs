@@ -25,7 +25,7 @@ impl InstanceLifecycle for AppState {
             Arc::clone(&instance.faker)
         };
 
-        faker.write().await.start().await.map_err(|e| e.to_string())?;
+        faker.start().await.map_err(|e| e.to_string())?;
 
         Ok(())
     }
@@ -39,8 +39,8 @@ impl InstanceLifecycle for AppState {
             Arc::clone(&instance.faker)
         };
 
-        let stats = faker.read().await.get_stats().await;
-        faker.write().await.stop().await.map_err(|e| e.to_string())?;
+        let stats = faker.stats_snapshot();
+        faker.stop().await.map_err(|e| e.to_string())?;
 
         {
             let mut instances = self.instances.write().await;
@@ -63,7 +63,7 @@ impl InstanceLifecycle for AppState {
             Arc::clone(&instance.faker)
         };
 
-        faker.write().await.pause().await.map_err(|e| e.to_string())?;
+        faker.pause().await.map_err(|e| e.to_string())?;
 
         Ok(())
     }
@@ -77,7 +77,7 @@ impl InstanceLifecycle for AppState {
             Arc::clone(&instance.faker)
         };
 
-        faker.write().await.resume().await.map_err(|e| e.to_string())?;
+        faker.resume().await.map_err(|e| e.to_string())?;
 
         Ok(())
     }
@@ -91,8 +91,8 @@ impl InstanceLifecycle for AppState {
             Arc::clone(&instance.faker)
         };
 
-        faker.write().await.update().await.map_err(|e| e.to_string())?;
-        let stats = faker.read().await.get_stats().await;
+        faker.update().await.map_err(|e| e.to_string())?;
+        let stats = faker.stats_snapshot();
         Ok(stats)
     }
 
@@ -105,8 +105,8 @@ impl InstanceLifecycle for AppState {
             Arc::clone(&instance.faker)
         };
 
-        faker.write().await.update_stats_only().await.map_err(|e| e.to_string())?;
-        let stats = faker.read().await.get_stats().await;
+        faker.update_stats_only().await.map_err(|e| e.to_string())?;
+        let stats = faker.stats_snapshot();
         Ok(stats)
     }
 }

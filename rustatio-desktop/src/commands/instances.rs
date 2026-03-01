@@ -1,8 +1,9 @@
 use rustatio_core::validation;
-use rustatio_core::{FakerConfig, FakerState, RatioFaker, TorrentInfo, TorrentSummary};
+use rustatio_core::{
+    FakerConfig, FakerState, RatioFaker, RatioFakerHandle, TorrentInfo, TorrentSummary,
+};
 use std::sync::Arc;
 use tauri::{AppHandle, State};
-use tokio::sync::RwLock;
 
 use crate::logging::log_and_emit;
 use crate::state::{AppState, FakerInstance, InstanceInfo};
@@ -27,7 +28,7 @@ pub async fn update_instance_config(
     let instance =
         fakers.get_mut(&instance_id).ok_or_else(|| format!("Instance {instance_id} not found"))?;
 
-    let stats = instance.faker.read().await.get_stats().await;
+    let stats = instance.faker.stats_snapshot();
     if matches!(stats.state, FakerState::Running | FakerState::Starting | FakerState::Paused) {
         return Err("Cannot update config while faker is running".to_string());
     }
@@ -36,9 +37,8 @@ pub async fn update_instance_config(
 
     instance
         .faker
-        .write()
-        .await
         .update_config(instance.config.clone(), Some(state.http_client.clone()))
+        .await
         .map_err(|e| format!("Failed to update faker config: {e}"))?;
 
     Ok(())
@@ -57,7 +57,7 @@ pub async fn delete_instance(
     };
 
     if let Some(instance) = removed {
-        if let Err(e) = instance.faker.write().await.stop().await {
+        if let Err(e) = instance.faker.stop().await {
             log_and_emit!(&app, warn, "Error stopping faker on delete: {}", e);
         }
         log_and_emit!(&app, info, "Deleted instance {}", instance_id);
@@ -74,7 +74,7 @@ pub async fn list_instances(state: State<'_, AppState>) -> Result<Vec<InstanceIn
 
     let mut instances: Vec<InstanceInfo> = vec![];
     for (id, instance) in fakers.iter() {
-        let stats = instance.faker.read().await.get_stats().await;
+        let stats = instance.faker.stats_snapshot();
         instances.push(InstanceInfo {
             id: *id,
             torrent_name: Some(instance.summary.name.clone()),
@@ -165,7 +165,7 @@ pub async fn load_instance_torrent(
             let now = crate::state::now_secs();
 
             entry.insert(FakerInstance {
-                faker: Arc::new(RwLock::new(faker)),
+                faker: Arc::new(RatioFakerHandle::new(faker)),
                 torrent: torrent_arc,
                 summary: summary_arc,
                 config,
@@ -183,7 +183,7 @@ pub async fn load_instance_torrent(
                     .map_err(|e| format!("Failed to create faker: {e}"))?;
             instance.torrent = torrent_arc;
             instance.summary = summary_arc;
-            instance.faker = Arc::new(RwLock::new(faker));
+            instance.faker = Arc::new(RatioFakerHandle::new(faker));
         }
     }
     Ok(response_torrent)

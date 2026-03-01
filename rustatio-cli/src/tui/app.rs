@@ -172,7 +172,7 @@ pub async fn run_tui_mode(config: RunnerConfig) -> Result<()> {
                     let is_running =
                         app.stats.as_ref().is_some_and(|s| matches!(s.state, FakerState::Running));
                     if is_running {
-                        if let Err(e) = faker.pause().await {
+                        if let Err(e) = faker.pause() {
                             app.set_status(format!("Pause failed: {e}"));
                         } else {
                             app.set_status("Paused - press [r] to resume");
@@ -183,7 +183,7 @@ pub async fn run_tui_mode(config: RunnerConfig) -> Result<()> {
                     let is_paused =
                         app.stats.as_ref().is_some_and(|s| matches!(s.state, FakerState::Paused));
                     if is_paused {
-                        if let Err(e) = faker.resume().await {
+                        if let Err(e) = faker.resume() {
                             app.set_status(format!("Resume failed: {e}"));
                         } else {
                             app.set_status("Resumed");
@@ -226,7 +226,7 @@ pub async fn run_tui_mode(config: RunnerConfig) -> Result<()> {
         stats_ticker.tick().await;
 
         // Get current stats first to check state
-        let stats = faker.get_stats().await;
+        let stats = faker.get_stats();
 
         // Only update if running (not paused)
         if matches!(stats.state, FakerState::Running) {
@@ -237,7 +237,7 @@ pub async fn run_tui_mode(config: RunnerConfig) -> Result<()> {
         }
 
         // Get updated stats
-        let stats = faker.get_stats().await;
+        let stats = faker.get_stats();
 
         // Check if a new announce happened
         if stats.announce_count > app.last_announce_count {

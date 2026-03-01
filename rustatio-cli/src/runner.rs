@@ -91,7 +91,7 @@ pub async fn run_json_mode(config: RunnerConfig) -> Result<()> {
     .emit();
 
     // Emit initial announce event
-    let stats = faker.get_stats().await;
+    let stats = faker.get_stats();
     OutputEvent::Announce(AnnounceEvent {
         announce_type: AnnounceType::Started,
         seeders: stats.seeders,
@@ -155,7 +155,7 @@ pub async fn run_json_mode(config: RunnerConfig) -> Result<()> {
                     OutputEvent::error(format!("Update error: {e}")).emit();
                 }
 
-                let stats = faker.get_stats().await;
+                let stats = faker.get_stats();
 
                 // Check if stopped by stop condition
                 if matches!(stats.state, FakerState::Stopped) {
@@ -170,14 +170,14 @@ pub async fn run_json_mode(config: RunnerConfig) -> Result<()> {
             Some(cmd) = cmd_rx.recv() => {
                 match cmd {
                     RunnerCommand::Pause => {
-                        if let Err(e) = faker.pause().await {
+                        if let Err(e) = faker.pause() {
                             OutputEvent::error(format!("Pause error: {e}")).emit();
                         } else {
                             OutputEvent::paused().emit();
                         }
                     }
                     RunnerCommand::Resume => {
-                        if let Err(e) = faker.resume().await {
+                        if let Err(e) = faker.resume() {
                             OutputEvent::error(format!("Resume error: {e}")).emit();
                         } else {
                             OutputEvent::resumed().emit();
@@ -203,7 +203,7 @@ pub async fn run_json_mode(config: RunnerConfig) -> Result<()> {
                         }
                     }
                     RunnerCommand::Stats => {
-                        let stats = faker.get_stats().await;
+                        let stats = faker.get_stats();
                         OutputEvent::Stats(StatsEvent::from(&stats)).emit();
                     }
                     RunnerCommand::Shutdown => {
@@ -216,7 +216,7 @@ pub async fn run_json_mode(config: RunnerConfig) -> Result<()> {
     }
 
     // Stop faker gracefully
-    let final_stats = faker.get_stats().await;
+    let final_stats = faker.get_stats();
 
     if let Err(e) = faker.stop().await {
         OutputEvent::error(format!("Stop error: {e}")).emit();

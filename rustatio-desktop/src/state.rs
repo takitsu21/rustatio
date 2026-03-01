@@ -1,4 +1,4 @@
-use rustatio_core::{FakerConfig, RatioFaker, TorrentInfo, TorrentSummary};
+use rustatio_core::{FakerConfig, RatioFakerHandle, TorrentInfo, TorrentSummary};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt::Write;
@@ -6,7 +6,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 pub struct FakerInstance {
-    pub faker: Arc<RwLock<RatioFaker>>,
+    pub faker: Arc<RatioFakerHandle>,
     pub torrent: Arc<TorrentInfo>,
     pub summary: Arc<TorrentSummary>,
     pub config: FakerConfig,

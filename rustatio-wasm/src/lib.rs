@@ -261,7 +261,7 @@ pub async fn update_faker(id: u32) -> Result<JsValue, JsValue> {
         if let Err(e) = result {
             return (instance, Err(JsValue::from_str(&e.to_string())));
         }
-        let stats = instance.faker.get_stats().await;
+        let stats = instance.faker.get_stats();
         let result = to_js(&stats);
         (instance, result)
     })
@@ -276,7 +276,7 @@ pub async fn update_stats_only(id: u32) -> Result<JsValue, JsValue> {
         if let Err(e) = result {
             return (instance, Err(JsValue::from_str(&e.to_string())));
         }
-        let stats = instance.faker.get_stats().await;
+        let stats = instance.faker.get_stats();
         let result = to_js(&stats);
         (instance, result)
     })
@@ -286,7 +286,7 @@ pub async fn update_stats_only(id: u32) -> Result<JsValue, JsValue> {
 #[wasm_bindgen]
 pub async fn get_stats(id: u32) -> Result<JsValue, JsValue> {
     with_instance(id, |instance| async move {
-        let stats = instance.faker.get_stats().await;
+        let stats = instance.faker.get_stats();
         let result = to_js(&stats);
         (instance, result)
     })
@@ -297,7 +297,7 @@ pub async fn get_stats(id: u32) -> Result<JsValue, JsValue> {
 pub async fn stop_faker(id: u32) -> Result<(), JsValue> {
     rustatio_core::logger::set_instance_context(Some(id));
     with_instance(id, |mut instance| async move {
-        let final_stats = instance.faker.get_stats().await;
+        let final_stats = instance.faker.get_stats();
 
         let result = instance.faker.stop().await.map_err(|e| JsValue::from_str(&e.to_string()));
 
@@ -319,7 +319,7 @@ pub async fn stop_faker(id: u32) -> Result<(), JsValue> {
 pub async fn pause_faker(id: u32) -> Result<(), JsValue> {
     rustatio_core::logger::set_instance_context(Some(id));
     with_instance(id, |mut instance| async move {
-        let result = instance.faker.pause().await.map_err(|e| JsValue::from_str(&e.to_string()));
+        let result = instance.faker.pause().map_err(|e| JsValue::from_str(&e.to_string()));
         (instance, result)
     })
     .await
@@ -329,7 +329,7 @@ pub async fn pause_faker(id: u32) -> Result<(), JsValue> {
 pub async fn resume_faker(id: u32) -> Result<(), JsValue> {
     rustatio_core::logger::set_instance_context(Some(id));
     with_instance(id, |mut instance| async move {
-        let result = instance.faker.resume().await.map_err(|e| JsValue::from_str(&e.to_string()));
+        let result = instance.faker.resume().map_err(|e| JsValue::from_str(&e.to_string()));
         (instance, result)
     })
     .await
@@ -506,7 +506,7 @@ pub async fn grid_stop(ids_json: JsValue) -> Result<JsValue, JsValue> {
     for id in ids {
         match take_instance(id) {
             Ok(mut instance) => {
-                let final_stats = instance.faker.get_stats().await;
+                let final_stats = instance.faker.get_stats();
                 match instance.faker.stop().await {
                     Ok(()) => {
                         instance.cumulative_uploaded = final_stats.uploaded;
@@ -539,7 +539,7 @@ pub async fn grid_pause(ids_json: JsValue) -> Result<JsValue, JsValue> {
     for id in ids {
         match take_instance(id) {
             Ok(mut instance) => {
-                match instance.faker.pause().await {
+                match instance.faker.pause() {
                     Ok(()) => succeeded.push(id.to_string()),
                     Err(e) => failed
                         .push(serde_json::json!({ "id": id.to_string(), "error": e.to_string() })),
@@ -567,7 +567,7 @@ pub async fn grid_resume(ids_json: JsValue) -> Result<JsValue, JsValue> {
     for id in ids {
         match take_instance(id) {
             Ok(mut instance) => {
-                match instance.faker.resume().await {
+                match instance.faker.resume() {
                     Ok(()) => succeeded.push(id.to_string()),
                     Err(e) => failed
                         .push(serde_json::json!({ "id": id.to_string(), "error": e.to_string() })),
@@ -712,7 +712,7 @@ pub async fn list_summaries() -> Result<JsValue, JsValue> {
 
     for id in ids {
         let instance = take_instance(id)?;
-        let stats = instance.faker.get_stats().await;
+        let stats = instance.faker.get_stats();
         let info_hash_hex = instance.torrent_info_hash.iter().fold(String::new(), |mut acc, b| {
             let _ = write!(acc, "{b:02x}");
             acc

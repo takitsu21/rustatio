@@ -6,7 +6,8 @@ use super::persistence::{
 };
 use rustatio_core::logger::set_instance_context_str;
 use rustatio_core::{
-    FakerConfig, FakerState, FakerStats, InstanceSummary, RatioFaker, TorrentInfo, TorrentSummary,
+    FakerConfig, FakerState, FakerStats, InstanceSummary, RatioFaker, RatioFakerHandle,
+    TorrentInfo, TorrentSummary,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -113,7 +114,7 @@ impl AppState {
             ) {
                 Ok(faker) => {
                     let instance = FakerInstance {
-                        faker: Arc::new(RwLock::new(faker)),
+                        faker: Arc::new(RatioFakerHandle::new(faker)),
                         torrent,
                         summary,
                         config: persisted.config.clone(),
@@ -173,12 +174,7 @@ impl AppState {
         };
 
         for (id, instance) in instances.iter() {
-            let stats = instance
-                .faker
-                .read()
-                .await
-                .stats_snapshot()
-                .unwrap_or_else(|| RatioFaker::stats_from_config(&instance.config));
+            let stats = instance.faker.stats_snapshot();
             let mut config = instance.config.clone();
             config.completion_percent = stats.torrent_completion;
 
@@ -225,9 +221,8 @@ impl AppState {
 
         instance
             .faker
-            .write()
-            .await
             .update_config(faker_config, Some(self.http_client.clone()))
+            .await
             .map_err(|e| e.to_string())?;
         instance.config = config;
 
@@ -245,9 +240,8 @@ impl AppState {
 
         instance
             .faker
-            .write()
-            .await
             .update_config(config, Some(self.http_client.clone()))
+            .await
             .map_err(|e| format!("Failed to update faker config: {e}"))?;
 
         Ok(())
@@ -270,9 +264,8 @@ impl AppState {
 
                     let result = instance
                         .faker
-                        .write()
-                        .await
-                        .update_config(faker_config, Some(self.http_client.clone()));
+                        .update_config(faker_config, Some(self.http_client.clone()))
+                        .await;
                     match result {
                         Ok(()) => {
                             instance.config = config;
@@ -355,7 +348,7 @@ impl AppState {
             let instance = instances.get(id).ok_or("Instance not found")?;
             Arc::clone(&instance.faker)
         };
-        let stats = faker.read().await.get_stats().await;
+        let stats = faker.stats_snapshot();
         Ok(stats)
     }
 
@@ -388,8 +381,7 @@ impl AppState {
         {
             let instances = self.instances.read().await;
             if let Some(instance) = instances.get(id) {
-                let mut faker = instance.faker.write().await;
-                let _ = faker.stop().await;
+                let _ = instance.faker.stop().await;
             }
         }
 
@@ -411,12 +403,7 @@ impl AppState {
         let mut result = Vec::new();
 
         for (id, instance) in instances.iter() {
-            let stats = instance
-                .faker
-                .read()
-                .await
-                .stats_snapshot()
-                .unwrap_or_else(|| RatioFaker::stats_from_config(&instance.config));
+            let stats = instance.faker.stats_snapshot();
 
             result.push(InstanceInfo {
                 id: id.clone(),
@@ -525,12 +512,7 @@ impl AppState {
         let mut result = Vec::with_capacity(instances.len());
 
         for (id, instance) in instances.iter() {
-            let stats = instance
-                .faker
-                .read()
-                .await
-                .stats_snapshot()
-                .unwrap_or_else(|| RatioFaker::stats_from_config(&instance.config));
+            let stats = instance.faker.stats_snapshot();
 
             let source = match instance.source {
                 InstanceSource::Manual => "manual",
@@ -597,12 +579,7 @@ impl AppState {
         let instances = self.instances.read().await;
         if let Some(existing) = instances.get(&context.id) {
             if existing.torrent_info_hash == torrent_info_hash {
-                let stats = existing
-                    .faker
-                    .read()
-                    .await
-                    .stats_snapshot()
-                    .unwrap_or_else(|| RatioFaker::stats_from_config(&existing.config));
+                let stats = existing.faker.stats_snapshot();
                 return ExistingInstanceState {
                     cumulative_uploaded: existing.cumulative_uploaded,
                     cumulative_downloaded: existing.cumulative_downloaded,
@@ -652,7 +629,7 @@ impl AppState {
         .map_err(|e| e.to_string())?;
 
         Ok(FakerInstance {
-            faker: Arc::new(RwLock::new(faker)),
+            faker: Arc::new(RatioFakerHandle::new(faker)),
             torrent: context.torrent,
             summary: context.summary,
             config: context.config,
@@ -684,8 +661,7 @@ impl AppState {
         {
             let instances = self.instances.read().await;
             if let Some(instance) = instances.get(&id) {
-                let mut faker = instance.faker.write().await;
-                let _ = faker.stop().await;
+                let _ = instance.faker.stop().await;
             }
         }
 
@@ -708,15 +684,12 @@ impl AppState {
 
         let instances = self.instances.read().await;
         for (id, instance) in instances.iter() {
-            let mut faker = instance.faker.write().await;
-            let stats = faker
-                .stats_snapshot()
-                .unwrap_or_else(|| RatioFaker::stats_from_config(&FakerConfig::default()));
+            let stats = instance.faker.stats_snapshot();
             if matches!(
                 stats.state,
                 FakerState::Starting | FakerState::Running | FakerState::Paused
             ) {
-                if let Err(e) = faker.stop().await {
+                if let Err(e) = instance.faker.stop().await {
                     tracing::warn!("Failed to stop instance {}: {}", id, e);
                 }
             }

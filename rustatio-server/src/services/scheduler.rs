@@ -1,7 +1,7 @@
 use super::instance::FakerInstance;
 use super::state::AppState;
 use rustatio_core::logger::set_instance_context_str;
-use rustatio_core::FakerState;
+use rustatio_core::{FakerState, RatioFakerHandle};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
@@ -81,26 +81,19 @@ async fn scheduler_loop(
 
 async fn update_all_running_instances(instances: &Arc<RwLock<HashMap<String, FakerInstance>>>) {
     // Collect running instance IDs and their faker handles
-    let running: Vec<(String, Arc<RwLock<rustatio_core::RatioFaker>>)> = {
+    let running: Vec<(String, Arc<RatioFakerHandle>)> = {
         let guard = instances.read().await;
         guard.iter().map(|(id, inst)| (id.clone(), Arc::clone(&inst.faker))).collect()
     };
 
     for (id, faker) in running {
-        // Use try_write to skip instances currently locked by user operations (start/stop/pause)
-        // This prevents the scheduler from blocking for up to 30s on a tracker announce
-        let Ok(mut guard) = faker.try_write() else {
-            tracing::trace!("Scheduler: skipping instance {} (locked by another operation)", id);
-            continue;
-        };
-
-        let stats = guard.get_stats().await;
+        let stats = faker.stats_snapshot();
         if !matches!(stats.state, FakerState::Running) {
             continue;
         }
 
         set_instance_context_str(Some(&id));
-        if let Err(e) = guard.update().await {
+        if let Err(e) = faker.update().await {
             tracing::warn!("Scheduler: update failed for instance {}: {}", id, e);
         }
     }
