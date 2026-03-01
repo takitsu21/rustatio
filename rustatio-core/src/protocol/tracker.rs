@@ -1,7 +1,7 @@
 use crate::protocol::bencode;
 use crate::torrent::ClientConfig;
 use crate::{log_debug, log_error, log_info, log_trace, log_warn};
-use reqwest;
+use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use std::fmt::Write;
 use thiserror::Error;
@@ -9,7 +9,7 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 pub enum TrackerError {
     #[error("HTTP error: {0}")]
-    HttpError(#[from] reqwest::Error),
+    HttpError(String),
     #[error("Bencode error: {0}")]
     BencodeError(#[from] crate::protocol::bencode::BencodeError),
     #[error("Tracker returned error: {0}")]
@@ -20,7 +20,44 @@ pub enum TrackerError {
     UrlError(#[from] url::ParseError),
 }
 
+impl From<reqwest::Error> for TrackerError {
+    fn from(err: reqwest::Error) -> Self {
+        Self::HttpError(err.to_string())
+    }
+}
+
 pub type Result<T> = std::result::Result<T, TrackerError>;
+
+pub type HttpResult = std::result::Result<HttpResponse, String>;
+
+#[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
+#[cfg_attr(target_arch = "wasm32", async_trait::async_trait(?Send))]
+#[cfg_attr(test, mockall::automock)]
+pub trait HttpClient: Send + Sync {
+    async fn get(&self, url: String, agent: String) -> HttpResult;
+}
+
+#[derive(Debug, Clone)]
+pub struct HttpResponse {
+    status: StatusCode,
+    body: Vec<u8>,
+}
+
+pub struct ReqwestHttpClient {
+    client: reqwest::Client,
+}
+
+#[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
+#[cfg_attr(target_arch = "wasm32", async_trait::async_trait(?Send))]
+impl HttpClient for ReqwestHttpClient {
+    async fn get(&self, url: String, agent: String) -> HttpResult {
+        let req = self.client.get(url).header(reqwest::header::USER_AGENT, agent);
+        let res = req.send().await.map_err(|err| err.to_string())?;
+        let status = res.status();
+        let body = res.bytes().await.map_err(|err| err.to_string())?;
+        Ok(HttpResponse { status, body: body.to_vec() })
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TrackerEvent {
@@ -90,40 +127,22 @@ pub struct ScrapeResponse {
     pub name: Option<String>,
 }
 
-pub struct TrackerClient {
-    client: reqwest::Client,
+pub struct TrackerClient<C: HttpClient = ReqwestHttpClient> {
+    http: C,
     client_config: ClientConfig,
 }
 
-impl TrackerClient {
-    /// Create a new `TrackerClient`.
-    ///
-    /// If `shared_client` is provided, it will be reused (saving ~1-5 MB per instance).
-    /// User-Agent is set per-request so different instances can emulate different BT clients.
-    pub fn new(
-        client_config: ClientConfig,
-        shared_client: Option<reqwest::Client>,
-    ) -> Result<Self> {
-        log_debug!("Creating TrackerClient with User-Agent: {}", client_config.user_agent);
-
-        let client = if let Some(c) = shared_client {
-            c
+impl<C: HttpClient> TrackerClient<C> {
+    #[cfg(target_arch = "wasm32")]
+    fn proxy_url() -> Option<String> {
+        let window = web_sys::window()?;
+        let storage = window.local_storage().ok()??;
+        let proxy = storage.get_item("rustatio-proxy-url").ok()??;
+        if proxy.is_empty() {
+            None
         } else {
-            #[cfg(not(target_arch = "wasm32"))]
-            {
-                reqwest::Client::builder()
-                    .timeout(std::time::Duration::from_secs(30))
-                    .gzip(true)
-                    .build()?
-            }
-
-            #[cfg(target_arch = "wasm32")]
-            {
-                reqwest::Client::builder().build()?
-            }
-        };
-
-        Ok(Self { client, client_config })
+            Some(proxy)
+        }
     }
 
     /// Send an announce request to the tracker
@@ -136,30 +155,15 @@ impl TrackerClient {
 
         // For WASM, check if proxy is configured
         #[cfg(target_arch = "wasm32")]
-        let final_url = {
-            if let Some(window) = web_sys::window() {
-                if let Ok(Some(storage)) = window.local_storage() {
-                    if let Ok(Some(proxy)) = storage.get_item("rustatio-proxy-url") {
-                        if !proxy.is_empty() {
-                            // Encode the announce URL and prepend proxy
-                            let encoded = percent_encoding::utf8_percent_encode(
-                                &announce_url,
-                                percent_encoding::NON_ALPHANUMERIC,
-                            )
-                            .to_string();
-                            format!("{}?url={}", proxy.trim_end_matches('/'), encoded)
-                        } else {
-                            announce_url.clone()
-                        }
-                    } else {
-                        announce_url.clone()
-                    }
-                } else {
-                    announce_url.clone()
-                }
-            } else {
-                announce_url.clone()
-            }
+        let final_url = if let Some(proxy) = Self::proxy_url() {
+            let encoded = percent_encoding::utf8_percent_encode(
+                &announce_url,
+                percent_encoding::NON_ALPHANUMERIC,
+            )
+            .to_string();
+            format!("{}?url={}", proxy.trim_end_matches('/'), encoded)
+        } else {
+            announce_url.clone()
         };
 
         #[cfg(not(target_arch = "wasm32"))]
@@ -169,24 +173,20 @@ impl TrackerClient {
         log_debug!("Full announce URL: {}", final_url);
 
         let response = self
-            .client
-            .get(&final_url)
-            .header(reqwest::header::USER_AGENT, &self.client_config.user_agent)
-            .send()
-            .await?;
+            .http
+            .get(final_url, self.client_config.user_agent.clone())
+            .await
+            .map_err(TrackerError::HttpError)?;
 
-        let status = response.status();
+        let status = response.status;
         log_trace!("Tracker response status: {}", status);
 
         if !status.is_success() {
             log_error!("Tracker request failed with status: {}", status);
-            let err = response
-                .error_for_status()
-                .expect_err("status was already checked to be non-success");
-            return Err(TrackerError::HttpError(err));
+            return Err(TrackerError::HttpError(format!("HTTP status: {status}")));
         }
 
-        let body = response.bytes().await?;
+        let body = response.body;
         log_debug!("Tracker response: {} bytes", body.len());
         log_trace!("Response body (hex): {:02X?}", &body[..body.len().min(100)]);
 
@@ -200,20 +200,16 @@ impl TrackerClient {
         log_info!("Scraping tracker: {}", scrape_url);
 
         let response = self
-            .client
-            .get(&scrape_url)
-            .header(reqwest::header::USER_AGENT, &self.client_config.user_agent)
-            .send()
-            .await?;
+            .http
+            .get(scrape_url, self.client_config.user_agent.clone())
+            .await
+            .map_err(TrackerError::HttpError)?;
 
-        if !response.status().is_success() {
-            let err = response
-                .error_for_status()
-                .expect_err("status was already checked to be non-success");
-            return Err(TrackerError::HttpError(err));
+        if !response.status.is_success() {
+            return Err(TrackerError::HttpError(format!("HTTP status: {}", response.status)));
         }
 
-        let body = response.bytes().await?;
+        let body = response.body;
         self.parse_scrape_response(&body, info_hash)
     }
 
@@ -451,5 +447,367 @@ impl TrackerClient {
         } else {
             format!("Received {} bytes of binary data", data.len())
         }
+    }
+}
+
+impl TrackerClient<ReqwestHttpClient> {
+    /// Create a new `TrackerClient`.
+    ///
+    /// If `shared_client` is provided, it will be reused (saving ~1-5 MB per instance).
+    /// User-Agent is set per-request so different instances can emulate different BT clients.
+    pub fn new(
+        client_config: ClientConfig,
+        shared_client: Option<reqwest::Client>,
+    ) -> Result<Self> {
+        log_debug!("Creating TrackerClient with User-Agent: {}", client_config.user_agent);
+
+        let client = if let Some(c) = shared_client {
+            c
+        } else {
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                reqwest::Client::builder()
+                    .timeout(std::time::Duration::from_secs(30))
+                    .gzip(true)
+                    .build()?
+            }
+
+            #[cfg(target_arch = "wasm32")]
+            {
+                reqwest::Client::builder().build()?
+            }
+        };
+
+        Ok(Self { http: ReqwestHttpClient { client }, client_config })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::torrent::ClientType;
+    use serde_bencode::value::Value;
+    use std::collections::HashMap;
+
+    fn client() -> Result<TrackerClient<ReqwestHttpClient>> {
+        let cfg = ClientConfig::get(ClientType::QBittorrent, None);
+        TrackerClient::new(cfg, None)
+    }
+
+    fn hash() -> [u8; 20] {
+        let mut hash = [0u8; 20];
+        for (idx, item) in hash.iter_mut().enumerate() {
+            *item = idx as u8;
+        }
+        hash
+    }
+
+    fn encode_hash(hash: [u8; 20]) -> String {
+        let mut out = String::new();
+        for byte in hash {
+            let _ = write!(out, "%{byte:02X}");
+        }
+        out
+    }
+
+    fn req(hash: [u8; 20]) -> AnnounceRequest {
+        AnnounceRequest {
+            info_hash: hash,
+            peer_id: "peerid12345678901234".to_string(),
+            port: 6881,
+            uploaded: 123,
+            downloaded: 456,
+            left: 789,
+            compact: true,
+            no_peer_id: true,
+            event: TrackerEvent::Started,
+            ip: Some("1.2.3.4".to_string()),
+            numwant: Some(50),
+            key: Some("abc".to_string()),
+            tracker_id: Some("id".to_string()),
+        }
+    }
+
+    fn client_with_http(http: MockHttpClient) -> TrackerClient<MockHttpClient> {
+        let config = ClientConfig::get(ClientType::QBittorrent, None);
+        TrackerClient { http, client_config: config }
+    }
+
+    fn mock_http(status: StatusCode, body: Vec<u8>) -> MockHttpClient {
+        let mut mock = MockHttpClient::new();
+        mock.expect_get().returning(move |_, _| {
+            let body = body.clone();
+            Box::pin(async move { Ok(HttpResponse { status, body }) })
+        });
+        mock
+    }
+
+    #[test]
+    fn test_tracker_event_as_str() {
+        assert_eq!(TrackerEvent::Started.as_str(), Some("started"));
+        assert_eq!(TrackerEvent::Stopped.as_str(), Some("stopped"));
+        assert_eq!(TrackerEvent::Completed.as_str(), Some("completed"));
+        assert_eq!(TrackerEvent::None.as_str(), None);
+    }
+
+    #[test]
+    fn test_build_announce_url_params() -> Result<()> {
+        let client = client()?;
+        let hash = hash();
+        let req = req(hash);
+        let url = client.build_announce_url("https://tracker.test/announce", &req);
+        let expect = encode_hash(hash);
+
+        assert!(url.contains(&format!("info_hash={expect}")));
+        assert!(url.contains("peer_id=peerid12345678901234"));
+        assert!(url.contains("port=6881"));
+        assert!(url.contains("uploaded=123"));
+        assert!(url.contains("downloaded=456"));
+        assert!(url.contains("left=789"));
+        assert!(url.contains("compact=1"));
+        assert!(url.contains("no_peer_id=1"));
+        assert!(url.contains("event=started"));
+        assert!(url.contains("ip=1.2.3.4"));
+        assert!(url.contains("numwant=50"));
+        assert!(url.contains("key=abc"));
+        assert!(url.contains("trackerid=id"));
+        assert!(url.contains("supportcrypto=1"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_build_announce_url_query_separator() -> Result<()> {
+        let client = client()?;
+        let hash = hash();
+        let req = req(hash);
+        let url = client.build_announce_url("https://tracker.test/announce?foo=1", &req);
+        let expect = encode_hash(hash);
+
+        assert!(url.contains(&format!("?foo=1&info_hash={expect}")));
+        Ok(())
+    }
+
+    #[test]
+    fn test_build_scrape_url_query_separator() -> Result<()> {
+        let client = client()?;
+        let hash = hash();
+        let url = client.build_scrape_url("https://tracker.test/announce?pass=1", &hash);
+        let expect = encode_hash(hash);
+
+        assert!(url.starts_with("https://tracker.test/scrape?pass=1&info_hash="));
+        assert!(url.ends_with(&expect));
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_announce_response_ok() -> Result<()> {
+        let client = client()?;
+        let data = b"d8:completei5e10:incompletei3e8:intervali1800e12:min intervali900e10:tracker id6:abc12315:warning message7:be caree";
+        let res = client.parse_announce_response(data)?;
+
+        assert_eq!(res.interval, 1800);
+        assert_eq!(res.min_interval, Some(900));
+        assert_eq!(res.tracker_id.as_deref(), Some("abc123"));
+        assert_eq!(res.complete, 5);
+        assert_eq!(res.incomplete, 3);
+        assert_eq!(res.warning.as_deref(), Some("be care"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_announce_response_failure() -> Result<()> {
+        let client = client()?;
+        let data = b"d14:failure reason11:bad passkeye";
+        let res = client.parse_announce_response(data);
+
+        assert!(matches!(&res, Err(TrackerError::TrackerFailure(_))));
+        if let Err(TrackerError::TrackerFailure(reason)) = res {
+            assert_eq!(reason, "bad passkey");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_announce_response_invalid() -> Result<()> {
+        let client = client()?;
+        let res = client.parse_announce_response(b"i42e");
+
+        assert!(matches!(res, Err(TrackerError::InvalidResponse(_))));
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_scrape_response_ok() -> Result<()> {
+        let client = client()?;
+        let hash = hash();
+
+        let mut stats = HashMap::new();
+        stats.insert(b"complete".to_vec(), Value::Int(10));
+        stats.insert(b"incomplete".to_vec(), Value::Int(2));
+        stats.insert(b"downloaded".to_vec(), Value::Int(7));
+        stats.insert(b"name".to_vec(), Value::Bytes(b"test".to_vec()));
+
+        let mut files = HashMap::new();
+        files.insert(hash.to_vec(), Value::Dict(stats));
+
+        let mut root = HashMap::new();
+        root.insert(b"files".to_vec(), Value::Dict(files));
+
+        let data = bencode::encode(&Value::Dict(root))?;
+        let res = client.parse_scrape_response(&data, &hash)?;
+
+        assert_eq!(res.complete, 10);
+        assert_eq!(res.incomplete, 2);
+        assert_eq!(res.downloaded, 7);
+        assert_eq!(res.name.as_deref(), Some("test"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_scrape_response_missing_files() -> Result<()> {
+        let client = client()?;
+        let hash = hash();
+
+        let data = bencode::encode(&Value::Dict(HashMap::new()))?;
+        let res = client.parse_scrape_response(&data, &hash);
+
+        assert!(matches!(res, Err(TrackerError::InvalidResponse(_))));
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_scrape_response_missing_torrent() -> Result<()> {
+        let client = client()?;
+        let hash = hash();
+        let other = [9u8; 20];
+
+        let mut stats = HashMap::new();
+        stats.insert(b"complete".to_vec(), Value::Int(1));
+        stats.insert(b"incomplete".to_vec(), Value::Int(1));
+        stats.insert(b"downloaded".to_vec(), Value::Int(1));
+
+        let mut files = HashMap::new();
+        files.insert(other.to_vec(), Value::Dict(stats));
+
+        let mut root = HashMap::new();
+        root.insert(b"files".to_vec(), Value::Dict(files));
+
+        let data = bencode::encode(&Value::Dict(root))?;
+        let res = client.parse_scrape_response(&data, &hash);
+
+        assert!(matches!(res, Err(TrackerError::InvalidResponse(_))));
+        Ok(())
+    }
+
+    #[test]
+    fn test_format_response_preview_html() -> Result<()> {
+        let client = client()?;
+        let data = b"<!DOCTYPE html><title>Denied</title>";
+        let msg = client.format_response_preview(data);
+
+        assert_eq!(msg, "Received HTML page with title: \"Denied\"");
+        Ok(())
+    }
+
+    #[test]
+    fn test_format_response_preview_gzip() -> Result<()> {
+        let client = client()?;
+        let data = [0x1f, 0x8b, 0x08, 0x00];
+        let msg = client.format_response_preview(&data);
+
+        assert_eq!(
+            msg,
+            "Received gzip-compressed response (tracker may require Accept-Encoding header)"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_announce_ok() -> Result<()> {
+        let mut dict = HashMap::new();
+        dict.insert(b"interval".to_vec(), Value::Int(1800));
+        dict.insert(b"complete".to_vec(), Value::Int(5));
+        dict.insert(b"incomplete".to_vec(), Value::Int(2));
+        let body = bencode::encode(&Value::Dict(dict))?;
+
+        let http = mock_http(StatusCode::OK, body);
+        let client = client_with_http(http);
+        let res = client.announce("https://tracker.test/announce", &req(hash())).await?;
+
+        assert_eq!(res.interval, 1800);
+        assert_eq!(res.complete, 5);
+        assert_eq!(res.incomplete, 2);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_announce_http_error_status() -> Result<()> {
+        let http = mock_http(StatusCode::INTERNAL_SERVER_ERROR, Vec::new());
+        let client = client_with_http(http);
+        let res = client.announce("https://tracker.test/announce", &req(hash())).await;
+
+        assert!(matches!(&res, Err(TrackerError::HttpError(_))));
+        if let Err(TrackerError::HttpError(msg)) = res {
+            assert!(msg.contains("500"));
+        }
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_announce_invalid_bencode() -> Result<()> {
+        let http = mock_http(StatusCode::OK, b"i42e".to_vec());
+        let client = client_with_http(http);
+        let res = client.announce("https://tracker.test/announce", &req(hash())).await;
+
+        assert!(matches!(res, Err(TrackerError::InvalidResponse(_))));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_scrape_ok() -> Result<()> {
+        let hash = hash();
+        let mut stats = HashMap::new();
+        stats.insert(b"complete".to_vec(), Value::Int(2));
+        stats.insert(b"incomplete".to_vec(), Value::Int(1));
+        stats.insert(b"downloaded".to_vec(), Value::Int(3));
+
+        let mut files = HashMap::new();
+        files.insert(hash.to_vec(), Value::Dict(stats));
+
+        let mut root = HashMap::new();
+        root.insert(b"files".to_vec(), Value::Dict(files));
+
+        let body = bencode::encode(&Value::Dict(root))?;
+        let http = mock_http(StatusCode::OK, body);
+        let client = client_with_http(http);
+        let res = client.scrape("https://tracker.test/announce", &hash).await?;
+
+        assert_eq!(res.complete, 2);
+        assert_eq!(res.incomplete, 1);
+        assert_eq!(res.downloaded, 3);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_scrape_http_error_status() -> Result<()> {
+        let http = mock_http(StatusCode::FORBIDDEN, Vec::new());
+        let client = client_with_http(http);
+        let res = client.scrape("https://tracker.test/announce", &hash()).await;
+
+        assert!(matches!(&res, Err(TrackerError::HttpError(_))));
+        if let Err(TrackerError::HttpError(msg)) = res {
+            assert!(msg.contains("403"));
+        }
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_scrape_invalid_bencode() -> Result<()> {
+        let http = mock_http(StatusCode::OK, b"i42e".to_vec());
+        let client = client_with_http(http);
+        let res = client.scrape("https://tracker.test/announce", &hash()).await;
+
+        assert!(matches!(res, Err(TrackerError::InvalidResponse(_))));
+        Ok(())
     }
 }

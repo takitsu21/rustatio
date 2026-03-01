@@ -263,34 +263,217 @@ impl AppConfig {
     }
 }
 
-// Add dirs crate to Cargo.toml for getting config directory
-// For now, we'll use a simple implementation
-
-mod dirs {
-    use std::path::PathBuf;
-
-    pub fn config_dir() -> Option<PathBuf> {
-        std::env::var("HOME").ok().map(|home| PathBuf::from(home).join(".config"))
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    fn temp_path(name: &str) -> PathBuf {
+        let mut path = std::env::temp_dir();
+        path.push(name);
+        path
+    }
+
+    fn set_env(key: &str, value: Option<&str>) {
+        match value {
+            Some(val) => std::env::set_var(key, val),
+            None => std::env::remove_var(key),
+        }
+    }
 
     #[test]
     fn test_default_config() {
         let config = AppConfig::default();
         assert_eq!(config.faker.default_upload_rate, 50.0);
         assert_eq!(config.faker.default_download_rate, 100.0);
+        assert_eq!(config.client.default_port, 6881);
+        assert_eq!(config.client.default_num_want, 50);
+        assert_eq!(config.ui.window_width, 1200);
+        assert_eq!(config.ui.window_height, 800);
+        assert!(config.ui.dark_mode);
+        assert!(!config.ui.show_logs);
+        assert!(config.instances.is_empty());
+        assert!(config.active_instance_id.is_none());
     }
 
     #[test]
-    fn test_config_serialization() {
+    fn test_config_serialization() -> Result<()> {
         let config = AppConfig::default();
-        let toml = toml::to_string(&config).unwrap();
-        let parsed: AppConfig = toml::from_str(&toml).unwrap();
+        let toml = toml::to_string(&config).map_err(ConfigError::TomlSerializeError)?;
+        let parsed: AppConfig = toml::from_str(&toml).map_err(ConfigError::TomlError)?;
 
         assert_eq!(config.faker.default_upload_rate, parsed.faker.default_upload_rate);
+        Ok(())
+    }
+
+    #[test]
+    fn test_save_and_load_roundtrip() -> Result<()> {
+        let config = AppConfig::default();
+        let path = temp_path("rustatio_config_test.toml");
+        config.save(&path)?;
+
+        let loaded = AppConfig::load(&path)?;
+        assert_eq!(loaded.client.default_port, 6881);
+        assert_eq!(loaded.faker.default_upload_rate, 50.0);
+
+        std::fs::remove_file(&path)?;
+        Ok(())
+    }
+
+    #[test]
+    fn test_load_invalid_toml() -> Result<()> {
+        let path = temp_path("rustatio_bad_config.toml");
+        std::fs::write(&path, "[not toml")?;
+        let result = AppConfig::load(&path);
+
+        assert!(matches!(result, Err(ConfigError::TomlError(_))));
+        std::fs::remove_file(&path)?;
+        Ok(())
+    }
+
+    #[test]
+    fn test_default_path_with_home() {
+        let _guard = ENV_LOCK.lock();
+        let current_home = std::env::var("HOME").ok();
+        let current_xdg = std::env::var("XDG_CONFIG_HOME").ok();
+        let temp = std::env::temp_dir();
+        let temp_str = temp.to_string_lossy().to_string();
+        set_env("HOME", Some(&temp_str));
+        set_env("XDG_CONFIG_HOME", Some(&temp_str));
+
+        let path = AppConfig::default_path();
+        assert_eq!(path, temp.join("rustatio").join("config.toml"));
+
+        set_env("HOME", current_home.as_deref());
+        set_env("XDG_CONFIG_HOME", current_xdg.as_deref());
+    }
+
+    #[test]
+    fn test_default_path_without_home() {
+        let _guard = ENV_LOCK.lock();
+        let current_home = std::env::var("HOME").ok();
+        let current_xdg = std::env::var("XDG_CONFIG_HOME").ok();
+
+        let temp = std::env::temp_dir();
+        let temp_str = temp.to_string_lossy().to_string();
+        set_env("HOME", Some(&temp_str));
+        set_env("XDG_CONFIG_HOME", None);
+
+        let path = AppConfig::default_path();
+        assert_eq!(path, temp.join(".config").join("rustatio").join("config.toml"));
+
+        set_env("HOME", current_home.as_deref());
+        set_env("XDG_CONFIG_HOME", current_xdg.as_deref());
+    }
+
+    #[test]
+    fn test_load_or_default_creates_file() -> Result<()> {
+        let _guard = ENV_LOCK.lock();
+        let current_home = std::env::var("HOME").ok();
+        let current_xdg = std::env::var("XDG_CONFIG_HOME").ok();
+
+        let temp = temp_path("rustatio_config_home");
+        std::fs::create_dir_all(&temp)?;
+        let temp_str = temp.to_string_lossy().to_string();
+        set_env("HOME", Some(&temp_str));
+        set_env("XDG_CONFIG_HOME", Some(&temp_str));
+
+        let config = AppConfig::load_or_default();
+        assert_eq!(config.client.default_port, 6881);
+
+        let path = AppConfig::default_path();
+        assert!(path.exists());
+
+        if let Ok(meta) = std::fs::metadata(&path) {
+            if meta.is_file() {
+                let _ = std::fs::remove_file(&path);
+            }
+        }
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::remove_dir_all(parent);
+        }
+
+        set_env("HOME", current_home.as_deref());
+        set_env("XDG_CONFIG_HOME", current_xdg.as_deref());
+        Ok(())
+    }
+
+    #[test]
+    fn test_load_or_default_invalid_file() -> Result<()> {
+        let _guard = ENV_LOCK.lock();
+        let current_home = std::env::var("HOME").ok();
+        let current_xdg = std::env::var("XDG_CONFIG_HOME").ok();
+
+        let temp = temp_path("rustatio_config_bad_home");
+        std::fs::create_dir_all(&temp)?;
+        let temp_str = temp.to_string_lossy().to_string();
+        set_env("HOME", Some(&temp_str));
+        set_env("XDG_CONFIG_HOME", Some(&temp_str));
+
+        let path = AppConfig::default_path();
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(&path, "not toml")?;
+
+        let config = AppConfig::load_or_default();
+        assert_eq!(config.faker.default_download_rate, 100.0);
+
+        let _ = std::fs::remove_file(&path);
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::remove_dir_all(parent);
+        }
+
+        set_env("HOME", current_home.as_deref());
+        set_env("XDG_CONFIG_HOME", current_xdg.as_deref());
+        Ok(())
+    }
+
+    #[test]
+    fn test_example_toml_parses() -> Result<()> {
+        let text = AppConfig::example_toml();
+        let parsed: AppConfig = toml::from_str(&text).map_err(ConfigError::TomlError)?;
+        assert_eq!(parsed.client.default_port, 6881);
+        Ok(())
+    }
+
+    #[test]
+    fn test_instance_defaults_from_toml() -> Result<()> {
+        let input = r#"
+            [[instances]]
+            torrent_path = "path"
+            selected_client = "qbittorrent"
+            upload_rate = 1.0
+            download_rate = 2.0
+            port = 6881
+            completion_percent = 0.0
+            initial_uploaded = 0
+            initial_downloaded = 0
+            randomize_rates = false
+            random_range_percent = 0.0
+            update_interval_seconds = 10
+            stop_at_ratio_enabled = false
+            stop_at_ratio = 0.0
+            stop_at_uploaded_enabled = false
+            stop_at_uploaded_gb = 0.0
+            stop_at_downloaded_enabled = false
+            stop_at_downloaded_gb = 0.0
+            stop_at_seed_time_enabled = false
+            stop_at_seed_time_hours = 0.0
+            idle_when_no_leechers = false
+            idle_when_no_seeders = false
+            progressive_rates_enabled = false
+            target_upload_rate = 0.0
+            target_download_rate = 0.0
+            progressive_duration_hours = 0.0
+        "#;
+        let config: AppConfig = toml::from_str(input).map_err(ConfigError::TomlError)?;
+        let inst = &config.instances[0];
+        assert!(inst.torrent_name.is_none());
+        assert_eq!(inst.cumulative_uploaded, 0);
+        assert_eq!(inst.cumulative_downloaded, 0);
+        Ok(())
     }
 }

@@ -541,6 +541,91 @@ fn calculate_info_hash(torrent_data: &[u8]) -> Result<[u8; 20]> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_bencode::value::Value;
+    use std::collections::HashMap;
+    use std::path::PathBuf;
+
+    fn info_hash(data: &[u8]) -> Result<[u8; 20]> {
+        calculate_info_hash(data)
+    }
+
+    fn dict(entries: Vec<(Vec<u8>, Value)>) -> Value {
+        let mut map = HashMap::new();
+        for (key, value) in entries {
+            map.insert(key, value);
+        }
+        Value::Dict(map)
+    }
+
+    fn bytes(value: &str) -> Value {
+        Value::Bytes(value.as_bytes().to_vec())
+    }
+
+    fn int(value: i64) -> Value {
+        Value::Int(value)
+    }
+
+    fn list(values: Vec<Value>) -> Value {
+        Value::List(values)
+    }
+
+    fn pieces(count: usize) -> Value {
+        let data = vec![0u8; count * 20];
+        Value::Bytes(data)
+    }
+
+    fn sample_single_file() -> Value {
+        dict(vec![
+            (b"announce".to_vec(), bytes("http://tracker.test/announce")),
+            (
+                b"info".to_vec(),
+                dict(vec![
+                    (b"name".to_vec(), bytes("file.txt")),
+                    (b"piece length".to_vec(), int(16384)),
+                    (b"pieces".to_vec(), pieces(2)),
+                    (b"length".to_vec(), int(123)),
+                ]),
+            ),
+        ])
+    }
+
+    fn sample_multi_file() -> Value {
+        let file_a = dict(vec![
+            (b"length".to_vec(), int(100)),
+            (b"path".to_vec(), list(vec![bytes("dir"), bytes("a.bin")])),
+        ]);
+        let file_b = dict(vec![
+            (b"length".to_vec(), int(50)),
+            (b"path".to_vec(), list(vec![bytes("dir"), bytes("b.bin")])),
+        ]);
+
+        dict(vec![
+            (b"announce".to_vec(), bytes("http://tracker.test/announce")),
+            (
+                b"announce-list".to_vec(),
+                list(vec![list(vec![bytes("http://tracker.test/announce")])]),
+            ),
+            (
+                b"info".to_vec(),
+                dict(vec![
+                    (b"name".to_vec(), bytes("folder")),
+                    (b"piece length".to_vec(), int(16384)),
+                    (b"pieces".to_vec(), pieces(1)),
+                    (b"files".to_vec(), list(vec![file_a, file_b])),
+                ]),
+            ),
+        ])
+    }
+
+    fn encode(value: &Value) -> Result<Vec<u8>> {
+        bencode::encode(value).map_err(TorrentError::from)
+    }
+
+    fn temp_path(name: &str) -> PathBuf {
+        let mut path = std::env::temp_dir();
+        path.push(name);
+        path
+    }
 
     #[test]
     fn test_info_hash_hex() {
@@ -564,5 +649,260 @@ mod tests {
         };
 
         assert_eq!(info.info_hash_hex(), "123456789abcdef0123456789abcdef012345678");
+    }
+
+    #[test]
+    fn test_from_bytes_single_file() -> Result<()> {
+        let data = encode(&sample_single_file())?;
+        let torrent = TorrentInfo::from_bytes(&data)?;
+
+        assert_eq!(torrent.announce, "http://tracker.test/announce");
+        assert_eq!(torrent.name, "file.txt");
+        assert_eq!(torrent.total_size, 123);
+        assert_eq!(torrent.piece_length, 16384);
+        assert_eq!(torrent.num_pieces, 2);
+        assert!(torrent.is_single_file);
+        assert_eq!(torrent.file_count, 1);
+        assert_eq!(torrent.files.len(), 1);
+        Ok(())
+    }
+
+    #[test]
+    fn test_from_bytes_multi_file() -> Result<()> {
+        let data = encode(&sample_multi_file())?;
+        let torrent = TorrentInfo::from_bytes(&data)?;
+
+        assert_eq!(torrent.total_size, 150);
+        assert_eq!(torrent.file_count, 2);
+        assert!(!torrent.is_single_file);
+        assert_eq!(torrent.files.len(), 2);
+        assert_eq!(torrent.files[0].path, vec!["dir".to_string(), "a.bin".to_string()]);
+        Ok(())
+    }
+
+    #[test]
+    fn test_from_bytes_missing_info() -> Result<()> {
+        let data = encode(&dict(vec![(b"announce".to_vec(), bytes("x"))]))?;
+        let res = TorrentInfo::from_bytes(&data);
+
+        assert!(matches!(res, Err(TorrentError::InvalidStructure(_))));
+        Ok(())
+    }
+
+    #[test]
+    fn test_from_bytes_missing_announce() -> Result<()> {
+        let data = encode(&dict(vec![(
+            b"info".to_vec(),
+            dict(vec![
+                (b"name".to_vec(), bytes("file.txt")),
+                (b"piece length".to_vec(), int(1)),
+                (b"pieces".to_vec(), pieces(1)),
+                (b"length".to_vec(), int(1)),
+            ]),
+        )]))?;
+        let res = TorrentInfo::from_bytes(&data);
+
+        assert!(matches!(res, Err(TorrentError::BencodeError(_))));
+        Ok(())
+    }
+
+    #[test]
+    fn test_from_bytes_missing_length_and_files() -> Result<()> {
+        let data = encode(&dict(vec![
+            (b"announce".to_vec(), bytes("x")),
+            (
+                b"info".to_vec(),
+                dict(vec![
+                    (b"name".to_vec(), bytes("file")),
+                    (b"piece length".to_vec(), int(1)),
+                    (b"pieces".to_vec(), pieces(1)),
+                ]),
+            ),
+        ]))?;
+        let res = TorrentInfo::from_bytes(&data);
+
+        assert!(matches!(res, Err(TorrentError::InvalidStructure(_))));
+        Ok(())
+    }
+
+    #[test]
+    fn test_from_bytes_invalid_file_entry() -> Result<()> {
+        let data = encode(&dict(vec![
+            (b"announce".to_vec(), bytes("x")),
+            (
+                b"info".to_vec(),
+                dict(vec![
+                    (b"name".to_vec(), bytes("folder")),
+                    (b"piece length".to_vec(), int(1)),
+                    (b"pieces".to_vec(), pieces(1)),
+                    (b"files".to_vec(), list(vec![bytes("bad")])),
+                ]),
+            ),
+        ]))?;
+        let res = TorrentInfo::from_bytes(&data);
+
+        assert!(matches!(res, Err(TorrentError::InvalidStructure(_))));
+        Ok(())
+    }
+
+    #[test]
+    fn test_from_bytes_invalid_file_path() -> Result<()> {
+        let bad_file = dict(vec![(b"length".to_vec(), int(1))]);
+        let data = encode(&dict(vec![
+            (b"announce".to_vec(), bytes("x")),
+            (
+                b"info".to_vec(),
+                dict(vec![
+                    (b"name".to_vec(), bytes("folder")),
+                    (b"piece length".to_vec(), int(1)),
+                    (b"pieces".to_vec(), pieces(1)),
+                    (b"files".to_vec(), list(vec![bad_file])),
+                ]),
+            ),
+        ]))?;
+        let res = TorrentInfo::from_bytes(&data);
+
+        assert!(matches!(res, Err(TorrentError::InvalidStructure(_))));
+        Ok(())
+    }
+
+    #[test]
+    fn test_from_bytes_root_not_dict() -> Result<()> {
+        let data = bencode::encode(&int(5))?;
+        let res = TorrentInfo::from_bytes(&data);
+
+        assert!(matches!(res, Err(TorrentError::InvalidStructure(_))));
+        Ok(())
+    }
+
+    #[test]
+    fn test_from_file_and_summary() -> Result<()> {
+        let data = encode(&sample_single_file())?;
+        let path = temp_path("rustatio_test.torrent");
+        std::fs::write(&path, &data)?;
+
+        let torrent = TorrentInfo::from_file(&path)?;
+        let summary = TorrentInfo::from_file_summary(&path)?;
+
+        assert_eq!(torrent.announce, summary.announce);
+        std::fs::remove_file(&path)?;
+        Ok(())
+    }
+
+    #[test]
+    fn test_from_bytes_summary() -> Result<()> {
+        let data = encode(&sample_multi_file())?;
+        let summary = TorrentInfo::from_bytes_summary(&data)?;
+
+        assert!(summary.files.is_empty());
+        assert_eq!(summary.file_count, 2);
+        Ok(())
+    }
+
+    #[test]
+    fn test_get_tracker_url() -> Result<()> {
+        let data = encode(&sample_single_file())?;
+        let torrent = TorrentInfo::from_bytes(&data)?;
+
+        assert_eq!(torrent.get_tracker_url(), "http://tracker.test/announce");
+        Ok(())
+    }
+
+    #[test]
+    fn test_get_all_tracker_urls() -> Result<()> {
+        let data = encode(&sample_multi_file())?;
+        let torrent = TorrentInfo::from_bytes(&data)?;
+        let urls = torrent.get_all_tracker_urls();
+
+        assert!(urls.contains(&"http://tracker.test/announce".to_string()));
+        Ok(())
+    }
+
+    #[test]
+    fn test_summary_uses_files_len() -> Result<()> {
+        let data = encode(&sample_multi_file())?;
+        let torrent = TorrentInfo::from_bytes(&data)?;
+        let mut with_files = torrent;
+        with_files.file_count = 0;
+        let summary = with_files.summary();
+
+        assert_eq!(summary.file_count, 2);
+        Ok(())
+    }
+
+    #[test]
+    fn test_without_files() -> Result<()> {
+        let data = encode(&sample_multi_file())?;
+        let torrent = TorrentInfo::from_bytes(&data)?;
+        let trimmed = torrent.without_files();
+
+        assert!(trimmed.files.is_empty());
+        assert_eq!(trimmed.file_count, 2);
+        Ok(())
+    }
+
+    #[test]
+    fn test_summary_from_bytes_single_file() -> Result<()> {
+        let data = encode(&sample_single_file())?;
+        let summary = TorrentSummary::from_bytes(&data)?;
+
+        assert_eq!(summary.total_size, 123);
+        assert_eq!(summary.file_count, 1);
+        assert!(summary.is_single_file);
+        Ok(())
+    }
+
+    #[test]
+    fn test_summary_from_bytes_multi_file() -> Result<()> {
+        let data = encode(&sample_multi_file())?;
+        let summary = TorrentSummary::from_bytes(&data)?;
+
+        assert_eq!(summary.total_size, 150);
+        assert_eq!(summary.file_count, 2);
+        assert!(!summary.is_single_file);
+        Ok(())
+    }
+
+    #[test]
+    fn test_summary_to_info() -> Result<()> {
+        let data = encode(&sample_single_file())?;
+        let summary = TorrentSummary::from_bytes(&data)?;
+        let info = summary.to_info();
+
+        assert!(info.files.is_empty());
+        assert_eq!(info.file_count, 1);
+        Ok(())
+    }
+
+    #[test]
+    fn test_info_hash_from_bytes() -> Result<()> {
+        let data = encode(&sample_single_file())?;
+        let parsed = info_hash(&data)?;
+
+        let info_dict = dict(vec![
+            (b"name".to_vec(), bytes("file.txt")),
+            (b"piece length".to_vec(), int(16384)),
+            (b"pieces".to_vec(), pieces(2)),
+            (b"length".to_vec(), int(123)),
+        ]);
+        let info_bytes = bencode::encode(&info_dict)?;
+
+        let mut hasher = Sha1::new();
+        hasher.update(&info_bytes);
+        let result = hasher.finalize();
+
+        let mut expected = [0u8; 20];
+        expected.copy_from_slice(&result);
+        assert_eq!(parsed, expected);
+        Ok(())
+    }
+
+    #[test]
+    fn test_info_hash_missing_info_marker() -> Result<()> {
+        let data = bencode::encode(&dict(vec![(b"foo".to_vec(), bytes("bar"))]))?;
+        let res = info_hash(&data);
+
+        assert!(matches!(res, Err(TorrentError::InvalidStructure(_))));
+        Ok(())
     }
 }

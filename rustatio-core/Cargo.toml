@@ -21,6 +21,8 @@ getrandom = { version = "0.3", features = ["wasm_js"] }
 thiserror = "2.0"
 log = "0.4"
 instant = { version = "0.1", features = ["wasm-bindgen"] }
+async-trait = "0.1"
+dirs = "6"
 
 # HTTP client - works on both native and WASM
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "gzip"], optional = true }
@@ -37,6 +39,9 @@ wasm-bindgen-futures = { version = "0.4", optional = true }
 js-sys = { version = "0.3", optional = true }
 web-sys = { version = "0.3", features = ["Window", "Storage", "console"], optional = true }
 percent-encoding = "2.3"
+
+[dev-dependencies]
+mockall = "0.13"
 
 [features]
 default = ["native"]

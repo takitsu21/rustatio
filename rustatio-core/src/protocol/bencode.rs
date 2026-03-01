@@ -80,24 +80,136 @@ pub fn get_bytes_len(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_bencode::value::Value;
 
-    #[test]
-    fn test_parse_simple_string() {
-        let data = b"4:spam";
-        let result = parse(data).unwrap();
-        match result {
-            serde_bencode::value::Value::Bytes(b) => assert_eq!(b, b"spam"),
-            _ => panic!("Expected bytes"),
+    fn map(entries: Vec<(Vec<u8>, Value)>) -> HashMap<Vec<u8>, Value> {
+        let mut dict = HashMap::new();
+        for (key, value) in entries {
+            dict.insert(key, value);
         }
+        dict
     }
 
     #[test]
-    fn test_parse_integer() {
+    fn test_parse_simple_string() -> Result<()> {
+        let data = b"4:spam";
+        let result = parse(data)?;
+        assert!(matches!(result, Value::Bytes(ref b) if b == b"spam"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_integer() -> Result<()> {
         let data = b"i42e";
-        let result = parse(data).unwrap();
-        match result {
-            serde_bencode::value::Value::Int(i) => assert_eq!(i, 42),
-            _ => panic!("Expected int"),
-        }
+        let result = parse(data)?;
+        assert!(matches!(result, Value::Int(42)));
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_invalid() {
+        let result = parse(b"notbencode");
+        assert!(matches!(result, Err(BencodeError::ParseError(_))));
+    }
+
+    #[test]
+    fn test_encode_roundtrip() -> Result<()> {
+        let value = Value::Dict(map(vec![
+            (b"foo".to_vec(), Value::Bytes(b"bar".to_vec())),
+            (b"num".to_vec(), Value::Int(7)),
+        ]));
+        let data = encode(&value)?;
+        let decoded = parse(&data)?;
+
+        assert_eq!(decoded, value);
+        Ok(())
+    }
+
+    #[test]
+    fn test_get_string_ok() -> Result<()> {
+        let dict = map(vec![(b"name".to_vec(), Value::Bytes(b"test".to_vec()))]);
+        let value = get_string(&dict, "name")?;
+        assert_eq!(value, "test");
+        Ok(())
+    }
+
+    #[test]
+    fn test_get_string_missing() {
+        let dict = HashMap::new();
+        let result = get_string(&dict, "name");
+        assert!(matches!(result, Err(BencodeError::InvalidStructure(_))));
+    }
+
+    #[test]
+    fn test_get_string_wrong_type() {
+        let dict = map(vec![(b"name".to_vec(), Value::Int(1))]);
+        let result = get_string(&dict, "name");
+        assert!(matches!(result, Err(BencodeError::InvalidStructure(_))));
+    }
+
+    #[test]
+    fn test_get_int_ok() -> Result<()> {
+        let dict = map(vec![(b"num".to_vec(), Value::Int(9))]);
+        let value = get_int(&dict, "num")?;
+        assert_eq!(value, 9);
+        Ok(())
+    }
+
+    #[test]
+    fn test_get_int_missing() {
+        let dict = HashMap::new();
+        let result = get_int(&dict, "num");
+        assert!(matches!(result, Err(BencodeError::InvalidStructure(_))));
+    }
+
+    #[test]
+    fn test_get_int_wrong_type() {
+        let dict = map(vec![(b"num".to_vec(), Value::Bytes(b"x".to_vec()))]);
+        let result = get_int(&dict, "num");
+        assert!(matches!(result, Err(BencodeError::InvalidStructure(_))));
+    }
+
+    #[test]
+    fn test_get_bytes_ok() -> Result<()> {
+        let dict = map(vec![(b"data".to_vec(), Value::Bytes(b"abc".to_vec()))]);
+        let value = get_bytes(&dict, "data")?;
+        assert_eq!(value, b"abc".to_vec());
+        Ok(())
+    }
+
+    #[test]
+    fn test_get_bytes_missing() {
+        let dict = HashMap::new();
+        let result = get_bytes(&dict, "data");
+        assert!(matches!(result, Err(BencodeError::InvalidStructure(_))));
+    }
+
+    #[test]
+    fn test_get_bytes_wrong_type() {
+        let dict = map(vec![(b"data".to_vec(), Value::Int(1))]);
+        let result = get_bytes(&dict, "data");
+        assert!(matches!(result, Err(BencodeError::InvalidStructure(_))));
+    }
+
+    #[test]
+    fn test_get_bytes_len_ok() -> Result<()> {
+        let dict = map(vec![(b"data".to_vec(), Value::Bytes(b"abcd".to_vec()))]);
+        let value = get_bytes_len(&dict, "data")?;
+        assert_eq!(value, 4);
+        Ok(())
+    }
+
+    #[test]
+    fn test_get_bytes_len_missing() {
+        let dict = HashMap::new();
+        let result = get_bytes_len(&dict, "data");
+        assert!(matches!(result, Err(BencodeError::InvalidStructure(_))));
+    }
+
+    #[test]
+    fn test_get_bytes_len_wrong_type() {
+        let dict = map(vec![(b"data".to_vec(), Value::Int(1))]);
+        let result = get_bytes_len(&dict, "data");
+        assert!(matches!(result, Err(BencodeError::InvalidStructure(_))));
     }
 }

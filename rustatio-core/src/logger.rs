@@ -302,3 +302,24 @@ macro_rules! log_trace {
         $crate::logger::trace(&format!($($arg)*))
     };
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_instance_context_str_prefix() {
+        set_instance_context_str(Some("abc"));
+        assert_eq!(get_instance_prefix(), "[Instance abc] ");
+        set_instance_context_str(None);
+        assert_eq!(get_instance_prefix(), "");
+    }
+
+    #[test]
+    fn test_instance_context_prefix() {
+        set_instance_context(Some(7));
+        assert_eq!(get_instance_prefix(), "[Instance 7] ");
+        set_instance_context(None);
+        assert_eq!(get_instance_prefix(), "");
+    }
+}
