@@ -1,12 +1,13 @@
 import { writable, derived, get } from 'svelte/store';
 import { api, getRunMode } from '$lib/api';
+import { normalizeViewMode } from '$lib/viewMode.js';
 import { instanceActions } from '$lib/instanceStore.js';
 
 const VIEW_MODE_KEY = 'rustatio-view-mode';
 
 function loadViewMode() {
   try {
-    return localStorage.getItem(VIEW_MODE_KEY) || 'standard';
+    return normalizeViewMode(localStorage.getItem(VIEW_MODE_KEY));
   } catch {
     return 'standard';
   }
@@ -16,7 +17,7 @@ export const viewMode = writable(loadViewMode());
 
 viewMode.subscribe(mode => {
   try {
-    localStorage.setItem(VIEW_MODE_KEY, mode);
+    localStorage.setItem(VIEW_MODE_KEY, normalizeViewMode(mode));
   } catch {
     // localStorage unavailable
   }
@@ -209,22 +210,6 @@ export const gridActions = {
 
   deselectAll: () => {
     selectedIds.set(new Set());
-  },
-
-  toggleSelect: id => {
-    selectedIds.update(s => {
-      const next = new Set(s);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
-  },
-
-  isSelected: id => {
-    return get(selectedIds).has(id);
   },
 
   getSelectedIds: () => {
@@ -437,18 +422,5 @@ export const gridActions = {
       if (!current.has(inst.id)) inverted.add(inst.id);
     }
     selectedIds.set(inverted);
-  },
-
-  selectRange: (fromIdx, toIdx) => {
-    const all = get(filteredGridInstances);
-    const start = Math.min(fromIdx, toIdx);
-    const end = Math.max(fromIdx, toIdx);
-    selectedIds.update(s => {
-      const next = new Set(s);
-      for (let i = start; i <= end && i < all.length; i++) {
-        next.add(all[i].id);
-      }
-      return next;
-    });
   },
 };

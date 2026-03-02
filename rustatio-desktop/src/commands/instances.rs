@@ -2,6 +2,7 @@ use rustatio_core::validation;
 use rustatio_core::{
     FakerConfig, FakerState, RatioFaker, RatioFakerHandle, TorrentInfo, TorrentSummary,
 };
+use rustatio_watch::InstanceSource;
 use std::sync::Arc;
 use tauri::{AppHandle, State};
 
@@ -47,9 +48,21 @@ pub async fn update_instance_config(
 #[tauri::command]
 pub async fn delete_instance(
     instance_id: u32,
+    force: Option<bool>,
     state: State<'_, AppState>,
     app: AppHandle,
 ) -> Result<(), String> {
+    let is_forced = force.unwrap_or(false);
+
+    if let Some(instance) = state.fakers.read().await.get(&instance_id) {
+        if matches!(instance.source, InstanceSource::WatchFolder) && !is_forced {
+            return Err(
+                "Cannot delete watch folder instance. Delete the torrent file from the watch folder instead."
+                    .to_string(),
+            );
+        }
+    }
+
     // Remove from HashMap first, then stop — HTTP happens after lock is released
     let removed = {
         let mut fakers = state.fakers.write().await;
@@ -57,6 +70,14 @@ pub async fn delete_instance(
     };
 
     if let Some(instance) = removed {
+        if is_forced && matches!(instance.source, InstanceSource::WatchFolder) {
+            let info_hash = instance.summary.info_hash;
+            let watch_guard = state.watch.read().await;
+            if let Some(watch) = watch_guard.as_ref() {
+                watch.remove_info_hash(&info_hash).await;
+            }
+        }
+
         if let Err(e) = instance.faker.stop().await {
             log_and_emit!(&app, warn, "Error stopping faker on delete: {}", e);
         }
@@ -173,6 +194,7 @@ pub async fn load_instance_torrent(
                 cumulative_downloaded: 0,
                 tags: vec![],
                 created_at: now,
+                source: InstanceSource::Manual,
             });
         }
         std::collections::hash_map::Entry::Occupied(mut entry) => {
@@ -184,6 +206,7 @@ pub async fn load_instance_torrent(
             instance.torrent = torrent_arc;
             instance.summary = summary_arc;
             instance.faker = Arc::new(RatioFakerHandle::new(faker));
+            instance.source = InstanceSource::Manual;
         }
     }
     Ok(response_torrent)

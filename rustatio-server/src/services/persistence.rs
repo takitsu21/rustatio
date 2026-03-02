@@ -31,17 +31,43 @@ pub struct PersistedInstance {
     pub tags: Vec<String>,
 }
 
+const fn default_watch_max_depth() -> u32 {
+    1
+}
+
+fn default_watch_auto_start() -> bool {
+    std::env::var("WATCH_AUTO_START")
+        .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
+        .unwrap_or(false)
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, PartialEq, Eq)]
+pub struct WatchSettings {
+    #[serde(default = "default_watch_max_depth")]
+    pub max_depth: u32,
+    #[serde(default = "default_watch_auto_start")]
+    pub auto_start: bool,
+}
+
+impl Default for WatchSettings {
+    fn default() -> Self {
+        Self { max_depth: default_watch_max_depth(), auto_start: default_watch_auto_start() }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct PersistedState {
     pub instances: HashMap<String, PersistedInstance>,
     #[serde(default)]
     pub default_config: Option<FakerConfig>,
+    #[serde(default)]
+    pub watch_settings: Option<WatchSettings>,
     pub version: u32,
 }
 
 impl PersistedState {
     pub fn new() -> Self {
-        Self { instances: HashMap::new(), default_config: None, version: 1 }
+        Self { instances: HashMap::new(), default_config: None, watch_settings: None, version: 1 }
     }
 }
 
@@ -122,4 +148,31 @@ impl Persistence {
 
 pub fn now_timestamp() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::WatchSettings;
+    use std::sync::{Mutex, OnceLock};
+
+    fn env_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    #[test]
+    fn watch_settings_default_uses_env_auto_start() {
+        let guard = env_lock().lock();
+        assert!(guard.is_ok(), "failed to acquire env mutex");
+
+        std::env::set_var("WATCH_AUTO_START", "1");
+        let settings = WatchSettings::default();
+        assert!(settings.auto_start);
+
+        std::env::set_var("WATCH_AUTO_START", "false");
+        let settings = WatchSettings::default();
+        assert!(!settings.auto_start);
+
+        std::env::remove_var("WATCH_AUTO_START");
+    }
 }

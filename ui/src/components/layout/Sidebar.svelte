@@ -1,12 +1,13 @@
 <script>
+  import { onDestroy, onMount } from 'svelte';
+  import { api, getRunMode } from '$lib/api.js';
   import { instances, activeInstanceId, instanceActions } from '$lib/instanceStore.js';
   import { viewMode, gridInstances, selectedIds, gridFilters } from '$lib/gridStore.js';
   import { cn } from '$lib/utils.js';
   import Button from '$lib/components/ui/button.svelte';
-  import AboutDialog from './AboutDialog.svelte';
+  import ConfirmDialog from '../common/ConfirmDialog.svelte';
   import SettingsDialog from './SettingsDialog.svelte';
   import NetworkStatus from './NetworkStatus.svelte';
-  import WatchFolder from './WatchFolder.svelte';
   import {
     PanelLeftClose,
     Play,
@@ -17,13 +18,18 @@
     X,
     FolderOpen,
     Settings,
-    Info,
+    Github,
     Moon,
     List,
     LayoutGrid,
-    CheckCircle,
+    FolderSearch,
     LoaderCircle,
   } from '@lucide/svelte';
+
+  /* global __APP_VERSION__ */
+  let appVersion = $state(__APP_VERSION__);
+  const repository = 'https://github.com/takitsu21/rustatio';
+  const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
   let {
     onStartAll = () => {},
@@ -34,9 +40,15 @@
     isCollapsed = $bindable(false),
   } = $props();
 
-  let showAbout = $state(false);
   let showSettings = $state(false);
+  let forceDeleteConfirmVisible = $state(false);
+  let forceDeleteTarget = $state(null);
+  let forceDeleteBusy = $state(false);
   let isGridMode = $derived($viewMode === 'grid');
+  let isWatchMode = $derived($viewMode === 'watch');
+  let isWatchRuntime = $derived(getRunMode() === 'server' || getRunMode() === 'desktop');
+  let watchCount = $state(null);
+  let watchInterval = null;
 
   // Derived state
   let hasMultipleInstancesWithTorrents = $derived(
@@ -54,6 +66,42 @@
   let hasUnpausedRunningInstances = $derived(
     $instances.some(inst => inst.isRunning && !inst.isPaused)
   );
+
+  async function loadWatchStatus() {
+    if (!isWatchRuntime) return;
+    try {
+      const status = await api.getWatchStatus();
+      watchCount = status?.file_count ?? 0;
+    } catch (error) {
+      console.warn('Failed to load watch status:', error);
+      watchCount = null;
+    }
+  }
+
+  onMount(() => {
+    if (isWatchRuntime) {
+      loadWatchStatus();
+      watchInterval = setInterval(loadWatchStatus, 30000);
+    }
+
+    if (isTauri) {
+      import('@tauri-apps/api/app')
+        .then(mod => mod.getVersion())
+        .then(version => {
+          appVersion = version;
+        })
+        .catch(error => {
+          console.error('Failed to get app version:', error);
+        });
+    }
+  });
+
+  onDestroy(() => {
+    if (watchInterval) {
+      clearInterval(watchInterval);
+      watchInterval = null;
+    }
+  });
 
   // Grid mode aggregate stats
   let gridStats = $derived(() => {
@@ -275,18 +323,31 @@
     event.stopPropagation();
     event.preventDefault();
 
-    const confirmed = confirm(
-      `Force delete "${name || 'this instance'}"?\n\n` +
-        'This instance was created from the watch folder but the torrent file may no longer exist. ' +
-        'Click OK to permanently remove it.'
-    );
+    forceDeleteTarget = {
+      id,
+      name: name || 'this instance',
+    };
+    forceDeleteConfirmVisible = true;
+  }
 
-    if (!confirmed) return;
+  function cancelForceRemoveInstance() {
+    if (forceDeleteBusy) return;
+    forceDeleteConfirmVisible = false;
+    forceDeleteTarget = null;
+  }
+
+  async function confirmForceRemoveInstance() {
+    if (!forceDeleteTarget || forceDeleteBusy) return;
+    forceDeleteBusy = true;
 
     try {
-      await instanceActions.removeInstance(id, true); // force=true
+      await instanceActions.removeInstance(forceDeleteTarget.id, true); // force=true
     } catch (error) {
       console.error('Failed to force remove instance:', error);
+    } finally {
+      forceDeleteBusy = false;
+      forceDeleteConfirmVisible = false;
+      forceDeleteTarget = null;
     }
   }
 
@@ -326,7 +387,7 @@
 
 <aside
   class={cn(
-    'bg-card border-r border-border flex flex-col h-screen transition-all duration-300 ease-in-out',
+    'bg-card border-r border-border flex flex-col h-screen transition-all duration-300 ease-in-out overflow-hidden',
     'fixed lg:sticky top-0 z-50 lg:z-auto',
     // Mobile: slide in/out
     isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0',
@@ -343,12 +404,12 @@
           isCollapsed && 'lg:opacity-0 lg:w-0 lg:overflow-hidden'
         )}
       >
-        {isGridMode ? 'Grid Mode' : 'Instances'}
+        {isGridMode ? 'Grid Mode' : isWatchMode ? 'Watch Mode' : 'Instances'}
       </h2>
 
       <!-- Desktop Toggle Button -->
       <button
-        class="hidden lg:block p-1 rounded hover:bg-muted"
+        class="hidden lg:block p-1 rounded hover:bg-muted cursor-pointer"
         onclick={() => (isCollapsed = !isCollapsed)}
         title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
       >
@@ -360,38 +421,97 @@
 
     <!-- View Mode Toggle -->
     {#if !isCollapsed}
-      <div class="flex gap-1 bg-muted/50 rounded-lg p-1 mb-3">
-        <button
-          class={cn(
-            'flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-colors border-0 cursor-pointer',
-            !isGridMode
-              ? 'bg-background text-foreground shadow-sm'
-              : 'text-muted-foreground hover:text-foreground bg-transparent'
-          )}
-          onclick={() => viewMode.set('standard')}
-          title="Standard view - manage individual instances"
-        >
-          <List size={12} />
-          Standard
-        </button>
-        <button
-          class={cn(
-            'flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-colors border-0 cursor-pointer',
-            isGridMode
-              ? 'bg-background text-foreground shadow-sm'
-              : 'text-muted-foreground hover:text-foreground bg-transparent'
-          )}
-          onclick={() => viewMode.set('grid')}
-          title="Grid view - manage many instances at once"
-        >
-          <LayoutGrid size={12} />
-          Grid
-        </button>
+      <div class="space-y-3 mb-4">
+        <div class="text-[10px] uppercase tracking-[0.2em] text-muted-foreground px-1">View</div>
+        <div class="space-y-1">
+          <button
+            class={cn(
+              'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors text-left relative cursor-pointer',
+              !isGridMode && !isWatchMode
+                ? 'bg-muted text-foreground'
+                : 'text-muted-foreground hover:text-foreground hover:bg-muted/70'
+            )}
+            onclick={() => viewMode.set('standard')}
+            title="Standard view - manage individual instances"
+          >
+            <span
+              class={cn(
+                'absolute left-1 top-2 bottom-2 w-0.5 rounded-full',
+                !isGridMode && !isWatchMode ? 'bg-primary' : 'bg-transparent'
+              )}
+              aria-hidden="true"
+            ></span>
+            <List size={16} class="flex-shrink-0" />
+            <span class="flex-1 min-w-0 truncate">Standard</span>
+          </button>
+
+          <button
+            class={cn(
+              'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors text-left relative cursor-pointer',
+              isGridMode
+                ? 'bg-muted text-foreground'
+                : 'text-muted-foreground hover:text-foreground hover:bg-muted/70'
+            )}
+            onclick={() => viewMode.set('grid')}
+            title="Grid view - manage many instances at once"
+          >
+            <span
+              class={cn(
+                'absolute left-1 top-2 bottom-2 w-0.5 rounded-full',
+                isGridMode ? 'bg-primary' : 'bg-transparent'
+              )}
+              aria-hidden="true"
+            ></span>
+            <LayoutGrid size={16} class="flex-shrink-0" />
+            <span class="flex-1 min-w-0 truncate">Grid</span>
+          </button>
+
+          <button
+            class={cn(
+              'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors text-left relative cursor-pointer',
+              isWatchMode
+                ? 'bg-muted text-foreground'
+                : 'text-muted-foreground hover:text-foreground hover:bg-muted/70',
+              !isWatchRuntime && 'opacity-60 cursor-not-allowed'
+            )}
+            onclick={() => (isWatchRuntime ? viewMode.set('watch') : null)}
+            title="Watch folder - manage watch files"
+            disabled={!isWatchRuntime}
+            aria-disabled={!isWatchRuntime}
+          >
+            <span
+              class={cn(
+                'absolute left-1 top-2 bottom-2 w-0.5 rounded-full',
+                isWatchMode ? 'bg-primary' : 'bg-transparent'
+              )}
+              aria-hidden="true"
+            ></span>
+            <FolderSearch size={16} class="flex-shrink-0" />
+            <span class="flex-1 min-w-0 truncate">Watch</span>
+            {#if isWatchRuntime && watchCount !== null && watchCount > 0}
+              <span
+                class="ml-auto inline-flex items-center justify-center rounded-full bg-primary text-primary-foreground text-[10px] font-semibold leading-none px-1.5 min-w-4 h-4"
+                title="{watchCount} watch files"
+              >
+                {watchCount}
+              </span>
+            {/if}
+          </button>
+
+          <button
+            onclick={() => (showSettings = true)}
+            class="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted/70 transition-colors text-left relative cursor-pointer"
+            title="Settings"
+          >
+            <Settings size={16} class="flex-shrink-0" />
+            <span class="flex-1 min-w-0 truncate">Settings</span>
+          </button>
+        </div>
       </div>
     {/if}
 
     <!-- Standard Mode Content -->
-    {#if !isGridMode}
+    {#if !isGridMode && !isWatchMode}
       <!-- Total Stats Summary -->
       {#if !isCollapsed && (totalStats().uploaded > 0 || totalStats().downloaded > 0)}
         <div class="mb-3 p-2 bg-muted/50 rounded-lg text-xs">
@@ -424,7 +544,7 @@
             disabled={!hasStoppedInstancesWithTorrents}
             size="sm"
             variant="default"
-            class={cn('gap-1', isCollapsed ? 'lg:w-full lg:px-2' : 'flex-1')}
+            class={cn('gap-1 cursor-pointer', isCollapsed ? 'lg:w-full lg:px-2' : 'flex-1')}
             title="Start all instances"
           >
             {#snippet children()}
@@ -438,7 +558,7 @@
             disabled={!hasRunningInstances}
             size="sm"
             class={cn(
-              'gap-1 bg-stat-danger hover:bg-stat-danger/90 text-white shadow-lg shadow-stat-danger/25',
+              'gap-1 cursor-pointer bg-stat-danger hover:bg-stat-danger/90 text-white shadow-lg shadow-stat-danger/25',
               isCollapsed ? 'lg:w-full lg:px-2' : 'flex-1'
             )}
             title="Stop all instances"
@@ -454,7 +574,7 @@
             disabled={!hasUnpausedRunningInstances}
             size="sm"
             class={cn(
-              'gap-1 bg-stat-ratio hover:bg-stat-ratio/90 text-white shadow-lg shadow-stat-ratio/25',
+              'gap-1 cursor-pointer bg-stat-ratio hover:bg-stat-ratio/90 text-white shadow-lg shadow-stat-ratio/25',
               isCollapsed ? 'lg:w-full lg:px-2' : 'flex-1'
             )}
             title="Pause all running instances"
@@ -470,7 +590,7 @@
             disabled={!hasPausedInstances}
             size="sm"
             variant="secondary"
-            class={cn('gap-1', isCollapsed ? 'lg:w-full lg:px-2' : 'flex-1')}
+            class={cn('gap-1 cursor-pointer', isCollapsed ? 'lg:w-full lg:px-2' : 'flex-1')}
             title="Resume all paused instances"
           >
             {#snippet children()}
@@ -485,7 +605,7 @@
       <Button
         onclick={handleAddInstance}
         size="sm"
-        class={cn('w-full gap-2', isCollapsed && 'lg:px-2')}
+        class={cn('w-full gap-2 cursor-pointer', isCollapsed && 'lg:px-2')}
         title="Add new instance"
       >
         {#snippet children()}
@@ -497,7 +617,7 @@
   </div>
 
   <!-- Instance List (standard mode only) -->
-  {#if !isGridMode}
+  {#if !isGridMode && !isWatchMode}
     <div class="flex-1 overflow-y-auto min-h-0">
       {#each $instances as instance (instance.id)}
         {@const status = getInstanceStatus(instance)}
@@ -593,7 +713,12 @@
                 </span>
                 <button
                   class="flex-shrink-0 p-1 rounded hover:bg-destructive/20 group bg-transparent border-0 cursor-pointer opacity-50 hover:opacity-100"
-                  onclick={e => handleForceRemoveInstance(e, instance.id, instance.name)}
+                  onclick={e =>
+                    handleForceRemoveInstance(
+                      e,
+                      instance.id,
+                      instance.torrent?.name || instance.name
+                    )}
                   title="Force delete (file may be missing)"
                   aria-label="Force delete instance"
                 >
@@ -669,7 +794,7 @@
             </span>
           {/if}
         </div>
-      {:else}
+      {:else if !isWatchMode}
         <div class="p-3 space-y-3">
           <!-- Aggregate Rate Display -->
           <div class="p-3 bg-muted/50 rounded-lg">
@@ -803,8 +928,7 @@
           <!-- Selection Summary -->
           {#if selectionStats()}
             <div class="p-2.5 bg-primary/5 border border-primary/20 rounded-lg text-xs space-y-1.5">
-              <div class="flex items-center gap-1.5 text-primary font-semibold text-[11px]">
-                <CheckCircle size={12} />
+              <div class="text-primary font-semibold text-[11px]">
                 {selectionStats().count} selected
               </div>
               <div class="flex justify-between text-muted-foreground">
@@ -832,58 +956,47 @@
     </div>
   {/if}
 
-  <!-- Footer with Network Status and About Button -->
+  <!-- Footer with Network Status and Version -->
   <div class="border-t border-border p-3 space-y-2">
     <!-- Network Status -->
     <NetworkStatus {isCollapsed} />
 
-    <!-- Watch Folder (server mode only) -->
-    <WatchFolder {isCollapsed} />
-
-    <!-- Settings Button -->
-    <button
-      onclick={() => (showSettings = true)}
-      class={cn(
-        'w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-muted transition-colors text-sm font-medium text-muted-foreground hover:text-foreground',
-        isCollapsed && 'lg:justify-center lg:px-2'
-      )}
-      title="Settings"
-    >
-      <Settings size={16} class="flex-shrink-0" />
-      <span
-        class={cn(
-          'transition-opacity duration-200',
-          isCollapsed && 'lg:hidden lg:w-0 lg:opacity-0'
-        )}
+    <!-- Version + GitHub -->
+    {#if !isCollapsed}
+      <a
+        href={repository}
+        target="_blank"
+        rel="noopener noreferrer"
+        class="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-muted/60 hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+        title="View Rustatio on GitHub"
       >
-        Settings
-      </span>
-    </button>
-
-    <!-- About Button -->
-    <button
-      onclick={() => (showAbout = true)}
-      class={cn(
-        'w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-muted transition-colors text-sm font-medium text-muted-foreground hover:text-foreground',
-        isCollapsed && 'lg:justify-center lg:px-2'
-      )}
-      title="About Rustatio"
-    >
-      <Info size={16} class="flex-shrink-0" />
-      <span
-        class={cn(
-          'transition-opacity duration-200',
-          isCollapsed && 'lg:hidden lg:w-0 lg:opacity-0'
-        )}
-      >
-        About
-      </span>
-    </button>
+        <Github size={14} class="flex-shrink-0" />
+        <span class="flex flex-col leading-tight">
+          <span class="text-[10px] tracking-wider">
+            Version <span class="italic normal-case">{appVersion}</span>
+          </span>
+          <span class="text-sm font-semibold">Rustatio</span>
+        </span>
+      </a>
+    {/if}
   </div>
 </aside>
 
-<!-- About Dialog -->
-<AboutDialog bind:isOpen={showAbout} />
+<ConfirmDialog
+  bind:open={forceDeleteConfirmVisible}
+  title="Force Delete Instance"
+  message={`Force delete "${forceDeleteTarget?.name || 'this instance'}"? This instance was created from the watch folder but the torrent file may no longer exist.`}
+  cancelLabel="Cancel"
+  confirmLabel={forceDeleteBusy ? 'Deleting...' : 'Force Delete'}
+  kind="danger"
+  titleId="force-delete-title"
+  onCancel={cancelForceRemoveInstance}
+  onConfirm={confirmForceRemoveInstance}
+  disableCancel={forceDeleteBusy}
+  disableConfirm={forceDeleteBusy}
+  closeOnBackdrop={!forceDeleteBusy}
+  closeOnEscape={!forceDeleteBusy}
+/>
 
 <!-- Settings Dialog -->
 <SettingsDialog bind:isOpen={showSettings} />

@@ -2,6 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { get } from 'svelte/store';
   import { ChevronDown, Check } from '@lucide/svelte';
+  import { FolderOpen } from '@lucide/svelte';
   import {
     initWasm,
     api,
@@ -39,10 +40,13 @@
   import ThemeIcon from './components/common/ThemeIcon.svelte';
   import DownloadButton from './components/common/DownloadButton.svelte';
   import AuthPage from './components/common/AuthPage.svelte';
+  import ConfirmDialog from './components/common/ConfirmDialog.svelte';
   import GridView from './components/grid/GridView.svelte';
+  import WatchView from './components/watch/WatchView.svelte';
 
   // Import grid store
   import { viewMode } from './lib/gridStore.js';
+  import { focusWatchQuery } from './lib/watchViewState.js';
 
   // Import theme store
   import {
@@ -65,7 +69,7 @@
 
   // Authentication state
   let showAuthDialog = $state(false);
-  let _isAuthenticated = $state(false);
+  let closePromptVisible = $state(false);
 
   // Flag to prevent store subscriptions from firing during initialization
   let isInitializing = true;
@@ -105,6 +109,8 @@
   let unsubViewMode = null;
   let unsubActiveInstanceId = null;
   let instanceEventsCleanup = null;
+  let closeRequestedCleanup = null;
+  let desktopReconcileIntervalId = null;
 
   // Debounce timer for syncing config to server
   let configSyncTimeout = null;
@@ -142,9 +148,7 @@
         const storedToken = getAuthToken();
         if (storedToken) {
           const { valid } = await verifyAuthToken();
-          if (valid) {
-            _isAuthenticated = true;
-          } else {
+          if (!valid) {
             // Token is invalid, show auth dialog
             showAuthDialog = true;
             isInitialized = true;
@@ -157,8 +161,7 @@
           return; // Don't continue initialization until authenticated
         }
       } else {
-        // Auth not enabled, consider authenticated
-        _isAuthenticated = true;
+        // Auth not enabled
       }
 
       // Continue with normal initialization
@@ -250,8 +253,13 @@
         return;
       }
 
-      // Leaving grid mode: sync states and restart polling
-      instanceActions.syncAllInstanceStates().then(() => {
+      if (mode === 'watch') {
+        stopLiveStats();
+        return;
+      }
+
+      // Leaving grid mode: reconcile instances and restart polling
+      instanceActions.reconcileWithBackend().then(() => {
         const currentInstances = get(instances);
         for (const inst of currentInstances) {
           if (inst.isRunning && !inst.updateInterval) {
@@ -270,7 +278,7 @@
     unsubActiveInstanceId = activeInstanceId.subscribe(newActiveId => {
       if (isInitializing || !newActiveId) return;
       // Only manage live stats in standard view
-      if (get(viewMode) === 'grid') return;
+      if (get(viewMode) !== 'standard') return;
 
       const instance = get(instances).find(i => i.id === newActiveId);
       if (instance && instance.isRunning && !instance.isPaused) {
@@ -298,6 +306,21 @@
         }
       };
       window.addEventListener('beforeunload', beforeUnloadHandler);
+    }
+
+    if (runMode === 'desktop') {
+      try {
+        const { listen } = await import('@tauri-apps/api/event');
+        closeRequestedCleanup = await listen('app-close-requested', () => {
+          closePromptVisible = true;
+        });
+      } catch (error) {
+        console.error('Failed to subscribe to close prompt events:', error);
+      }
+
+      desktopReconcileIntervalId = setInterval(() => {
+        instanceActions.reconcileWithBackend();
+      }, 3000);
     }
 
     // Wait for stores to settle before allowing saves
@@ -410,7 +433,6 @@
 
   // Handle successful authentication
   async function handleAuthenticated() {
-    _isAuthenticated = true;
     showAuthDialog = false;
 
     // Continue initialization after successful auth
@@ -451,6 +473,16 @@
     // Clean up instance events subscription
     if (instanceEventsCleanup) {
       instanceEventsCleanup();
+    }
+
+    if (closeRequestedCleanup) {
+      closeRequestedCleanup();
+      closeRequestedCleanup = null;
+    }
+
+    if (desktopReconcileIntervalId) {
+      clearInterval(desktopReconcileIntervalId);
+      desktopReconcileIntervalId = null;
     }
 
     // Clean up event listeners
@@ -791,8 +823,7 @@
     try {
       // Calculate downloaded from completion percentage and torrent size
       const torrentSize = $activeInstance.torrent?.total_size || 0;
-      const completionPercent = parseFloat($activeInstance.completionPercent ?? 0);
-      const calculatedDownloaded = Math.floor((completionPercent / 100) * torrentSize);
+      const calculatedDownloaded = getCalculatedInitialDownloaded($activeInstance);
 
       // For display purposes (placeholder stats), use cumulative values if available
       // This ensures the UI shows the correct totals immediately while starting
@@ -870,47 +901,9 @@
         statusType: 'running',
       });
 
-      const fakerConfig = {
-        upload_rate: parseFloat($activeInstance.uploadRate ?? 50),
-        download_rate: parseFloat($activeInstance.downloadRate ?? 100),
-        port: parseInt($activeInstance.port ?? 6881),
-        client_type: $activeInstance.selectedClient || 'qbittorrent',
-        client_version:
-          $activeInstance.selectedClientVersion ||
-          clientVersions[$activeInstance.selectedClient || 'qbittorrent']?.[0] ||
-          '',
-        // Always send the original user-specified values
-        // The server will handle using cumulative stats internally for the RatioFaker
-        initial_uploaded: parseInt($activeInstance.initialUploaded ?? 0) * 1024 * 1024,
-        initial_downloaded: calculatedDownloaded,
-        completion_percent: parseFloat($activeInstance.completionPercent ?? 0),
-        num_want: 50,
-        randomize_rates: $activeInstance.randomizeRates ?? true,
-        random_range_percent: parseFloat($activeInstance.randomRangePercent ?? 20),
-        stop_at_ratio: $activeInstance.stopAtRatioEnabled
-          ? parseFloat($activeInstance.stopAtRatio ?? 2.0)
-          : null,
-        stop_at_uploaded: $activeInstance.stopAtUploadedEnabled
-          ? parseFloat($activeInstance.stopAtUploadedGB ?? 10) * 1024 * 1024 * 1024
-          : null,
-        stop_at_downloaded: $activeInstance.stopAtDownloadedEnabled
-          ? parseFloat($activeInstance.stopAtDownloadedGB ?? 10) * 1024 * 1024 * 1024
-          : null,
-        stop_at_seed_time: $activeInstance.stopAtSeedTimeEnabled
-          ? parseFloat($activeInstance.stopAtSeedTimeHours ?? 24) * 3600
-          : null,
-        idle_when_no_leechers: $activeInstance.idleWhenNoLeechers ?? false,
-        idle_when_no_seeders: $activeInstance.idleWhenNoSeeders ?? false,
-        progressive_rates: $activeInstance.progressiveRatesEnabled ?? false,
-        target_upload_rate: $activeInstance.progressiveRatesEnabled
-          ? parseFloat($activeInstance.targetUploadRate ?? 100)
-          : null,
-        target_download_rate: $activeInstance.progressiveRatesEnabled
-          ? parseFloat($activeInstance.targetDownloadRate ?? 200)
-          : null,
-        progressive_duration: parseFloat($activeInstance.progressiveDurationHours ?? 1) * 3600,
-        scrape_interval: parseInt($activeInstance.scrapeInterval ?? 60),
-      };
+      const fakerConfig = buildFakerConfig($activeInstance, {
+        useCalculatedInitialDownloaded: true,
+      });
 
       await api.startFaker($activeInstance.id, $activeInstance.torrent, fakerConfig);
 
@@ -1061,8 +1054,19 @@
     }
   }
 
+  function getCalculatedInitialDownloaded(instance) {
+    const torrentSize = instance?.torrent?.total_size || 0;
+    const completionPercent = parseFloat(instance?.completionPercent ?? 0);
+    return Math.floor((completionPercent / 100) * torrentSize);
+  }
+
   // Build a FakerConfig object from instance UI state
-  function buildFakerConfig(instance) {
+  function buildFakerConfig(instance, opts = {}) {
+    const completionPercent = parseFloat(instance.completionPercent ?? 0);
+    const initialDownloaded = opts.useCalculatedInitialDownloaded
+      ? getCalculatedInitialDownloaded(instance)
+      : parseInt(instance.initialDownloaded ?? 0) * 1024 * 1024;
+
     return {
       upload_rate: parseFloat(instance.uploadRate ?? 50),
       download_rate: parseFloat(instance.downloadRate ?? 100),
@@ -1073,8 +1077,8 @@
         clientVersions[instance.selectedClient || 'qbittorrent']?.[0] ||
         '',
       initial_uploaded: parseInt(instance.initialUploaded ?? 0) * 1024 * 1024,
-      initial_downloaded: parseInt(instance.initialDownloaded ?? 0) * 1024 * 1024,
-      completion_percent: parseFloat(instance.completionPercent ?? 0),
+      initial_downloaded: initialDownloaded,
+      completion_percent: completionPercent,
       num_want: 50,
       randomize_rates: instance.randomizeRates ?? true,
       random_range_percent: parseFloat(instance.randomRangePercent ?? 20),
@@ -1338,49 +1342,7 @@
     configSyncTimeout = setTimeout(async () => {
       try {
         // Build FakerConfig from instance state
-        const torrentSize = instance.torrent?.total_size || 0;
-        const completionPercent = parseFloat(instance.completionPercent ?? 0);
-        const calculatedDownloaded = Math.floor((completionPercent / 100) * torrentSize);
-
-        const config = {
-          upload_rate: parseFloat(instance.uploadRate ?? 50),
-          download_rate: parseFloat(instance.downloadRate ?? 100),
-          port: parseInt(instance.port ?? 6881),
-          client_type: instance.selectedClient || 'qbittorrent',
-          client_version:
-            instance.selectedClientVersion ||
-            clientVersions[instance.selectedClient || 'qbittorrent']?.[0] ||
-            '',
-          initial_uploaded: parseInt(instance.initialUploaded ?? 0) * 1024 * 1024,
-          initial_downloaded: calculatedDownloaded,
-          completion_percent: completionPercent,
-          num_want: 50,
-          randomize_rates: instance.randomizeRates ?? true,
-          random_range_percent: parseFloat(instance.randomRangePercent ?? 20),
-          stop_at_ratio: instance.stopAtRatioEnabled
-            ? parseFloat(instance.stopAtRatio ?? 2.0)
-            : null,
-          stop_at_uploaded: instance.stopAtUploadedEnabled
-            ? parseFloat(instance.stopAtUploadedGB ?? 10) * 1024 * 1024 * 1024
-            : null,
-          stop_at_downloaded: instance.stopAtDownloadedEnabled
-            ? parseFloat(instance.stopAtDownloadedGB ?? 10) * 1024 * 1024 * 1024
-            : null,
-          stop_at_seed_time: instance.stopAtSeedTimeEnabled
-            ? parseFloat(instance.stopAtSeedTimeHours ?? 24) * 3600
-            : null,
-          idle_when_no_leechers: instance.idleWhenNoLeechers ?? false,
-          idle_when_no_seeders: instance.idleWhenNoSeeders ?? false,
-          progressive_rates: instance.progressiveRatesEnabled ?? false,
-          target_upload_rate: instance.progressiveRatesEnabled
-            ? parseFloat(instance.targetUploadRate ?? 100)
-            : null,
-          target_download_rate: instance.progressiveRatesEnabled
-            ? parseFloat(instance.targetDownloadRate ?? 200)
-            : null,
-          progressive_duration: parseFloat(instance.progressiveDurationHours ?? 1) * 3600,
-          scrape_interval: parseInt(instance.scrapeInterval ?? 60),
-        };
+        const config = buildFakerConfig(instance, { useCalculatedInitialDownloaded: true });
 
         await api.updateInstanceConfig(instanceId, config);
         devLog('log', `Synced config for instance ${instanceId} to server`);
@@ -1388,6 +1350,33 @@
         console.warn('Failed to sync config to server:', error);
       }
     }, 500);
+  }
+
+  async function handleCloseToTray() {
+    closePromptVisible = false;
+    try {
+      await api.closeToTray();
+    } catch (error) {
+      console.error('Failed to close to tray:', error);
+    }
+  }
+
+  async function handleQuitFromPrompt() {
+    closePromptVisible = false;
+    try {
+      await api.quitApp();
+    } catch (error) {
+      console.error('Failed to quit app:', error);
+    }
+  }
+
+  async function handleCancelClosePrompt() {
+    closePromptVisible = false;
+    try {
+      await api.cancelClosePrompt();
+    } catch (error) {
+      console.error('Failed to cancel close prompt:', error);
+    }
   }
 </script>
 
@@ -1482,7 +1471,7 @@
       <div class="border-b-2 border-primary/20"></div>
 
       <!-- Status Bar (standard mode only) -->
-      {#if $viewMode !== 'grid'}
+      {#if $viewMode === 'standard'}
         <StatusBar
           statusMessage={$activeInstance?.statusMessage || 'Select a torrent file to begin'}
           statusType={$activeInstance?.statusType || 'warning'}
@@ -1502,11 +1491,40 @@
         <div class="flex-1 overflow-y-auto p-3">
           <GridView />
         </div>
+      {:else if $viewMode === 'watch'}
+        <div class="flex-1 overflow-y-auto p-3">
+          <WatchView />
+        </div>
       {:else}
         <div class="flex-1 overflow-y-auto p-3">
           <div class="max-w-7xl mx-auto">
             <!-- CORS Proxy Settings -->
             <ProxySettings />
+
+            {#if $activeInstance?.source === 'watch_folder'}
+              <div class="mb-3 flex items-center gap-2 flex-wrap">
+                <span
+                  class="inline-flex items-center gap-1 rounded-md border border-primary/30 bg-primary/10 px-2 py-1 text-xs text-primary"
+                  title="This instance is managed by watch folder"
+                >
+                  <FolderOpen size={12} />
+                  Watch folder instance
+                </span>
+                <button
+                  class="inline-flex items-center gap-1 rounded-md border border-primary/30 bg-primary/10 px-2 py-1 text-xs text-primary hover:bg-primary/20 transition-colors"
+                  onclick={() => {
+                    const name =
+                      $activeInstance?.torrent?.name || $activeInstance?.torrentPath || '';
+                    focusWatchQuery(name);
+                    viewMode.set('watch');
+                  }}
+                  title="Open this torrent in watch explorer"
+                >
+                  <FolderOpen size={12} />
+                  Open in Watch
+                </button>
+              </div>
+            {/if}
             <!-- Torrent Selection & Configuration -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
               <TorrentSelector torrent={$activeInstance?.torrent} {selectTorrent} {formatBytes} />
@@ -1635,6 +1653,20 @@
     </div>
   </div>
 {/if}
+
+<ConfirmDialog
+  bind:open={closePromptVisible}
+  title="Close Rustatio?"
+  message="Do you want to quit Rustatio or close it to the tray?"
+  cancelLabel="Cancel"
+  secondaryLabel="Close to Tray"
+  confirmLabel="Quit"
+  kind="danger"
+  titleId="app-close-prompt-title"
+  onCancel={handleCancelClosePrompt}
+  onSecondary={handleCloseToTray}
+  onConfirm={handleQuitFromPrompt}
+/>
 
 <!-- Update Checker (only shown in Tauri) -->
 <UpdateChecker />

@@ -495,14 +495,28 @@ const serverApi = {
   getWatchStatus: async () => {
     return serverFetch('/watch/status', { method: 'GET' });
   },
+  getWatchConfig: async () => {
+    return serverFetch('/watch/config', { method: 'GET' });
+  },
+  setWatchConfig: async config => {
+    await serverFetch('/watch/config', {
+      method: 'PUT',
+      body: JSON.stringify({
+        max_depth: Number(config?.max_depth ?? 1),
+        auto_start: Boolean(config?.auto_start),
+      }),
+    });
+  },
   listWatchFiles: async () => {
     return serverFetch('/watch/files', { method: 'GET' });
   },
   deleteWatchFile: async filename => {
-    await serverFetch(`/watch/files/${encodeURIComponent(filename)}`, { method: 'DELETE' });
+    const path = encodeURIComponent(filename);
+    await serverFetch(`/watch/files?path=${path}`, { method: 'DELETE' });
   },
   reloadWatchFile: async filename => {
-    await serverFetch(`/watch/files/${encodeURIComponent(filename)}/reload`, { method: 'POST' });
+    const path = encodeURIComponent(filename);
+    await serverFetch(`/watch/files/reload?path=${path}`, { method: 'POST' });
   },
   reloadAllWatchFiles: async () => {
     return serverFetch('/watch/reload', { method: 'POST' });
@@ -629,6 +643,9 @@ const serverApi = {
   setLogLevel: async () => {
     // No-op for server mode — log filtering happens via SSE or frontend
   },
+  closeToTray: async () => {},
+  quitApp: async () => {},
+  cancelClosePrompt: async () => {},
 };
 
 // Helper to format bytes for log messages
@@ -843,28 +860,54 @@ const tauriApi = {
     const { invoke } = await import('@tauri-apps/api/core');
     return invoke('update_config', { config });
   },
-  // Watch folder not available in Tauri
-  getWatchStatus: async () => null,
-  listWatchFiles: async () => [],
-  deleteWatchFile: async () => {},
-  reloadWatchFile: async () => {},
-  reloadAllWatchFiles: async () => ({ reloaded: 0 }),
-  // Default config (use localStorage for Tauri since there's no server)
-  getDefaultConfig: async () => {
-    try {
-      const stored = localStorage.getItem('rustatio-default-preset');
-      if (!stored) return null;
-      const preset = JSON.parse(stored);
-      return preset?.settings || null;
-    } catch {
-      return null;
-    }
+  // Watch folder support in Tauri
+  getWatchStatus: async () => {
+    const { invoke } = await import('@tauri-apps/api/core');
+    return invoke('get_watch_status');
   },
-  setDefaultConfig: async () => {
-    // No-op for Tauri - localStorage is managed by defaultPreset.js
+  getWatchConfig: async () => {
+    const { invoke } = await import('@tauri-apps/api/core');
+    return invoke('get_watch_config');
+  },
+  setWatchConfig: async config => {
+    const { invoke } = await import('@tauri-apps/api/core');
+    return invoke('set_watch_config', {
+      config: {
+        max_depth: Number(config?.max_depth ?? 1),
+        auto_start: Boolean(config?.auto_start),
+        watch_dir: config?.watch_dir,
+      },
+    });
+  },
+  listWatchFiles: async () => {
+    const { invoke } = await import('@tauri-apps/api/core');
+    return invoke('list_watch_files');
+  },
+  deleteWatchFile: async filename => {
+    const { invoke } = await import('@tauri-apps/api/core');
+    return invoke('delete_watch_file', { path: filename });
+  },
+  reloadWatchFile: async filename => {
+    const { invoke } = await import('@tauri-apps/api/core');
+    return invoke('reload_watch_file', { path: filename });
+  },
+  reloadAllWatchFiles: async () => {
+    const { invoke } = await import('@tauri-apps/api/core');
+    const reloaded = await invoke('reload_all_watch_files');
+    return { reloaded };
+  },
+  // Default config for watch folder instances
+  getDefaultConfig: async () => {
+    const { invoke } = await import('@tauri-apps/api/core');
+    return invoke('get_default_config');
+  },
+  setDefaultConfig: async config => {
+    const { invoke } = await import('@tauri-apps/api/core');
+    return invoke('set_default_config', { config });
   },
   clearDefaultConfig: async () => {
-    // No-op for Tauri - localStorage is managed by defaultPreset.js
+    const { invoke } = await import('@tauri-apps/api/core');
+    return invoke('clear_default_config');
   },
   updateInstanceConfig: async (id, config) => {
     const { invoke } = await import('@tauri-apps/api/core');
@@ -947,6 +990,18 @@ const tauriApi = {
     const { invoke } = await import('@tauri-apps/api/core');
     return invoke('set_log_level', { level });
   },
+  closeToTray: async () => {
+    const { invoke } = await import('@tauri-apps/api/core');
+    return invoke('close_to_tray');
+  },
+  quitApp: async () => {
+    const { invoke } = await import('@tauri-apps/api/core');
+    return invoke('quit_app');
+  },
+  cancelClosePrompt: async () => {
+    const { invoke } = await import('@tauri-apps/api/core');
+    return invoke('cancel_close_prompt');
+  },
 };
 
 // WASM API implementation
@@ -1015,6 +1070,8 @@ const wasmApi = {
   },
   // Watch folder not available in WASM
   getWatchStatus: async () => null,
+  getWatchConfig: async () => null,
+  setWatchConfig: async () => {},
   listWatchFiles: async () => [],
   deleteWatchFile: async () => {},
   reloadWatchFile: async () => {},
@@ -1081,6 +1138,9 @@ const wasmApi = {
   setLogLevel: async () => {
     // No-op for WASM — no IPC overhead concern
   },
+  closeToTray: async () => {},
+  quitApp: async () => {},
+  cancelClosePrompt: async () => {},
 };
 
 // Dynamic API getter that returns the appropriate implementation

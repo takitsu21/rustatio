@@ -5,6 +5,19 @@
  */
 
 const DEFAULT_PRESET_KEY = 'rustatio-default-preset';
+export const DEFAULT_PRESET_CHANGED_EVENT = 'rustatio:default-preset-changed';
+
+function emitDefaultPresetChanged() {
+  if (
+    typeof window === 'undefined' ||
+    typeof window.dispatchEvent !== 'function' ||
+    typeof Event !== 'function'
+  ) {
+    return;
+  }
+
+  window.dispatchEvent(new Event(DEFAULT_PRESET_CHANGED_EVENT));
+}
 
 /**
  * Get the currently saved default preset settings.
@@ -46,6 +59,7 @@ export function setDefaultPreset(preset) {
   };
 
   localStorage.setItem(DEFAULT_PRESET_KEY, JSON.stringify(data));
+  emitDefaultPresetChanged();
 }
 
 /**
@@ -53,14 +67,5 @@ export function setDefaultPreset(preset) {
  */
 export function clearDefaultPreset() {
   localStorage.removeItem(DEFAULT_PRESET_KEY);
-}
-
-/**
- * Check if a preset is currently set as the default.
- * @param {string} presetId - The preset ID to check.
- * @returns {boolean} True if this preset is the current default.
- */
-export function isDefaultPreset(presetId) {
-  const currentDefault = getDefaultPresetId();
-  return currentDefault === presetId;
+  emitDefaultPresetChanged();
 }

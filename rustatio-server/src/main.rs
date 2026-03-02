@@ -53,7 +53,12 @@ async fn main() {
     scheduler.start(state.clone(), Arc::clone(&state.instances));
     let scheduler = Arc::new(tokio::sync::Mutex::new(scheduler));
 
-    let (watch_config, disabled_reason) = WatchConfig::from_env();
+    let (mut watch_config, disabled_reason) = WatchConfig::from_env();
+
+    if let Some(settings) = state.get_watch_settings_optional().await {
+        watch_config.max_depth = settings.max_depth;
+        watch_config.auto_start = settings.auto_start;
+    }
 
     if let Some(reason) = &disabled_reason {
         match reason {

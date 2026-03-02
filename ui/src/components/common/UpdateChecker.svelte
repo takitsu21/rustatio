@@ -1,4 +1,4 @@
-<script lang="ts">
+<script>
   import { onMount } from 'svelte';
   import Button from '$lib/components/ui/button.svelte';
   import { devLog } from '$lib/devLog.js';
@@ -10,7 +10,7 @@
   let checking = $state(false);
   let downloading = $state(false);
   let error = $state('');
-  let installMethod = $state<'appimage' | 'deb' | 'rpm' | 'unknown'>('unknown');
+  let installMethod = $state('unknown');
   let downloadUrl = $state('');
 
   // Check if we're running in Tauri

@@ -2,7 +2,7 @@ use super::events::{EventBroadcaster, InstanceEvent, LogEvent};
 use super::instance::{FakerInstance, InstanceInfo};
 use super::lifecycle::InstanceLifecycle;
 use super::persistence::{
-    now_timestamp, InstanceSource, PersistedInstance, PersistedState, Persistence,
+    now_timestamp, InstanceSource, PersistedInstance, PersistedState, Persistence, WatchSettings,
 };
 use rustatio_core::logger::set_instance_context_str;
 use rustatio_core::{
@@ -20,6 +20,7 @@ pub struct AppState {
     pub instance_sender: broadcast::Sender<InstanceEvent>,
     persistence: Arc<Persistence>,
     default_config: Arc<RwLock<Option<FakerConfig>>>,
+    watch_settings: Arc<RwLock<Option<WatchSettings>>>,
     http_client: reqwest::Client,
 }
 
@@ -62,6 +63,7 @@ impl AppState {
             instance_sender,
             persistence: Arc::new(Persistence::new(data_dir)),
             default_config: Arc::new(RwLock::new(None)),
+            watch_settings: Arc::new(RwLock::new(None)),
             http_client: reqwest::Client::new(),
         }
     }
@@ -80,12 +82,31 @@ impl AppState {
         self.persistence.save(&updated).await
     }
 
+    pub async fn get_watch_settings_optional(&self) -> Option<WatchSettings> {
+        self.watch_settings.read().await.clone()
+    }
+
+    pub async fn set_watch_settings(&self, settings: WatchSettings) -> Result<(), String> {
+        *self.watch_settings.write().await = Some(settings.clone());
+
+        let existing = self.persistence.load().await;
+        let mut updated = existing;
+        updated.watch_settings = Some(settings);
+
+        self.persistence.save(&updated).await
+    }
+
     pub async fn load_saved_state(&self) -> Result<usize, String> {
         let saved = self.persistence.load().await;
 
         if let Some(config) = saved.default_config.clone() {
             *self.default_config.write().await = Some(config);
             tracing::info!("Restored default config from saved state");
+        }
+
+        if let Some(settings) = saved.watch_settings.clone() {
+            *self.watch_settings.write().await = Some(settings);
+            tracing::info!("Restored watch settings from saved state");
         }
 
         let mut restored_count = 0;
@@ -167,9 +188,13 @@ impl AppState {
     pub async fn save_state(&self) -> Result<(), String> {
         let instances = self.instances.read().await;
 
+        let default_config = self.default_config.read().await.clone();
+        let watch_settings = self.watch_settings.read().await.clone();
+
         let mut persisted = PersistedState {
             instances: HashMap::new(),
-            default_config: self.default_config.read().await.clone(),
+            default_config,
+            watch_settings,
             version: 1,
         };
 

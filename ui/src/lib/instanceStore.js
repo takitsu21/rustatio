@@ -87,6 +87,9 @@ function createDefaultInstance(id, defaults = {}) {
 // Global lock to prevent concurrent config saves from different sources
 export let isConfigSaving = false;
 
+// Prevent overlapping backend reconciliation runs (avoids duplicate inserts)
+let isReconcilingBackend = false;
+
 // Save session (localStorage for web, Tauri config for desktop)
 async function saveSession(instances, activeId) {
   // Prevent concurrent saves
@@ -272,6 +275,39 @@ function updateActiveInstanceStore() {
   }
 }
 
+function buildInstanceDefaultsFromServer(serverInst) {
+  return {
+    source: serverInst.source || 'manual',
+    selectedClient: serverInst.config.client_type,
+    selectedClientVersion: serverInst.config.client_version,
+    uploadRate: serverInst.config.upload_rate,
+    downloadRate: serverInst.config.download_rate,
+    port: serverInst.config.port,
+    completionPercent: serverInst.config.completion_percent,
+    initialUploaded: bytesToMB(serverInst.config.initial_uploaded),
+    initialDownloaded: bytesToMB(serverInst.config.initial_downloaded),
+    cumulativeUploaded: bytesToMB(serverInst.stats.uploaded),
+    cumulativeDownloaded: bytesToMB(serverInst.stats.downloaded),
+    randomizeRates: serverInst.config.randomize_rates,
+    randomRangePercent: serverInst.config.random_range_percent,
+    stopAtRatioEnabled: serverInst.config.stop_at_ratio !== null,
+    stopAtRatio: serverInst.config.stop_at_ratio || 2.0,
+    stopAtUploadedEnabled: serverInst.config.stop_at_uploaded !== null,
+    stopAtUploadedGB: (serverInst.config.stop_at_uploaded || 0) / (1024 * 1024 * 1024),
+    stopAtDownloadedEnabled: serverInst.config.stop_at_downloaded !== null,
+    stopAtDownloadedGB: (serverInst.config.stop_at_downloaded || 0) / (1024 * 1024 * 1024),
+    stopAtSeedTimeEnabled: serverInst.config.stop_at_seed_time !== null,
+    stopAtSeedTimeHours: (serverInst.config.stop_at_seed_time || 0) / 3600,
+    idleWhenNoLeechers: serverInst.config.idle_when_no_leechers || false,
+    idleWhenNoSeeders: serverInst.config.idle_when_no_seeders || false,
+    progressiveRatesEnabled: serverInst.config.progressive_rates || false,
+    targetUploadRate: serverInst.config.target_upload_rate || 100,
+    targetDownloadRate: serverInst.config.target_download_rate || 200,
+    progressiveDurationHours: (serverInst.config.progressive_duration || 3600) / 3600,
+    scrapeInterval: serverInst.config.scrape_interval || 60,
+  };
+}
+
 // Actions
 export const instanceActions = {
   // Initialize - create first instance or restore from storage/server
@@ -293,37 +329,10 @@ export const instanceActions = {
           if (serverInstances && serverInstances.length > 0) {
             const restoredInstances = serverInstances.map(serverInst => {
               // Create frontend instance from server state
-              const instance = createDefaultInstance(serverInst.id, {
-                source: serverInst.source || 'manual',
-                selectedClient: serverInst.config.client_type,
-                selectedClientVersion: serverInst.config.client_version,
-                uploadRate: serverInst.config.upload_rate,
-                downloadRate: serverInst.config.download_rate,
-                port: serverInst.config.port,
-                completionPercent: serverInst.config.completion_percent,
-                initialUploaded: bytesToMB(serverInst.config.initial_uploaded),
-                initialDownloaded: bytesToMB(serverInst.config.initial_downloaded),
-                cumulativeUploaded: bytesToMB(serverInst.stats.uploaded),
-                cumulativeDownloaded: bytesToMB(serverInst.stats.downloaded),
-                randomizeRates: serverInst.config.randomize_rates,
-                randomRangePercent: serverInst.config.random_range_percent,
-                stopAtRatioEnabled: serverInst.config.stop_at_ratio !== null,
-                stopAtRatio: serverInst.config.stop_at_ratio || 2.0,
-                stopAtUploadedEnabled: serverInst.config.stop_at_uploaded !== null,
-                stopAtUploadedGB: (serverInst.config.stop_at_uploaded || 0) / (1024 * 1024 * 1024),
-                stopAtDownloadedEnabled: serverInst.config.stop_at_downloaded !== null,
-                stopAtDownloadedGB:
-                  (serverInst.config.stop_at_downloaded || 0) / (1024 * 1024 * 1024),
-                stopAtSeedTimeEnabled: serverInst.config.stop_at_seed_time !== null,
-                stopAtSeedTimeHours: (serverInst.config.stop_at_seed_time || 0) / 3600,
-                idleWhenNoLeechers: serverInst.config.idle_when_no_leechers || false,
-                idleWhenNoSeeders: serverInst.config.idle_when_no_seeders || false,
-                progressiveRatesEnabled: serverInst.config.progressive_rates || false,
-                targetUploadRate: serverInst.config.target_upload_rate || 100,
-                targetDownloadRate: serverInst.config.target_download_rate || 200,
-                progressiveDurationHours: (serverInst.config.progressive_duration || 3600) / 3600,
-                scrapeInterval: serverInst.config.scrape_interval || 60,
-              });
+              const instance = createDefaultInstance(
+                serverInst.id,
+                buildInstanceDefaultsFromServer(serverInst)
+              );
 
               // Set torrent info (server returns summary)
               const summary = serverInst.torrent;
@@ -430,6 +439,8 @@ export const instanceActions = {
                 instance.statusMessage = 'Torrent data unavailable';
                 instance.statusType = 'warning';
               }
+
+              instance.source = summary.source || 'manual';
 
               // Set running state from backend
               const state = summary.state?.toLowerCase();
@@ -715,8 +726,9 @@ export const instanceActions = {
   // Merge a new instance from server (used for real-time sync with watch folder)
   // Returns true if a new instance was added, false if it already existed
   mergeServerInstance: serverInst => {
+    const serverId = String(serverInst.id);
     const currentInstances = get(instances);
-    const existingInstance = currentInstances.find(inst => inst.id === serverInst.id);
+    const existingInstance = currentInstances.find(inst => String(inst.id) === serverId);
 
     if (existingInstance) {
       // Instance already exists, no need to merge
@@ -724,36 +736,7 @@ export const instanceActions = {
     }
 
     // Create frontend instance from server state
-    const instance = createDefaultInstance(serverInst.id, {
-      source: serverInst.source || 'manual',
-      selectedClient: serverInst.config.client_type,
-      selectedClientVersion: serverInst.config.client_version,
-      uploadRate: serverInst.config.upload_rate,
-      downloadRate: serverInst.config.download_rate,
-      port: serverInst.config.port,
-      completionPercent: serverInst.config.completion_percent,
-      initialUploaded: bytesToMB(serverInst.config.initial_uploaded),
-      initialDownloaded: bytesToMB(serverInst.config.initial_downloaded),
-      cumulativeUploaded: bytesToMB(serverInst.stats.uploaded),
-      cumulativeDownloaded: bytesToMB(serverInst.stats.downloaded),
-      randomizeRates: serverInst.config.randomize_rates,
-      randomRangePercent: serverInst.config.random_range_percent,
-      stopAtRatioEnabled: serverInst.config.stop_at_ratio !== null,
-      stopAtRatio: serverInst.config.stop_at_ratio || 2.0,
-      stopAtUploadedEnabled: serverInst.config.stop_at_uploaded !== null,
-      stopAtUploadedGB: (serverInst.config.stop_at_uploaded || 0) / (1024 * 1024 * 1024),
-      stopAtDownloadedEnabled: serverInst.config.stop_at_downloaded !== null,
-      stopAtDownloadedGB: (serverInst.config.stop_at_downloaded || 0) / (1024 * 1024 * 1024),
-      stopAtSeedTimeEnabled: serverInst.config.stop_at_seed_time !== null,
-      stopAtSeedTimeHours: (serverInst.config.stop_at_seed_time || 0) / 3600,
-      idleWhenNoLeechers: serverInst.config.idle_when_no_leechers || false,
-      idleWhenNoSeeders: serverInst.config.idle_when_no_seeders || false,
-      progressiveRatesEnabled: serverInst.config.progressive_rates || false,
-      targetUploadRate: serverInst.config.target_upload_rate || 100,
-      targetDownloadRate: serverInst.config.target_download_rate || 200,
-      progressiveDurationHours: (serverInst.config.progressive_duration || 3600) / 3600,
-      scrapeInterval: serverInst.config.scrape_interval || 60,
-    });
+    const instance = createDefaultInstance(serverId, buildInstanceDefaultsFromServer(serverInst));
 
     // Set torrent info
     instance.torrent = serverInst.torrent;
@@ -783,64 +766,186 @@ export const instanceActions = {
     return true;
   },
 
+  // Reconcile frontend instances with backend instances.
+  // Adds missing backend instances and removes stale watch-folder instances.
+  // Uses listSummaries so it works for both server and desktop backends.
+  reconcileWithBackend: async (opts = {}) => {
+    if (isReconcilingBackend) {
+      return;
+    }
+
+    isReconcilingBackend = true;
+
+    try {
+      const pruneMissingLoaded = Boolean(opts.pruneMissingLoaded);
+      const summaries = await api.listSummaries();
+      if (!Array.isArray(summaries)) return;
+
+      const backendIds = new Set(summaries.map(summary => String(summary.id)));
+
+      const currentActive = get(activeInstanceId);
+      const currentActiveKey = currentActive === null ? null : String(currentActive);
+      let nextActive = currentActive;
+      let removedAny = false;
+
+      instances.update(current => {
+        const filtered = current.filter(inst => {
+          if (backendIds.has(String(inst.id))) return true;
+
+          const hasLoadedTorrent = Boolean(inst.torrent) || Boolean(inst.torrentPath);
+          if (inst.source === 'watch_folder') {
+            removedAny = true;
+            return false;
+          }
+
+          if (pruneMissingLoaded && hasLoadedTorrent) {
+            removedAny = true;
+            return false;
+          }
+
+          return true;
+        });
+
+        const hasActive =
+          currentActiveKey !== null && filtered.some(inst => String(inst.id) === currentActiveKey);
+        if (!hasActive) {
+          nextActive = filtered[0]?.id ?? null;
+        }
+
+        return filtered;
+      });
+
+      const nextActiveKey = nextActive === null ? null : String(nextActive);
+      if (nextActiveKey !== currentActiveKey) {
+        activeInstanceId.set(nextActive);
+      }
+
+      // Ensure all backend instances exist in the standard store.
+      for (const summary of summaries) {
+        const exists = get(instances).some(inst => String(inst.id) === String(summary.id));
+        if (!exists) {
+          await instanceActions.ensureInstance(summary.id, summary);
+        }
+      }
+
+      // Defensive dedupe in case overlapping UI actions inserted same id twice.
+      let dedupedAny = false;
+      instances.update(current => {
+        const seen = new Set();
+        const deduped = [];
+        for (const inst of current) {
+          const key = String(inst.id);
+          if (seen.has(key)) {
+            dedupedAny = true;
+            continue;
+          }
+          seen.add(key);
+          deduped.push(inst);
+        }
+        return deduped;
+      });
+
+      if (dedupedAny) {
+        const currentActiveAfterDedup = get(activeInstanceId);
+        const hasActive =
+          currentActiveAfterDedup !== null &&
+          get(instances).some(inst => String(inst.id) === String(currentActiveAfterDedup));
+        if (!hasActive) {
+          activeInstanceId.set(get(instances)[0]?.id ?? null);
+        }
+      }
+
+      // Refresh runtime state and stats for all existing instances.
+      await instanceActions.syncAllInstanceStates();
+
+      if (removedAny || nextActiveKey !== currentActiveKey) {
+        updateActiveInstanceStore();
+      }
+    } catch (error) {
+      console.warn('Failed to reconcile instances with backend:', error);
+    } finally {
+      isReconcilingBackend = false;
+    }
+  },
+
   // Ensure an instance exists in the standard store (used when switching from grid to standard view)
   // If the instance doesn't exist, fetch it from the server or create a default entry.
   // Returns the instance ID if successfully ensured.
   ensureInstance: async (id, gridSummary = null) => {
+    const normalizedId = String(id);
     const currentInstances = get(instances);
-    const existing = currentInstances.find(inst => inst.id === id);
+    const existing = currentInstances.find(inst => String(inst.id) === normalizedId);
 
     // Try to fetch actual config from backend and update or create the instance
     try {
       const serverInstances = await api.listInstances();
       if (serverInstances && serverInstances.length > 0) {
-        const serverInst = serverInstances.find(inst => String(inst.id) === String(id));
+        const serverInst = serverInstances.find(inst => String(inst.id) === normalizedId);
         if (serverInst) {
           if (existing) {
             // Update existing instance with actual backend config
-            instanceActions.updateInstance(id, {
-              selectedClient: serverInst.config.client_type,
-              selectedClientVersion: serverInst.config.client_version,
-              uploadRate: serverInst.config.upload_rate,
-              downloadRate: serverInst.config.download_rate,
-              port: serverInst.config.port,
-              completionPercent: serverInst.config.completion_percent,
-              randomizeRates: serverInst.config.randomize_rates,
-              randomRangePercent: serverInst.config.random_range_percent,
-              progressiveRatesEnabled: serverInst.config.progressive_rates || false,
-              targetUploadRate: serverInst.config.target_upload_rate || 100,
-              targetDownloadRate: serverInst.config.target_download_rate || 200,
-              progressiveDurationHours: (serverInst.config.progressive_duration || 3600) / 3600,
-              stopAtRatioEnabled: serverInst.config.stop_at_ratio != null,
-              stopAtRatio: serverInst.config.stop_at_ratio || 2.0,
-              stopAtUploadedEnabled: serverInst.config.stop_at_uploaded != null,
-              stopAtUploadedGB: (serverInst.config.stop_at_uploaded || 0) / (1024 * 1024 * 1024),
-              stopAtDownloadedEnabled: serverInst.config.stop_at_downloaded != null,
-              stopAtDownloadedGB:
-                (serverInst.config.stop_at_downloaded || 0) / (1024 * 1024 * 1024),
-              stopAtSeedTimeEnabled: serverInst.config.stop_at_seed_time != null,
-              stopAtSeedTimeHours: (serverInst.config.stop_at_seed_time || 0) / 3600,
-              idleWhenNoLeechers: serverInst.config.idle_when_no_leechers || false,
-              idleWhenNoSeeders: serverInst.config.idle_when_no_seeders || false,
-              scrapeInterval: serverInst.config.scrape_interval || 60,
+            const serverDefaults = buildInstanceDefaultsFromServer(serverInst);
+            instanceActions.updateInstance(normalizedId, {
+              selectedClient: serverDefaults.selectedClient,
+              selectedClientVersion: serverDefaults.selectedClientVersion,
+              uploadRate: serverDefaults.uploadRate,
+              downloadRate: serverDefaults.downloadRate,
+              port: serverDefaults.port,
+              completionPercent: serverDefaults.completionPercent,
+              randomizeRates: serverDefaults.randomizeRates,
+              randomRangePercent: serverDefaults.randomRangePercent,
+              progressiveRatesEnabled: serverDefaults.progressiveRatesEnabled,
+              targetUploadRate: serverDefaults.targetUploadRate,
+              targetDownloadRate: serverDefaults.targetDownloadRate,
+              progressiveDurationHours: serverDefaults.progressiveDurationHours,
+              stopAtRatioEnabled: serverDefaults.stopAtRatioEnabled,
+              stopAtRatio: serverDefaults.stopAtRatio,
+              stopAtUploadedEnabled: serverDefaults.stopAtUploadedEnabled,
+              stopAtUploadedGB: serverDefaults.stopAtUploadedGB,
+              stopAtDownloadedEnabled: serverDefaults.stopAtDownloadedEnabled,
+              stopAtDownloadedGB: serverDefaults.stopAtDownloadedGB,
+              stopAtSeedTimeEnabled: serverDefaults.stopAtSeedTimeEnabled,
+              stopAtSeedTimeHours: serverDefaults.stopAtSeedTimeHours,
+              idleWhenNoLeechers: serverDefaults.idleWhenNoLeechers,
+              idleWhenNoSeeders: serverDefaults.idleWhenNoSeeders,
+              scrapeInterval: serverDefaults.scrapeInterval,
             });
-            return existing.id;
+            if (
+              gridSummary?.source &&
+              (gridSummary.source === 'watch_folder' || gridSummary.source === 'manual')
+            ) {
+              instanceActions.updateInstance(existing.id, {
+                source: gridSummary.source,
+              });
+            }
+            return String(existing.id);
           }
           instanceActions.mergeServerInstance(serverInst);
-          return String(serverInst.id);
+          return normalizedId;
         }
       }
     } catch {
       // listInstances may not be available or may return [] (Tauri/WASM)
     }
 
-    if (existing) return existing.id;
+    if (existing) {
+      if (
+        gridSummary?.source &&
+        (gridSummary.source === 'watch_folder' || gridSummary.source === 'manual')
+      ) {
+        instanceActions.updateInstance(existing.id, {
+          source: gridSummary.source,
+        });
+      }
+      return String(existing.id);
+    }
 
     // Fallback: create a frontend instance and hydrate torrent from backend
     if (gridSummary) {
       const defaultPreset = getDefaultPreset();
       const defaults = defaultPreset ? defaultPreset.settings : {};
-      const instance = createDefaultInstance(id, defaults);
+      const source = gridSummary.source === 'watch_folder' ? 'watch_folder' : 'manual';
+      const instance = createDefaultInstance(normalizedId, { ...defaults, source });
       instance.torrentPath = gridSummary.name || '';
 
       // Apply backend state from grid summary
@@ -887,7 +992,7 @@ export const instanceActions = {
 
       instances.update(insts => [...insts, instance]);
       updateActiveInstanceStore();
-      return instance.id;
+      return String(instance.id);
     }
 
     return null;
@@ -964,12 +1069,12 @@ export const instanceActions = {
       const summaries = await api.listSummaries();
       if (!summaries) return;
 
-      const summaryMap = new Map(summaries.map(s => [s.id, s]));
+      const summaryMap = new Map(summaries.map(s => [String(s.id), s]));
       const currentInstances = get(instances);
 
       let hasAnyChanges = false;
       const updatedInstances = currentInstances.map(inst => {
-        const summary = summaryMap.get(inst.id);
+        const summary = summaryMap.get(String(inst.id));
         if (!summary) return inst;
 
         const state = summary.state?.toLowerCase();
@@ -978,6 +1083,10 @@ export const instanceActions = {
         const isPaused = state === 'paused';
 
         const updates = { isRunning, isPaused };
+
+        if (summary.source === 'watch_folder' || summary.source === 'manual') {
+          updates.source = summary.source;
+        }
 
         if (isPaused) {
           updates.statusMessage = 'Paused';

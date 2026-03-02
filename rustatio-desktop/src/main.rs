@@ -4,8 +4,12 @@ mod commands;
 mod logging;
 mod persistence;
 mod state;
+mod watch;
+#[cfg(test)]
+mod watch_tests;
 
 use rustatio_core::{AppConfig, FakerState, RatioFaker, RatioFakerHandle};
+use rustatio_watch::InstanceSource;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -16,95 +20,140 @@ use logging::log_and_emit;
 use state::{AppState, FakerInstance};
 
 /// Synchronous save for the exit handler (tokio runtime may be winding down)
-fn save_state_sync(
-    fakers: &Arc<RwLock<HashMap<u32, FakerInstance>>>,
-    next_instance_id: &Arc<RwLock<u32>>,
-) {
-    let Some(fakers) = fakers.try_read().ok() else {
-        log::warn!("Could not acquire fakers lock for exit save");
+fn save_state_sync(state: &AppState) {
+    let Ok(handle) = tokio::runtime::Handle::try_current() else {
+        log::warn!("No tokio runtime available for exit save");
         return;
     };
-    let Some(next_id) = next_instance_id.try_read().ok() else {
-        log::warn!("Could not acquire next_id lock for exit save");
-        return;
-    };
-    let now = persistence::now_timestamp();
 
-    let mut instances = HashMap::new();
-    for (id, instance) in fakers.iter() {
-        let stats = instance.faker.stats_snapshot();
-        let mut config = instance.config.clone();
-        config.completion_percent = stats.torrent_completion;
-        instances.insert(
-            *id,
-            persistence::PersistedInstance {
-                id: *id,
-                torrent: (*instance.summary).clone(),
-                config,
-                cumulative_uploaded: stats.uploaded,
-                cumulative_downloaded: stats.downloaded,
-                state: stats.state,
-                created_at: instance.created_at,
-                updated_at: now,
-                tags: instance.tags.clone(),
-            },
+    let result = tokio::task::block_in_place(|| {
+        handle.block_on(async move {
+            let persisted = state.build_persisted_state().await;
+            persistence::save_state(&persisted)
+        })
+    });
+
+    match result {
+        Ok(()) => log::info!("Final state saved successfully"),
+        Err(e) => log::error!("Exit save failed: {e}"),
+    }
+}
+
+fn save_state_blocking(state: AppState) {
+    let rt = tokio::runtime::Handle::current();
+    let result = rt.block_on(async move { state.save_state().await });
+    if let Err(e) = result {
+        log::error!("Periodic save failed: {e}");
+    }
+}
+
+async fn restore_saved_instances(
+    app_handle: tauri::AppHandle,
+    state: AppState,
+    saved_instances: HashMap<u32, persistence::PersistedInstance>,
+    watch_auto_start: bool,
+) {
+    let mut auto_start_ids: Vec<u32> = Vec::new();
+
+    for (id, persisted) in &saved_instances {
+        let mut config = persisted.config.clone();
+        config.initial_uploaded = persisted.cumulative_uploaded;
+        config.initial_downloaded = persisted.cumulative_downloaded;
+
+        let summary = Arc::new(persisted.torrent.clone());
+        let torrent = Arc::new(persisted.torrent.to_info());
+
+        match RatioFaker::new(Arc::clone(&torrent), config, Some(state.http_client.clone())) {
+            Ok(faker) => {
+                let was_running =
+                    matches!(persisted.state, FakerState::Starting | FakerState::Running);
+                let source = if persisted.from_watch_folder {
+                    InstanceSource::WatchFolder
+                } else {
+                    InstanceSource::Manual
+                };
+
+                state.fakers.write().await.insert(
+                    *id,
+                    FakerInstance {
+                        faker: Arc::new(RatioFakerHandle::new(faker)),
+                        torrent,
+                        summary,
+                        config: persisted.config.clone(),
+                        cumulative_uploaded: persisted.cumulative_uploaded,
+                        cumulative_downloaded: persisted.cumulative_downloaded,
+                        tags: persisted.tags.clone(),
+                        created_at: persisted.created_at,
+                        source,
+                    },
+                );
+
+                let _ = app_handle.emit("instance-restored", *id);
+
+                if was_running && matches!(source, InstanceSource::WatchFolder) && watch_auto_start
+                {
+                    auto_start_ids.push(*id);
+                }
+
+                log_and_emit!(
+                    &app_handle,
+                    *id,
+                    info,
+                    "Restored instance: {}",
+                    persisted.torrent.name
+                );
+            }
+            Err(e) => {
+                log_and_emit!(&app_handle, error, "Failed to restore instance {}: {}", id, e);
+            }
+        }
+    }
+
+    if !saved_instances.is_empty() {
+        log_and_emit!(
+            &app_handle,
+            info,
+            "Restored {} instance(s), {} to auto-start",
+            saved_instances.len(),
+            auto_start_ids.len()
         );
     }
 
-    let persisted =
-        persistence::PersistedState { instances, next_instance_id: *next_id, version: 1 };
+    for id in &auto_start_ids {
+        let faker = {
+            let fakers = state.fakers.read().await;
+            match fakers.get(id) {
+                Some(instance) => Arc::clone(&instance.faker),
+                None => continue,
+            }
+        };
 
-    if let Err(e) = persistence::save_state(&persisted) {
-        log::error!("Exit save failed: {e}");
-    } else {
-        log::info!("Final state saved successfully");
+        match faker.start().await {
+            Ok(()) => {
+                log_and_emit!(&app_handle, *id, info, "Auto-started (was running before shutdown)");
+            }
+            Err(e) => {
+                log_and_emit!(&app_handle, *id, error, "Auto-start failed: {}", e);
+            }
+        };
     }
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-fn show_exit_prompt(
-    app: &tauri::AppHandle,
-    should_exit: &Arc<AtomicBool>,
-    prompt_open: &Arc<AtomicBool>,
-) {
-    use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
-
+fn show_exit_prompt(app: &tauri::AppHandle, prompt_open: &Arc<AtomicBool>) {
     if prompt_open.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire).is_err() {
         return;
     }
 
-    let app_handle = app.clone();
-    let should_exit = Arc::clone(should_exit);
-    let prompt_open = Arc::clone(prompt_open);
-
-    let dialog = app_handle
-        .dialog()
-        .message("Do you want to quit Rustatio or close it to the tray?")
-        .kind(MessageDialogKind::Info)
-        .buttons(MessageDialogButtons::OkCancelCustom(
-            "Quit".to_string(),
-            "Close to Tray".to_string(),
-        ));
-
-    let dialog = if let Some(window) = app_handle.get_webview_window("main") {
-        dialog.parent(&window)
+    if let Some(window) = app.get_webview_window("main") {
+        ensure_window_interactive(&window);
+        let _ = window.emit("app-close-requested", ());
+        let _ = window.show();
+        let _ = window.unminimize();
+        let _ = window.set_focus();
     } else {
-        dialog
-    };
-
-    dialog.show(move |quit| {
         prompt_open.store(false, Ordering::Relaxed);
-        if let Some(window) = app_handle.get_webview_window("main") {
-            ensure_window_interactive(&window);
-        }
-
-        if quit {
-            should_exit.store(true, Ordering::Relaxed);
-            app_handle.exit(0);
-        } else if let Some(window) = app_handle.get_webview_window("main") {
-            let _ = window.hide();
-        }
-    });
+    }
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -159,21 +208,29 @@ fn main() {
 
     let saved_state = persistence::load_state();
     let next_id = saved_state.next_instance_id.max(1);
-    let saved_instances = saved_state.instances;
+    let saved_instances_map = saved_state.instances;
+    let saved_default_config = saved_state.default_config.clone();
+    let saved_watch_settings = saved_state.watch_settings;
 
     // Keep references for exit handler
     let fakers_for_exit = Arc::new(RwLock::new(HashMap::new()));
     let next_id_for_exit = Arc::new(RwLock::new(next_id));
+
+    let should_exit = Arc::new(AtomicBool::new(false));
+    let close_prompt_open = Arc::new(AtomicBool::new(false));
 
     let app_state = AppState {
         fakers: Arc::clone(&fakers_for_exit),
         next_instance_id: Arc::clone(&next_id_for_exit),
         config: Arc::new(RwLock::new(config)),
         http_client: rustatio_core::reqwest::Client::new(),
+        watch: Arc::new(RwLock::new(None)),
+        default_config: Arc::new(RwLock::new(saved_default_config)),
+        watch_settings: Arc::new(RwLock::new(saved_watch_settings)),
+        should_exit: Arc::clone(&should_exit),
+        close_prompt_open: Arc::clone(&close_prompt_open),
     };
 
-    let should_exit = Arc::new(AtomicBool::new(false));
-    let close_prompt_open = Arc::new(AtomicBool::new(false));
     let should_exit_for_tray = Arc::clone(&should_exit);
 
     let app = tauri::Builder::default()
@@ -219,6 +276,19 @@ fn main() {
             commands::grid_tag,
             commands::set_instance_tags,
             commands::list_summaries,
+            commands::get_watch_status,
+            commands::list_watch_files,
+            commands::delete_watch_file,
+            commands::reload_watch_file,
+            commands::reload_all_watch_files,
+            commands::get_watch_config,
+            commands::set_watch_config,
+            commands::get_default_config,
+            commands::set_default_config,
+            commands::clear_default_config,
+            commands::close_to_tray,
+            commands::quit_app,
+            commands::cancel_close_prompt,
         ])
         .setup(move |app| {
             rustatio_core::logger::init_logger(app.handle().clone());
@@ -256,149 +326,44 @@ fn main() {
 
             let app_handle = app.handle().clone();
             let state: tauri::State<'_, AppState> = app.state();
+            let state_inner = state.inner().clone();
 
-            let fakers_arc = Arc::clone(&state.fakers);
-            let restored_instances = saved_instances;
-            let http_client = state.http_client.clone();
+            let saved_instances = saved_instances_map;
+            let watch_settings =
+                state_inner.watch_settings.try_read().ok().and_then(|guard| guard.clone());
+            let default_config = Arc::clone(&state_inner.default_config);
+            let watch_state = Arc::clone(&state_inner.watch);
+            let watch_auto_start = watch_settings.clone().unwrap_or_default().auto_start;
 
             tauri::async_runtime::spawn(async move {
-                let mut auto_start_ids: Vec<u32> = Vec::new();
+                restore_saved_instances(
+                    app_handle.clone(),
+                    state_inner.clone(),
+                    saved_instances,
+                    watch_auto_start,
+                )
+                .await;
 
-                for (id, persisted) in &restored_instances {
-                    let mut config = persisted.config.clone();
-                    config.initial_uploaded = persisted.cumulative_uploaded;
-                    config.initial_downloaded = persisted.cumulative_downloaded;
-
-                    let summary = Arc::new(persisted.torrent.clone());
-                    let torrent = Arc::new(persisted.torrent.to_info());
-
-                    match RatioFaker::new(Arc::clone(&torrent), config, Some(http_client.clone())) {
-                        Ok(faker) => {
-                            let was_running = matches!(
-                                persisted.state,
-                                FakerState::Starting | FakerState::Running
-                            );
-
-                            fakers_arc.write().await.insert(
-                                *id,
-                                FakerInstance {
-                                    faker: Arc::new(RatioFakerHandle::new(faker)),
-                                    torrent,
-                                    summary,
-                                    config: persisted.config.clone(),
-                                    cumulative_uploaded: persisted.cumulative_uploaded,
-                                    cumulative_downloaded: persisted.cumulative_downloaded,
-                                    tags: persisted.tags.clone(),
-                                    created_at: persisted.created_at,
-                                },
-                            );
-
-                            let _ = app_handle.emit("instance-restored", *id);
-
-                            if was_running {
-                                auto_start_ids.push(*id);
-                            }
-
-                            log_and_emit!(
-                                &app_handle,
-                                *id,
-                                info,
-                                "Restored instance: {}",
-                                persisted.torrent.name
-                            );
-                        }
-                        Err(e) => {
-                            log_and_emit!(
-                                &app_handle,
-                                error,
-                                "Failed to restore instance {}: {}",
-                                id,
-                                e
-                            );
-                        }
-                    }
+                let mut watch =
+                    watch::build_watch_service(state_inner, default_config, watch_settings);
+                if let Err(e) = watch.start().await {
+                    log::error!("Failed to start watch service: {e}");
                 }
-
-                if !restored_instances.is_empty() {
-                    log_and_emit!(
-                        &app_handle,
-                        info,
-                        "Restored {} instance(s), {} to auto-start",
-                        restored_instances.len(),
-                        auto_start_ids.len()
-                    );
-                }
-
-                for id in &auto_start_ids {
-                    let faker = {
-                        let fakers = fakers_arc.read().await;
-                        match fakers.get(id) {
-                            Some(instance) => Arc::clone(&instance.faker),
-                            None => continue,
-                        }
-                    };
-
-                    match faker.start().await {
-                        Ok(()) => {
-                            log_and_emit!(
-                                &app_handle,
-                                *id,
-                                info,
-                                "Auto-started (was running before shutdown)"
-                            );
-                        }
-                        Err(e) => {
-                            log_and_emit!(&app_handle, *id, error, "Auto-start failed: {}", e);
-                        }
-                    };
-                }
+                let mut watch_guard = watch_state.write().await;
+                *watch_guard = Some(watch);
             });
 
             // Periodic auto-save every 30 seconds
             let state_for_save: tauri::State<'_, AppState> = app.state();
-            let fakers_for_save = Arc::clone(&state_for_save.fakers);
-            let next_id_for_save = Arc::clone(&state_for_save.next_instance_id);
+            let state_for_save = state_for_save.inner().clone();
 
             tauri::async_runtime::spawn(async move {
                 loop {
                     tokio::time::sleep(std::time::Duration::from_secs(30)).await;
 
-                    let fakers = fakers_for_save.read().await;
-                    let next_id = *next_id_for_save.read().await;
-                    let now = persistence::now_timestamp();
-
-                    let mut instances = HashMap::new();
-                    for (id, instance) in fakers.iter() {
-                        let stats = instance.faker.stats_snapshot();
-                        let mut config = instance.config.clone();
-                        config.completion_percent = stats.torrent_completion;
-                        instances.insert(
-                            *id,
-                            persistence::PersistedInstance {
-                                id: *id,
-                                torrent: (*instance.summary).clone(),
-                                config,
-                                cumulative_uploaded: stats.uploaded,
-                                cumulative_downloaded: stats.downloaded,
-                                state: stats.state,
-                                created_at: instance.created_at,
-                                updated_at: now,
-                                tags: instance.tags.clone(),
-                            },
-                        );
-                    }
-                    drop(fakers);
-
-                    let persisted = persistence::PersistedState {
-                        instances,
-                        next_instance_id: next_id,
-                        version: 1,
-                    };
-
-                    let _ = tokio::task::spawn_blocking(move || {
-                        if let Err(e) = persistence::save_state(&persisted) {
-                            log::error!("Periodic save failed: {e}");
-                        }
+                    let _ = tokio::task::spawn_blocking({
+                        let state = state_for_save.clone();
+                        move || save_state_blocking(state)
                     })
                     .await;
                 }
@@ -416,17 +381,18 @@ fn main() {
                     }
 
                     api.prevent_close();
-                    show_exit_prompt(window.app_handle(), &should_exit, &close_prompt_open);
+                    show_exit_prompt(window.app_handle(), &close_prompt_open);
                 }
             }
         })
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
 
-    app.run(move |_app_handle, event| {
+    app.run(move |app_handle, event| {
         if matches!(event, RunEvent::Exit) {
             log::info!("Application exiting, saving final state...");
-            save_state_sync(&fakers_for_exit, &next_id_for_exit);
+            let state = app_handle.state::<AppState>();
+            save_state_sync(state.inner());
         }
     });
 }

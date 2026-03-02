@@ -1,3 +1,6 @@
+use std::sync::atomic::Ordering;
+use tauri::Manager;
+
 const RPM_LIKE: [&str; 9] =
     ["fedora", "rhel", "centos", "rocky", "almalinux", "suse", "opensuse", "sles", "mageia"];
 const DEB_LIKE: [&str; 8] =
@@ -36,4 +39,38 @@ pub fn detect_linux_package_type() -> String {
     {
         "unknown".to_string()
     }
+}
+
+#[tauri::command]
+#[allow(clippy::needless_pass_by_value)]
+pub fn close_to_tray(app: tauri::AppHandle) -> Result<(), String> {
+    let state = app.state::<crate::state::AppState>();
+    state.close_prompt_open.store(false, Ordering::Relaxed);
+
+    let Some(window) = app.get_webview_window("main") else {
+        return Err("Main window not found".to_string());
+    };
+
+    if let Err(e) = window.hide() {
+        return Err(e.to_string());
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+#[allow(clippy::needless_pass_by_value)]
+pub fn quit_app(app: tauri::AppHandle) {
+    let state = app.state::<crate::state::AppState>();
+    state.should_exit.store(true, Ordering::Relaxed);
+    state.close_prompt_open.store(false, Ordering::Relaxed);
+
+    app.exit(0);
+}
+
+#[tauri::command]
+#[allow(clippy::needless_pass_by_value)]
+pub fn cancel_close_prompt(app: tauri::AppHandle) {
+    let state = app.state::<crate::state::AppState>();
+    state.close_prompt_open.store(false, Ordering::Relaxed);
 }

@@ -91,8 +91,10 @@ impl Modify for SecurityAddon {
         // Watch
         routes::watch::get_watch_status,
         routes::watch::list_watch_files,
-        routes::watch::delete_watch_file,
-        routes::watch::reload_watch_file,
+        routes::watch::get_watch_config,
+        routes::watch::set_watch_config,
+        routes::watch::delete_watch_file_by_path,
+        routes::watch::reload_watch_file_by_path,
         routes::watch::reload_all_watch_files,
         // Config
         routes::config::get_default_config,
@@ -122,6 +124,9 @@ impl Modify for SecurityAddon {
             crate::services::watch::WatchStatus,
             crate::services::watch::WatchedFile,
             crate::services::watch::WatchedFileStatus,
+            crate::services::persistence::WatchSettings,
+            routes::watch::WatchConfigResponse,
+            routes::watch::WatchConfigRequest,
         )
     ),
     modifiers(&SecurityAddon),

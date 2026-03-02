@@ -104,6 +104,8 @@ description = "Run all tests"
 run = [
     "echo '🧪 Running Rust tests...'",
     "cargo test",
+    "echo '🧪 Running UI JavaScript tests...'",
+    "mise run ui:test",
     "echo '✅ All tests passed!'"
 ]
 
@@ -165,6 +167,8 @@ depends = ["ci:install"]
 run = [
     "echo '🔍 Running lint checks (non-Rust)...'",
     "hk check --all --skip-step cargo-clippy",
+    "echo '🧪 Running UI JavaScript tests...'",
+    "mise run ui:test",
     "echo '✅ Lint checks passed!'"
 ]
 
@@ -211,6 +215,11 @@ sources = [
 ]
 outputs = { auto = true }
 run = "cd ui && npm run build"
+
+[tasks."ui:test"]
+description = "Run UI JavaScript tests"
+depends = ["ui:install"]
+run = "cd ui && node --test src/lib/*.test.js"
 
 # CLI tasks
 [tasks."build:cli"]

@@ -16,6 +16,7 @@ COPY Cargo.docker.toml ./Cargo.toml
 COPY Cargo.lock ./
 COPY rustatio-core ./rustatio-core
 COPY rustatio-server ./rustatio-server
+COPY rustatio-watch ./rustatio-watch
 
 # Copy the pre-built UI
 COPY ui/dist ./ui/dist

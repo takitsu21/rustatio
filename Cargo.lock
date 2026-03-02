@@ -3827,10 +3827,12 @@ dependencies = [
 name = "rustatio"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "env_logger",
  "log",
  "os-release",
  "rustatio-core",
+ "rustatio-watch",
  "serde",
  "serde_json",
  "tauri",
@@ -3840,6 +3842,7 @@ dependencies = [
  "tauri-plugin-process",
  "tauri-plugin-shell",
  "tauri-plugin-updater",
+ "tempfile",
  "tokio",
 ]
 
@@ -3902,12 +3905,13 @@ dependencies = [
  "hex",
  "mime_guess",
  "nanoid",
- "notify",
  "reqwest 0.12.28",
  "rust-embed",
  "rustatio-core",
+ "rustatio-watch",
  "serde",
  "serde_json",
+ "tempfile",
  "tokio",
  "tokio-stream",
  "tower",
@@ -3932,6 +3936,20 @@ dependencies = [
  "serde_json",
  "wasm-bindgen",
  "wasm-bindgen-futures",
+]
+
+[[package]]
+name = "rustatio-watch"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "hex",
+ "notify",
+ "rustatio-core",
+ "serde",
+ "tempfile",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
