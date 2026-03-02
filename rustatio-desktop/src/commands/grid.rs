@@ -1,11 +1,10 @@
 use rustatio_core::{
     FakerConfig, FakerState, FakerStats, GridImportSettings, InstanceSummary, PresetSettings,
-    RatioFaker, TorrentInfo,
+    RatioFaker, RatioFakerHandle, TorrentInfo,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tauri::{AppHandle, State};
-use tokio::sync::RwLock;
 use tokio::task::JoinSet;
 
 use crate::logging::log_and_emit;
@@ -93,7 +92,7 @@ async fn import_torrent_files(
         fakers_lock.insert(
             instance_id,
             FakerInstance {
-                faker: Arc::new(RwLock::new(faker)),
+                faker: Arc::new(RatioFakerHandle::new(faker)),
                 torrent: torrent_arc,
                 summary: summary_arc,
                 config: faker_config,
@@ -146,7 +145,7 @@ async fn import_torrent_files(
                     if i > 0 {
                         tokio::time::sleep(std::time::Duration::from_secs(delay)).await;
                     }
-                    match faker.write().await.start().await {
+                    match faker.start().await {
                         Ok(()) => log_and_emit!(&app_handle, id, info, "Auto-started"),
                         Err(e) => log_and_emit!(&app_handle, id, error, "Auto-start failed: {}", e),
                     };
@@ -155,7 +154,7 @@ async fn import_torrent_files(
                 let mut join_set = JoinSet::new();
                 for (id, faker) in faker_arcs {
                     join_set.spawn(async move {
-                        let result = faker.write().await.start().await;
+                        let result = faker.start().await;
                         (id, result.map_err(|e| e.to_string()))
                     });
                 }
@@ -284,7 +283,7 @@ pub async fn grid_start(
         let mut join_set = JoinSet::new();
         for (id, faker) in to_start {
             join_set.spawn(async move {
-                let result = faker.write().await.start().await;
+                let result = faker.start().await;
                 (id, result.map_err(|e| e.to_string()))
             });
         }
@@ -335,8 +334,8 @@ pub async fn grid_stop(
         let mut join_set = JoinSet::new();
         for (id, faker) in to_stop {
             join_set.spawn(async move {
-                let final_stats = faker.read().await.get_stats().await;
-                let stop_result = faker.write().await.stop().await;
+                let final_stats = faker.stats_snapshot();
+                let stop_result = faker.stop().await;
                 (id, final_stats, stop_result.map_err(|e| e.to_string()))
             });
         }
@@ -386,7 +385,7 @@ pub async fn grid_pause(
 
     for (id, faker_opt) in faker_arcs {
         match faker_opt {
-            Some(faker) => match faker.write().await.pause().await {
+            Some(faker) => match faker.pause().await {
                 Ok(()) => {
                     log_and_emit!(&app, id, info, "Paused via grid action");
                     succeeded.push(id);
@@ -421,7 +420,7 @@ pub async fn grid_resume(
 
     for (id, faker_opt) in faker_arcs {
         match faker_opt {
-            Some(faker) => match faker.write().await.resume().await {
+            Some(faker) => match faker.resume().await {
                 Ok(()) => {
                     log_and_emit!(&app, id, info, "Resumed via grid action");
                     succeeded.push(id);
@@ -458,7 +457,7 @@ pub async fn grid_delete(
         match instance_opt {
             Some(instance) => {
                 join_set.spawn(async move {
-                    let _ = instance.faker.write().await.stop().await;
+                    let _ = instance.faker.stop().await;
                     id
                 });
             }
@@ -500,11 +499,8 @@ pub async fn grid_update_config(
                 new_config.initial_uploaded = instance.cumulative_uploaded;
                 new_config.initial_downloaded = instance.cumulative_downloaded;
 
-                let result = instance
-                    .faker
-                    .write()
-                    .await
-                    .update_config(new_config, Some(state.http_client.clone()));
+                let result =
+                    instance.faker.update_config(new_config, Some(state.http_client.clone())).await;
                 match result {
                     Ok(()) => {
                         instance.config = faker_config.clone();
@@ -550,11 +546,8 @@ pub async fn bulk_update_configs(
                 new_config.initial_uploaded = instance.cumulative_uploaded;
                 new_config.initial_downloaded = instance.cumulative_downloaded;
 
-                let result = instance
-                    .faker
-                    .write()
-                    .await
-                    .update_config(new_config, Some(state.http_client.clone()));
+                let result =
+                    instance.faker.update_config(new_config, Some(state.http_client.clone())).await;
                 match result {
                     Ok(()) => {
                         instance.config = entry.config;
@@ -649,7 +642,7 @@ pub async fn list_summaries(state: State<'_, AppState>) -> Result<Vec<InstanceSu
 
     let mut summaries = Vec::new();
     for (id, faker, name, info_hash, tags, total_size, created_at) in instance_data {
-        let stats = faker.read().await.get_stats().await;
+        let stats = faker.stats_snapshot();
         let state_str = match stats.state {
             FakerState::Paused => "paused",
             _ if stats.is_idling => "idle",

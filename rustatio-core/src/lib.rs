@@ -8,6 +8,8 @@ pub mod validation;
 
 // Re-export main types explicitly to avoid ambiguous Result types
 pub use config::{AppConfig, ClientSettings, ConfigError, FakerSettings, UiSettings};
+#[cfg(not(target_arch = "wasm32"))]
+pub use faker::RatioFakerHandle;
 pub use faker::{FakerConfig, FakerError, FakerState, FakerStats, PresetSettings, RatioFaker};
 pub use grid::{GridImportSettings, GridMode, InstanceSummary};
 pub use torrent::{

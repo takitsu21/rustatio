@@ -11,42 +11,10 @@ use std::time::Duration;
 use thiserror::Error;
 
 #[cfg(not(target_arch = "wasm32"))]
-use tokio::sync::RwLock;
-
-#[cfg(target_arch = "wasm32")]
-use std::cell::RefCell;
+use tokio::sync::{watch, Mutex};
 
 #[cfg(target_arch = "wasm32")]
 use js_sys;
-
-// Macros for platform-specific lock access
-#[cfg(not(target_arch = "wasm32"))]
-macro_rules! read_lock {
-    ($lock:expr) => {
-        $lock.read().await
-    };
-}
-
-#[cfg(target_arch = "wasm32")]
-macro_rules! read_lock {
-    ($lock:expr) => {
-        $lock.borrow()
-    };
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-macro_rules! write_lock {
-    ($lock:expr) => {
-        $lock.write().await
-    };
-}
-
-#[cfg(target_arch = "wasm32")]
-macro_rules! write_lock {
-    ($lock:expr) => {
-        $lock.borrow_mut()
-    };
-}
 
 #[derive(Debug, Error)]
 pub enum FakerError {
@@ -330,15 +298,13 @@ pub struct FakerStats {
     pub announce_count: u32,
 }
 
-#[cfg(not(target_arch = "wasm32"))]
 pub struct RatioFaker {
     torrent: Arc<TorrentInfo>,
     config: FakerConfig,
-    tracker_client: TrackerClient,
+    tracker_client: Arc<TrackerClient>,
 
     // Runtime state
-    state: Arc<RwLock<FakerState>>,
-    stats: Arc<RwLock<FakerStats>>,
+    stats: FakerStats,
 
     // Session data
     peer_id: String,
@@ -355,29 +321,54 @@ pub struct RatioFaker {
     scrape_supported: bool,
 }
 
-#[cfg(target_arch = "wasm32")]
-pub struct RatioFaker {
-    torrent: Arc<TorrentInfo>,
-    config: FakerConfig,
-    tracker_client: TrackerClient,
+#[derive(Debug, Clone, Copy)]
+struct UpdateOutcome {
+    completed: bool,
+    stop: bool,
+    scrape_due: bool,
+    announce_due: bool,
+}
 
-    // Runtime state (RefCell for single-threaded WASM)
-    state: RefCell<FakerState>,
-    stats: RefCell<FakerStats>,
-
-    // Session data
-    peer_id: String,
-    key: String,
-    tracker_id: Option<String>,
-
-    // Timing
+struct TickInputs {
+    elapsed: Duration,
+    elapsed_secs: u64,
+    left: u64,
+    seeders: i64,
+    leechers: i64,
+    announce_count: u32,
+    torrent_size: u64,
     start_time: Instant,
-    last_update: Instant,
-    announce_interval: Duration,
+    config: FakerConfig,
+}
 
-    // Scrape
-    last_scrape: Instant,
-    scrape_supported: bool,
+struct AnnouncePlan {
+    tracker_client: Arc<TrackerClient>,
+    tracker_url: String,
+    request: AnnounceRequest,
+}
+
+impl AnnouncePlan {
+    async fn execute(&self) -> Result<AnnounceResponse> {
+        self.tracker_client
+            .announce(&self.tracker_url, &self.request)
+            .await
+            .map_err(FakerError::from)
+    }
+}
+
+struct ScrapePlan {
+    tracker_client: Arc<TrackerClient>,
+    tracker_url: String,
+    info_hash: [u8; 20],
+}
+
+impl ScrapePlan {
+    async fn execute(&self) -> Result<crate::protocol::ScrapeResponse> {
+        self.tracker_client
+            .scrape(&self.tracker_url, &self.info_hash)
+            .await
+            .map_err(FakerError::from)
+    }
 }
 
 impl RatioFaker {
@@ -482,67 +473,62 @@ impl RatioFaker {
             announce_count: 0,
         };
 
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            Ok(Self {
-                torrent,
-                config,
-                tracker_client,
-                state: Arc::new(RwLock::new(FakerState::Stopped)),
-                stats: Arc::new(RwLock::new(stats)),
-                peer_id,
-                key,
-                tracker_id: None,
-                start_time: Instant::now(),
-                last_update: Instant::now(),
-                announce_interval: Duration::from_secs(1800), // Default 30 minutes
-                last_scrape: Instant::now(),
-                scrape_supported: true,
-            })
-        }
-
-        #[cfg(target_arch = "wasm32")]
-        {
-            Ok(RatioFaker {
-                torrent,
-                config,
-                tracker_client,
-                state: RefCell::new(FakerState::Stopped),
-                stats: RefCell::new(stats),
-                peer_id,
-                key,
-                tracker_id: None,
-                start_time: Instant::now(),
-                last_update: Instant::now(),
-                announce_interval: Duration::from_secs(1800), // Default 30 minutes
-                last_scrape: Instant::now(),
-                scrape_supported: true,
-            })
-        }
+        Ok(Self {
+            torrent,
+            config,
+            tracker_client: Arc::new(tracker_client),
+            stats,
+            peer_id,
+            key,
+            tracker_id: None,
+            start_time: Instant::now(),
+            last_update: Instant::now(),
+            announce_interval: Duration::from_secs(1800), // Default 30 minutes
+            last_scrape: Instant::now(),
+            scrape_supported: true,
+        })
     }
 
     /// Start the ratio faking session
     pub async fn start(&mut self) -> Result<()> {
+        if let Some(plan) = self.begin_start() {
+            let result = plan.execute().await;
+            self.apply_start_result(result);
+        }
+        Ok(())
+    }
+
+    fn begin_start(&mut self) -> Option<AnnouncePlan> {
+        if matches!(self.stats.state, FakerState::Running | FakerState::Starting) {
+            return None;
+        }
+
         log_info!("Starting ratio faker for torrent: {}", self.torrent.name);
 
-        // Set transitional Starting state before first announce
-        *write_lock!(self.state) = FakerState::Starting;
-        write_lock!(self.stats).state = FakerState::Starting;
+        self.stats.state = FakerState::Starting;
         self.start_time = Instant::now();
         self.last_update = Instant::now();
 
-        // Send started event — best-effort, don't fail if tracker is unreachable
-        match self.announce(TrackerEvent::Started).await {
+        let request = self.build_announce_request(TrackerEvent::Started);
+
+        Some(AnnouncePlan {
+            tracker_client: Arc::clone(&self.tracker_client),
+            tracker_url: self.torrent.get_tracker_url().to_string(),
+            request,
+        })
+    }
+
+    fn apply_start_result(&mut self, result: Result<AnnounceResponse>) {
+        match result {
             Ok(response) => {
                 self.announce_interval = Duration::from_secs(response.interval as u64);
                 self.tracker_id = response.tracker_id;
 
-                let mut stats = write_lock!(self.stats);
-                stats.seeders = response.complete;
-                stats.leechers = response.incomplete;
-                stats.last_announce = Some(Instant::now());
-                stats.next_announce = Some(Instant::now() + self.announce_interval);
-                stats.announce_count += 1;
+                self.stats.seeders = response.complete;
+                self.stats.leechers = response.incomplete;
+                self.stats.last_announce = Some(Instant::now());
+                self.stats.next_announce = Some(Instant::now() + self.announce_interval);
+                self.stats.announce_count += 1;
 
                 log_info!(
                     "Started successfully. Seeders: {}, Leechers: {}, Interval: {}s",
@@ -553,39 +539,43 @@ impl RatioFaker {
             }
             Err(e) => {
                 log_warn!("Initial announce failed, will retry on next cycle: {}", e);
-                // Schedule a retry announce soon (30s) instead of waiting the full default interval
-                let mut stats = write_lock!(self.stats);
-                stats.next_announce = Some(Instant::now() + Duration::from_secs(30));
+                self.stats.next_announce = Some(Instant::now() + Duration::from_secs(30));
             }
         }
 
-        // ALWAYS transition to Running regardless of announce result
-        *write_lock!(self.state) = FakerState::Running;
-        write_lock!(self.stats).state = FakerState::Running;
-
-        Ok(())
+        self.stats.state = FakerState::Running;
     }
 
     /// Stop the ratio faking session
     pub async fn stop(&mut self) -> Result<()> {
-        // Guard: no-op if already stopped (prevents redundant stop announces
-        // when the scheduler auto-stops via stop conditions and the frontend
-        // subsequently calls stop again after observing the Stopped state)
-        if matches!(*read_lock!(self.state), FakerState::Stopped) {
+        if let Some(plan) = self.begin_stop() {
+            let result = plan.execute().await;
+            self.apply_stop_result(result);
+        }
+        Ok(())
+    }
+
+    fn begin_stop(&mut self) -> Option<AnnouncePlan> {
+        if matches!(self.stats.state, FakerState::Stopped) {
             log_debug!("Already stopped, skipping stop");
-            return Ok(());
+            return None;
         }
 
         log_info!("Stopping ratio faker");
 
-        // Set transitional Stopping state before tracker announce
-        *write_lock!(self.state) = FakerState::Stopping;
-        write_lock!(self.stats).state = FakerState::Stopping;
+        self.stats.state = FakerState::Stopping;
 
-        // Send stopped event — best-effort, tracker will time out the peer anyway
-        match self.announce(TrackerEvent::Stopped).await {
+        Some(AnnouncePlan {
+            tracker_client: Arc::clone(&self.tracker_client),
+            tracker_url: self.torrent.get_tracker_url().to_string(),
+            request: self.build_announce_request(TrackerEvent::Stopped),
+        })
+    }
+
+    fn apply_stop_result(&mut self, result: Result<AnnounceResponse>) {
+        match result {
             Ok(_) => {
-                write_lock!(self.stats).announce_count += 1;
+                self.stats.announce_count += 1;
                 log_info!("Stop announce sent successfully");
             }
             Err(e) => {
@@ -593,29 +583,190 @@ impl RatioFaker {
             }
         }
 
-        // ALWAYS transition to Stopped regardless of announce result
-        *write_lock!(self.state) = FakerState::Stopped;
-        let mut stats = write_lock!(self.stats);
-        stats.state = FakerState::Stopped;
-        stats.is_idling = false;
-        stats.idling_reason = None;
-
-        Ok(())
+        self.stats.state = FakerState::Stopped;
+        self.stats.is_idling = false;
+        self.stats.idling_reason = None;
     }
 
     /// Update the fake stats (call this periodically)
     pub async fn update(&mut self) -> Result<()> {
         let now = Instant::now();
+        let outcome = self.tick(now);
+
+        if outcome.completed {
+            let plan = AnnouncePlan {
+                tracker_client: Arc::clone(&self.tracker_client),
+                tracker_url: self.torrent.get_tracker_url().to_string(),
+                request: self.build_announce_request(TrackerEvent::Completed),
+            };
+            match plan.execute().await {
+                Ok(response) => {
+                    self.stats.seeders = response.complete;
+                    self.stats.leechers = response.incomplete;
+                    self.stats.announce_count += 1;
+                }
+                Err(e) => {
+                    log_warn!("Completion announce failed, continuing: {}", e);
+                }
+            }
+        }
+
+        if outcome.scrape_due {
+            let plan = self.build_scrape_plan();
+            let result = plan.execute().await;
+            self.apply_scrape_result(&result, now);
+        }
+
+        if outcome.announce_due {
+            let plan = self.build_periodic_announce_plan();
+            let result = plan.execute().await;
+            self.apply_periodic_announce_result(result);
+        }
+
+        if outcome.stop {
+            log_info!("Stop condition met, stopping faker");
+            self.stop().await?;
+        }
+
+        Ok(())
+    }
+
+    fn tick(&mut self, now: Instant) -> UpdateOutcome {
         let elapsed = now.duration_since(self.last_update);
         self.last_update = now;
 
-        let mut stats = write_lock!(self.stats);
+        let inputs = self.build_tick_inputs(elapsed);
+        let (base_upload_rate, base_download_rate) = self.calc_base_rates(&inputs);
+        let (upload_rate, download_rate) =
+            self.apply_randomized_rates(base_upload_rate, base_download_rate, inputs.left);
+        let (upload_rate, download_rate, is_idling, idling_reason) =
+            Self::apply_idling_rules(&inputs, upload_rate, download_rate);
 
-        // Calculate and apply rates
-        let (upload_rate, download_rate) = self.calculate_current_rates(&mut stats);
-        self.update_rate_stats(&mut stats, upload_rate, download_rate);
+        self.stats.is_idling = is_idling;
+        self.stats.idling_reason = idling_reason;
 
-        // Update transfer amounts
+        let completed = Self::apply_rate_and_transfer_updates(
+            &mut self.stats,
+            upload_rate,
+            download_rate,
+            inputs.elapsed,
+        );
+
+        Self::apply_derived_updates(&mut self.stats, now, &inputs);
+
+        self.compute_tick_outcome(&self.stats, now, &inputs, completed)
+    }
+
+    fn build_tick_inputs(&self, elapsed: Duration) -> TickInputs {
+        let stats = &self.stats;
+        let elapsed_secs = stats.elapsed_time.as_secs();
+
+        TickInputs {
+            elapsed,
+            elapsed_secs,
+            left: stats.left,
+            seeders: stats.seeders,
+            leechers: stats.leechers,
+            announce_count: stats.announce_count,
+            torrent_size: self.torrent.total_size,
+            start_time: self.start_time,
+            config: self.config.clone(),
+        }
+    }
+
+    fn calc_base_rates(&self, inputs: &TickInputs) -> (f64, f64) {
+        let config = &inputs.config;
+
+        let base_upload_rate = if config.progressive_rates {
+            self.calculate_progressive_rate(
+                config.upload_rate,
+                config.target_upload_rate.unwrap_or(config.upload_rate),
+                inputs.elapsed_secs,
+                config.progressive_duration,
+            )
+        } else {
+            config.upload_rate
+        };
+
+        let base_download_rate = if config.progressive_rates {
+            self.calculate_progressive_rate(
+                config.download_rate,
+                config.target_download_rate.unwrap_or(config.download_rate),
+                inputs.elapsed_secs,
+                config.progressive_duration,
+            )
+        } else {
+            config.download_rate
+        };
+
+        (base_upload_rate, base_download_rate)
+    }
+
+    fn apply_randomized_rates(
+        &self,
+        base_upload_rate: f64,
+        base_download_rate: f64,
+        left: u64,
+    ) -> (f64, f64) {
+        let upload_rate = self.apply_randomization(base_upload_rate);
+        let download_rate =
+            if left == 0 { 0.0 } else { self.apply_randomization(base_download_rate) };
+
+        (upload_rate, download_rate)
+    }
+
+    fn apply_idling_rules(
+        inputs: &TickInputs,
+        upload_rate: f64,
+        download_rate: f64,
+    ) -> (f64, f64, bool, Option<String>) {
+        let mut upload = upload_rate;
+        let mut download = download_rate;
+        let mut is_idling = false;
+        let mut idling_reason = None;
+
+        let config = &inputs.config;
+
+        if config.idle_when_no_leechers && inputs.leechers == 0 && inputs.announce_count > 0 {
+            log_debug!(
+                "Idling: no leechers to upload to (leechers={}, announce_count={})",
+                inputs.leechers,
+                inputs.announce_count
+            );
+            upload = 0.0;
+            is_idling = true;
+            idling_reason = Some("no_leechers".to_string());
+        }
+
+        if config.idle_when_no_seeders
+            && inputs.seeders == 0
+            && inputs.left > 0
+            && inputs.announce_count > 0
+        {
+            log_debug!(
+                "Idling: no seeders to download from (seeders={}, left={}, announce_count={})",
+                inputs.seeders,
+                inputs.left,
+                inputs.announce_count
+            );
+            download = 0.0;
+            if !is_idling {
+                is_idling = true;
+                idling_reason = Some("no_seeders".to_string());
+            }
+        }
+
+        (upload, download, is_idling, idling_reason)
+    }
+
+    fn apply_rate_and_transfer_updates(
+        stats: &mut FakerStats,
+        upload_rate: f64,
+        download_rate: f64,
+        elapsed: Duration,
+    ) -> bool {
+        Self::update_rate_stats(stats, upload_rate, download_rate);
+
         let upload_delta = (upload_rate * 1024.0 * elapsed.as_secs_f64()) as u64;
         let download_delta = (download_rate * 1024.0 * elapsed.as_secs_f64()) as u64;
 
@@ -627,136 +778,142 @@ impl RatioFaker {
             upload_delta
         );
 
-        let completed = self.update_transfer_stats(&mut stats, upload_delta, download_delta);
+        Self::update_transfer_stats(stats, upload_delta, download_delta)
+    }
 
-        if completed {
-            drop(stats);
-            if let Err(e) = self.on_completed().await {
-                log_warn!("Completion announce failed, continuing: {}", e);
+    fn apply_derived_updates(stats: &mut FakerStats, now: Instant, inputs: &TickInputs) {
+        Self::update_derived_stats_with_size(
+            stats,
+            now,
+            inputs.torrent_size,
+            &inputs.config,
+            inputs.start_time,
+        );
+    }
+
+    fn compute_tick_outcome(
+        &self,
+        stats: &FakerStats,
+        now: Instant,
+        inputs: &TickInputs,
+        completed: bool,
+    ) -> UpdateOutcome {
+        let stop = self.check_stop_conditions(stats);
+
+        let scrape_due = self.scrape_supported
+            && now.duration_since(self.last_scrape).as_secs() >= inputs.config.scrape_interval;
+
+        let announce_due = stats.next_announce.is_some_and(|next_announce| now >= next_announce);
+
+        UpdateOutcome { completed, stop, scrape_due, announce_due }
+    }
+
+    fn build_periodic_announce_plan(&self) -> AnnouncePlan {
+        AnnouncePlan {
+            tracker_client: Arc::clone(&self.tracker_client),
+            tracker_url: self.torrent.get_tracker_url().to_string(),
+            request: self.build_announce_request(TrackerEvent::None),
+        }
+    }
+
+    fn build_scrape_plan(&self) -> ScrapePlan {
+        ScrapePlan {
+            tracker_client: Arc::clone(&self.tracker_client),
+            tracker_url: self.torrent.get_tracker_url().to_string(),
+            info_hash: self.torrent.info_hash,
+        }
+    }
+
+    fn apply_scrape_result(
+        &mut self,
+        result: &Result<crate::protocol::ScrapeResponse>,
+        now: Instant,
+    ) {
+        match result {
+            Ok(scrape_response) => {
+                self.stats.seeders = scrape_response.complete;
+                self.stats.leechers = scrape_response.incomplete;
+                self.last_scrape = now;
+                log_debug!(
+                    "Scrape updated peer counts: seeders={}, leechers={}",
+                    scrape_response.complete,
+                    scrape_response.incomplete
+                );
             }
-            stats = write_lock!(self.stats);
-        }
-
-        // Update derived stats
-        self.update_derived_stats(&mut stats, now);
-
-        // Check stop conditions
-        if self.check_stop_conditions(&stats) {
-            log_info!("Stop condition met, stopping faker");
-            drop(stats);
-            self.stop().await?;
-            return Ok(());
-        }
-
-        // Periodic scrape for peer counts (if supported and enough time has passed)
-        if self.scrape_supported
-            && now.duration_since(self.last_scrape).as_secs() >= self.config.scrape_interval
-        {
-            drop(stats);
-            match self.scrape().await {
-                Ok(scrape_response) => {
-                    let mut stats = write_lock!(self.stats);
-                    stats.seeders = scrape_response.complete;
-                    stats.leechers = scrape_response.incomplete;
-                    self.last_scrape = now;
-                    log_debug!(
-                        "Scrape updated peer counts: seeders={}, leechers={}",
-                        scrape_response.complete,
-                        scrape_response.incomplete
-                    );
-                }
-                Err(e) => {
-                    log_warn!("Scrape failed, disabling periodic scrape: {}", e);
-                    self.scrape_supported = false;
-                }
-            }
-            stats = write_lock!(self.stats);
-        }
-
-        // Check if we need to announce
-        if let Some(next_announce) = stats.next_announce {
-            if now >= next_announce {
-                drop(stats);
-                if let Err(e) = self.periodic_announce().await {
-                    log_warn!("Periodic announce failed, will retry next cycle: {}", e);
-                    // Schedule a retry in 30s instead of waiting the full interval
-                    let mut stats = write_lock!(self.stats);
-                    stats.next_announce = Some(Instant::now() + Duration::from_secs(30));
-                }
+            Err(e) => {
+                log_warn!("Scrape failed, disabling periodic scrape: {}", e);
+                self.scrape_supported = false;
             }
         }
+    }
 
-        Ok(())
+    fn apply_periodic_announce_result(&mut self, result: Result<AnnounceResponse>) {
+        match result {
+            Ok(response) => {
+                self.announce_interval = Duration::from_secs(response.interval as u64);
+                self.stats.seeders = response.complete;
+                self.stats.leechers = response.incomplete;
+                self.stats.last_announce = Some(Instant::now());
+                self.stats.next_announce = Some(Instant::now() + self.announce_interval);
+                self.stats.announce_count += 1;
+
+                log_info!(
+                    "Periodic announce complete. Seeders: {}, Leechers: {}",
+                    response.complete,
+                    response.incomplete
+                );
+            }
+            Err(e) => {
+                log_warn!("Periodic announce failed, will retry next cycle: {}", e);
+                self.stats.next_announce = Some(Instant::now() + Duration::from_secs(30));
+            }
+        }
+    }
+
+    pub const fn announce_count(&self) -> u32 {
+        self.stats.announce_count
     }
 
     /// Update only the stats without announcing to tracker (for live updates)
     pub async fn update_stats_only(&mut self) -> Result<()> {
         let now = Instant::now();
-        let elapsed = now.duration_since(self.last_update);
-        self.last_update = now;
+        let outcome = self.tick(now);
 
-        // Periodic scrape for peer counts (if supported and enough time has passed)
-        if self.scrape_supported
-            && now.duration_since(self.last_scrape).as_secs() >= self.config.scrape_interval
-        {
-            match self.scrape().await {
-                Ok(scrape_response) => {
-                    let mut stats = write_lock!(self.stats);
-                    stats.seeders = scrape_response.complete;
-                    stats.leechers = scrape_response.incomplete;
-                    self.last_scrape = now;
-                    log_debug!(
-                        "Scrape updated peer counts: seeders={}, leechers={}",
-                        scrape_response.complete,
-                        scrape_response.incomplete
-                    );
+        if outcome.completed {
+            let plan = AnnouncePlan {
+                tracker_client: Arc::clone(&self.tracker_client),
+                tracker_url: self.torrent.get_tracker_url().to_string(),
+                request: self.build_announce_request(TrackerEvent::Completed),
+            };
+            match plan.execute().await {
+                Ok(response) => {
+                    self.stats.seeders = response.complete;
+                    self.stats.leechers = response.incomplete;
+                    self.stats.announce_count += 1;
                 }
                 Err(e) => {
-                    log_warn!("Scrape failed, disabling periodic scrape: {}", e);
-                    self.scrape_supported = false;
+                    log_warn!("Completion announce failed, continuing: {}", e);
                 }
             }
         }
 
-        let mut stats = write_lock!(self.stats);
-
-        // Calculate and apply rates
-        let (upload_rate, download_rate) = self.calculate_current_rates(&mut stats);
-        self.update_rate_stats(&mut stats, upload_rate, download_rate);
-
-        // Update transfer amounts
-        let upload_delta = (upload_rate * 1024.0 * elapsed.as_secs_f64()) as u64;
-        let download_delta = (download_rate * 1024.0 * elapsed.as_secs_f64()) as u64;
-
-        let completed = self.update_transfer_stats(&mut stats, upload_delta, download_delta);
-
-        if completed {
-            drop(stats);
-            if let Err(e) = self.on_completed().await {
-                log_warn!("Completion announce failed, continuing: {}", e);
-            }
-            stats = write_lock!(self.stats);
+        if outcome.scrape_due {
+            let plan = self.build_scrape_plan();
+            let result = plan.execute().await;
+            self.apply_scrape_result(&result, now);
         }
 
-        // Update derived stats
-        self.update_derived_stats(&mut stats, now);
-
-        // Check stop conditions
-        if self.check_stop_conditions(&stats) {
+        if outcome.stop {
             log_info!("Stop condition met, stopping faker");
-            drop(stats);
             self.stop().await?;
-            return Ok(());
         }
-
-        // NOTE: We don't check for periodic announce here - that's handled by update()
 
         Ok(())
     }
 
     /// Get current stats
-    pub async fn get_stats(&self) -> FakerStats {
-        read_lock!(self.stats).clone()
+    pub fn get_stats(&self) -> FakerStats {
+        self.stats.clone()
     }
 
     /// Build a stats snapshot from config without cloning runtime stats
@@ -803,9 +960,8 @@ impl RatioFaker {
     }
 
     /// Non-async stats snapshot (for synchronous exit-save contexts)
-    #[cfg(not(target_arch = "wasm32"))]
-    pub fn stats_snapshot(&self) -> Option<FakerStats> {
-        self.stats.try_read().ok().map(|s| s.clone())
+    pub fn stats_snapshot(&self) -> FakerStats {
+        self.stats.clone()
     }
 
     /// Get torrent info
@@ -830,8 +986,10 @@ impl RatioFaker {
                 ClientConfig::get(config.client_type, config.client_version.clone());
             self.peer_id = client_config.generate_peer_id();
             self.key = ClientConfig::generate_key();
-            self.tracker_client = TrackerClient::new(client_config, http_client)
-                .map_err(|e| FakerError::ConfigError(e.to_string()))?;
+            self.tracker_client = Arc::new(
+                TrackerClient::new(client_config, http_client)
+                    .map_err(|e| FakerError::ConfigError(e.to_string()))?,
+            );
         }
 
         // Recompute left/torrent_completion from the new completion_percent.
@@ -846,42 +1004,29 @@ impl RatioFaker {
             100.0
         };
 
-        #[cfg(not(target_arch = "wasm32"))]
-        if let Ok(mut stats) = self.stats.try_write() {
-            stats.left = new_left;
-            stats.torrent_completion = new_torrent_completion;
-        }
-
-        #[cfg(target_arch = "wasm32")]
-        {
-            let mut stats = self.stats.borrow_mut();
-            stats.left = new_left;
-            stats.torrent_completion = new_torrent_completion;
-        }
+        self.stats.left = new_left;
+        self.stats.torrent_completion = new_torrent_completion;
 
         self.config = config;
         Ok(())
     }
 
-    /// Send an announce to the tracker
-    async fn announce(&self, event: TrackerEvent) -> Result<AnnounceResponse> {
-        let stats = read_lock!(self.stats);
-
+    fn build_announce_request(&self, event: TrackerEvent) -> AnnounceRequest {
         log_debug!(
             "Preparing announce: event={:?}, uploaded={}, downloaded={}, left={}",
             event,
-            stats.uploaded,
-            stats.downloaded,
-            stats.left
+            self.stats.uploaded,
+            self.stats.downloaded,
+            self.stats.left
         );
 
-        let request = AnnounceRequest {
+        AnnounceRequest {
             info_hash: self.torrent.info_hash,
             peer_id: self.peer_id.clone(),
             port: self.config.port,
-            uploaded: stats.uploaded,
-            downloaded: stats.downloaded,
-            left: stats.left,
+            uploaded: self.stats.uploaded,
+            downloaded: self.stats.downloaded,
+            left: self.stats.left,
             compact: true,
             no_peer_id: false,
             event,
@@ -889,169 +1034,37 @@ impl RatioFaker {
             numwant: Some(self.config.num_want),
             key: Some(self.key.clone()),
             tracker_id: self.tracker_id.clone(),
-        };
-
-        drop(stats); // Release lock before async call
-
-        let response =
-            self.tracker_client.announce(self.torrent.get_tracker_url(), &request).await?;
-
-        Ok(response)
-    }
-
-    /// Periodic announce (no event)
-    async fn periodic_announce(&mut self) -> Result<()> {
-        log_info!("Sending periodic announce");
-
-        let response = self.announce(TrackerEvent::None).await?;
-
-        // Update interval if changed
-        self.announce_interval = Duration::from_secs(response.interval as u64);
-
-        // Update stats
-        let mut stats = write_lock!(self.stats);
-        stats.seeders = response.complete;
-        stats.leechers = response.incomplete;
-        stats.last_announce = Some(Instant::now());
-        stats.next_announce = Some(Instant::now() + self.announce_interval);
-        stats.announce_count += 1;
-
-        log_info!(
-            "Periodic announce complete. Seeders: {}, Leechers: {}",
-            response.complete,
-            response.incomplete
-        );
-
-        Ok(())
-    }
-
-    /// Handle completion event
-    async fn on_completed(&self) -> Result<()> {
-        log_info!("Torrent completed! Sending completed event");
-
-        let response = self.announce(TrackerEvent::Completed).await?;
-
-        // Update stats (state stays Running — faker continues seeding after completion)
-        let mut stats = write_lock!(self.stats);
-        stats.seeders = response.complete;
-        stats.leechers = response.incomplete;
-        stats.announce_count += 1;
-
-        Ok(())
+        }
     }
 
     /// Scrape the tracker for stats
     pub async fn scrape(&self) -> Result<crate::protocol::ScrapeResponse> {
-        log_info!("Scraping tracker");
-
-        let response = self
-            .tracker_client
-            .scrape(self.torrent.get_tracker_url(), &self.torrent.info_hash)
-            .await?;
-
+        let plan = self.build_scrape_plan();
+        let response = plan.execute().await?;
         log_info!(
             "Scrape complete. Seeders: {}, Leechers: {}, Downloaded: {}",
             response.complete,
             response.incomplete,
             response.downloaded
         );
-
         Ok(response)
     }
 
     /// Pause the faker
-    pub async fn pause(&mut self) -> Result<()> {
+    pub fn pause(&mut self) -> Result<()> {
         log_info!("Pausing ratio faker");
-        *write_lock!(self.state) = FakerState::Paused;
-        let mut stats = write_lock!(self.stats);
-        stats.state = FakerState::Paused;
-        stats.is_idling = false;
-        stats.idling_reason = None;
+        self.stats.state = FakerState::Paused;
+        self.stats.is_idling = false;
+        self.stats.idling_reason = None;
         Ok(())
     }
 
     /// Resume the faker
-    pub async fn resume(&mut self) -> Result<()> {
+    pub fn resume(&mut self) -> Result<()> {
         log_info!("Resuming ratio faker");
-        *write_lock!(self.state) = FakerState::Running;
-        write_lock!(self.stats).state = FakerState::Running;
+        self.stats.state = FakerState::Running;
         self.last_update = Instant::now(); // Reset to avoid large delta
         Ok(())
-    }
-
-    /// Calculate current upload and download rates with progressive and random adjustments
-    /// Also updates idle state in stats based on peer availability
-    fn calculate_current_rates(&self, stats: &mut FakerStats) -> (f64, f64) {
-        let base_upload_rate = if self.config.progressive_rates {
-            self.calculate_progressive_rate(
-                self.config.upload_rate,
-                self.config.target_upload_rate.unwrap_or(self.config.upload_rate),
-                stats.elapsed_time.as_secs(),
-                self.config.progressive_duration,
-            )
-        } else {
-            self.config.upload_rate
-        };
-
-        let base_download_rate = if self.config.progressive_rates {
-            self.calculate_progressive_rate(
-                self.config.download_rate,
-                self.config.target_download_rate.unwrap_or(self.config.download_rate),
-                stats.elapsed_time.as_secs(),
-                self.config.progressive_duration,
-            )
-        } else {
-            self.config.download_rate
-        };
-
-        // Apply randomization
-        let mut upload_rate = self.apply_randomization(base_upload_rate);
-        let mut download_rate = self.apply_randomization(base_download_rate);
-
-        // Reset idle state
-        stats.is_idling = false;
-        stats.idling_reason = None;
-
-        // No download if we're complete (left == 0 means nothing left to download)
-        if stats.left == 0 {
-            download_rate = 0.0;
-        }
-
-        // Idle when no leechers (for seeders) - only after first announce
-        // This keeps us connected to the tracker but with 0 upload rate
-        if self.config.idle_when_no_leechers && stats.leechers == 0 && stats.announce_count > 0 {
-            log_debug!(
-                "Idling: no leechers to upload to (leechers={}, announce_count={})",
-                stats.leechers,
-                stats.announce_count
-            );
-            upload_rate = 0.0;
-            stats.is_idling = true;
-            stats.idling_reason = Some("no_leechers".to_string());
-        }
-
-        // Idle when no seeders (for leechers) - only after first announce and if we still need data
-        // This keeps us connected to the tracker but with 0 download rate
-        if self.config.idle_when_no_seeders
-            && stats.seeders == 0
-            && stats.left > 0
-            && stats.announce_count > 0
-        {
-            log_debug!(
-                "Idling: no seeders to download from (seeders={}, left={}, announce_count={})",
-                stats.seeders,
-                stats.left,
-                stats.announce_count
-            );
-            download_rate = 0.0;
-            // Only set idling if not already idling for another reason
-            if !stats.is_idling {
-                stats.is_idling = true;
-                stats.idling_reason = Some("no_seeders".to_string());
-            }
-        }
-
-        (upload_rate, download_rate)
     }
 
     /// Apply randomization to a rate if enabled
@@ -1067,8 +1080,7 @@ impl RatioFaker {
     }
 
     /// Update rate statistics and history
-    #[allow(clippy::unused_self)]
-    fn update_rate_stats(&self, stats: &mut FakerStats, upload_rate: f64, download_rate: f64) {
+    fn update_rate_stats(stats: &mut FakerStats, upload_rate: f64, download_rate: f64) {
         stats.current_upload_rate = upload_rate;
         stats.current_download_rate = download_rate;
 
@@ -1083,7 +1095,6 @@ impl RatioFaker {
     /// Update transfer stats (uploaded, downloaded, left). Returns true if just completed.
     #[allow(clippy::unused_self)]
     fn update_transfer_stats(
-        &self,
         stats: &mut FakerStats,
         upload_delta: u64,
         download_delta: u64,
@@ -1104,28 +1115,31 @@ impl RatioFaker {
     }
 
     /// Update derived statistics (ratio, elapsed time, average rates, progress)
-    fn update_derived_stats(&self, stats: &mut FakerStats, now: Instant) {
+    fn update_derived_stats_with_size(
+        stats: &mut FakerStats,
+        now: Instant,
+        torrent_size: u64,
+        config: &FakerConfig,
+        start_time: Instant,
+    ) {
         // Cumulative ratio (for display in Total Stats)
-        let current_ratio = if self.torrent.total_size > 0 {
-            stats.uploaded as f64 / self.torrent.total_size as f64
-        } else {
-            0.0
-        };
+        let current_ratio =
+            if torrent_size > 0 { stats.uploaded as f64 / torrent_size as f64 } else { 0.0 };
         stats.ratio = current_ratio;
         Self::add_to_history(&mut stats.ratio_history, current_ratio, 60);
 
         // Session ratio (for stop conditions) = session_uploaded / torrent_size
-        stats.session_ratio = if self.torrent.total_size > 0 {
-            stats.session_uploaded as f64 / self.torrent.total_size as f64
+        stats.session_ratio = if torrent_size > 0 {
+            stats.session_uploaded as f64 / torrent_size as f64
         } else {
             0.0
         };
 
-        stats.elapsed_time = now.duration_since(self.start_time);
+        stats.elapsed_time = now.duration_since(start_time);
 
         // Torrent completion percentage
-        stats.torrent_completion = if self.torrent.total_size > 0 {
-            ((self.torrent.total_size - stats.left) as f64 / self.torrent.total_size as f64) * 100.0
+        stats.torrent_completion = if torrent_size > 0 {
+            ((torrent_size - stats.left) as f64 / torrent_size as f64) * 100.0
         } else {
             100.0
         };
@@ -1136,7 +1150,7 @@ impl RatioFaker {
             stats.average_download_rate = (stats.session_downloaded as f64 / 1024.0) / elapsed_secs;
         }
 
-        self.update_progress_and_eta(stats);
+        Self::update_progress_and_eta_with_size(stats, config, torrent_size);
     }
 
     /// Add a value to a history vec, keeping only the last `max_len` items
@@ -1238,9 +1252,13 @@ impl RatioFaker {
     }
 
     /// Update progress percentages and ETAs
-    fn update_progress_and_eta(&self, stats: &mut FakerStats) {
+    fn update_progress_and_eta_with_size(
+        stats: &mut FakerStats,
+        config: &FakerConfig,
+        torrent_size: u64,
+    ) {
         // Upload progress (based on session uploaded)
-        if let Some(target) = self.config.stop_at_uploaded {
+        if let Some(target) = config.stop_at_uploaded {
             stats.upload_progress =
                 ((stats.session_uploaded as f64 / target as f64) * 100.0).min(100.0);
 
@@ -1256,7 +1274,7 @@ impl RatioFaker {
         }
 
         // Download progress (based on session downloaded)
-        if let Some(target) = self.config.stop_at_downloaded {
+        if let Some(target) = config.stop_at_downloaded {
             stats.download_progress =
                 ((stats.session_downloaded as f64 / target as f64) * 100.0).min(100.0);
         } else {
@@ -1264,13 +1282,12 @@ impl RatioFaker {
         }
 
         // Ratio progress (use session ratio for progress tracking)
-        if let Some(target_ratio) = self.config.stop_at_ratio {
+        if let Some(target_ratio) = config.stop_at_ratio {
             stats.ratio_progress = ((stats.session_ratio / target_ratio) * 100.0).min(100.0);
 
             // Calculate ETA for ratio (based on session stats)
-            if stats.average_upload_rate > 0.0 && self.torrent.total_size > 0 {
-                let target_session_uploaded =
-                    (target_ratio * self.torrent.total_size as f64) as u64;
+            if stats.average_upload_rate > 0.0 && torrent_size > 0 {
+                let target_session_uploaded = (target_ratio * torrent_size as f64) as u64;
                 let remaining = target_session_uploaded.saturating_sub(stats.session_uploaded);
                 let eta_secs = (remaining as f64 / 1024.0) / stats.average_upload_rate;
                 stats.eta_ratio = Some(Duration::from_secs_f64(eta_secs));
@@ -1281,7 +1298,7 @@ impl RatioFaker {
         }
 
         // Seed time progress
-        if let Some(target_time) = self.config.stop_at_seed_time {
+        if let Some(target_time) = config.stop_at_seed_time {
             let elapsed = stats.elapsed_time.as_secs();
             stats.seed_time_progress = ((elapsed as f64 / target_time as f64) * 100.0).min(100.0);
 
@@ -1299,6 +1316,207 @@ impl RatioFaker {
         } else {
             stats.eta_download_completion = None;
         }
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[derive(Clone)]
+pub struct RatioFakerHandle {
+    inner: Arc<Mutex<RatioFaker>>,
+    stats_tx: watch::Sender<FakerStats>,
+    stats_rx: watch::Receiver<FakerStats>,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl RatioFakerHandle {
+    pub fn new(faker: RatioFaker) -> Self {
+        let stats = faker.stats_snapshot();
+        let (stats_tx, stats_rx) = watch::channel(stats);
+        Self { inner: Arc::new(Mutex::new(faker)), stats_tx, stats_rx }
+    }
+
+    pub fn stats_snapshot(&self) -> FakerStats {
+        self.stats_rx.borrow().clone()
+    }
+
+    pub async fn start(&self) -> Result<()> {
+        let plan = {
+            let mut guard = self.inner.lock().await;
+            guard.begin_start()
+        };
+
+        if let Some(plan) = plan {
+            let result = plan.execute().await;
+            let mut guard = self.inner.lock().await;
+            guard.apply_start_result(result);
+            let _ = self.stats_tx.send(guard.stats_snapshot());
+        }
+        Ok(())
+    }
+
+    pub async fn stop(&self) -> Result<()> {
+        let plan = {
+            let mut guard = self.inner.lock().await;
+            guard.begin_stop()
+        };
+
+        if let Some(plan) = plan {
+            let result = plan.execute().await;
+            let mut guard = self.inner.lock().await;
+            guard.apply_stop_result(result);
+            let _ = self.stats_tx.send(guard.stats_snapshot());
+        }
+        Ok(())
+    }
+
+    pub async fn pause(&self) -> Result<()> {
+        let mut guard = self.inner.lock().await;
+        let result = guard.pause();
+        let _ = self.stats_tx.send(guard.stats_snapshot());
+        result
+    }
+
+    pub async fn resume(&self) -> Result<()> {
+        let mut guard = self.inner.lock().await;
+        let result = guard.resume();
+        let _ = self.stats_tx.send(guard.stats_snapshot());
+        result
+    }
+
+    pub async fn update(&self) -> Result<()> {
+        let now = Instant::now();
+        let outcome = {
+            let mut guard = self.inner.lock().await;
+            guard.tick(now)
+        };
+
+        if outcome.completed {
+            let plan = {
+                let guard = self.inner.lock().await;
+                AnnouncePlan {
+                    tracker_client: Arc::clone(&guard.tracker_client),
+                    tracker_url: guard.torrent.get_tracker_url().to_string(),
+                    request: guard.build_announce_request(TrackerEvent::Completed),
+                }
+            };
+            if let Ok(response) = plan.execute().await {
+                let mut guard = self.inner.lock().await;
+                guard.stats.seeders = response.complete;
+                guard.stats.leechers = response.incomplete;
+                guard.stats.announce_count += 1;
+            }
+        }
+
+        if outcome.scrape_due {
+            let plan = {
+                let guard = self.inner.lock().await;
+                guard.build_scrape_plan()
+            };
+            let result = plan.execute().await;
+            let mut guard = self.inner.lock().await;
+            guard.apply_scrape_result(&result, now);
+        }
+
+        if outcome.announce_due {
+            let plan = {
+                let guard = self.inner.lock().await;
+                guard.build_periodic_announce_plan()
+            };
+            let result = plan.execute().await;
+            let mut guard = self.inner.lock().await;
+            guard.apply_periodic_announce_result(result);
+        }
+
+        if outcome.stop {
+            let plan = {
+                let mut guard = self.inner.lock().await;
+                guard.begin_stop()
+            };
+            if let Some(plan) = plan {
+                let result = plan.execute().await;
+                let mut guard = self.inner.lock().await;
+                guard.apply_stop_result(result);
+            }
+        }
+
+        let guard = self.inner.lock().await;
+        let _ = self.stats_tx.send(guard.stats_snapshot());
+        Ok(())
+    }
+
+    pub async fn update_stats_only(&self) -> Result<()> {
+        let now = Instant::now();
+        let outcome = {
+            let mut guard = self.inner.lock().await;
+            guard.tick(now)
+        };
+
+        if outcome.completed {
+            let plan = {
+                let guard = self.inner.lock().await;
+                AnnouncePlan {
+                    tracker_client: Arc::clone(&guard.tracker_client),
+                    tracker_url: guard.torrent.get_tracker_url().to_string(),
+                    request: guard.build_announce_request(TrackerEvent::Completed),
+                }
+            };
+            if let Ok(response) = plan.execute().await {
+                let mut guard = self.inner.lock().await;
+                guard.stats.seeders = response.complete;
+                guard.stats.leechers = response.incomplete;
+                guard.stats.announce_count += 1;
+            }
+        }
+
+        if outcome.scrape_due {
+            let plan = {
+                let guard = self.inner.lock().await;
+                guard.build_scrape_plan()
+            };
+            let result = plan.execute().await;
+            let mut guard = self.inner.lock().await;
+            guard.apply_scrape_result(&result, now);
+        }
+
+        if outcome.stop {
+            let plan = {
+                let mut guard = self.inner.lock().await;
+                guard.begin_stop()
+            };
+            if let Some(plan) = plan {
+                let result = plan.execute().await;
+                let mut guard = self.inner.lock().await;
+                guard.apply_stop_result(result);
+            }
+        }
+
+        let guard = self.inner.lock().await;
+        let _ = self.stats_tx.send(guard.stats_snapshot());
+        Ok(())
+    }
+
+    pub async fn scrape(&self) -> Result<crate::protocol::ScrapeResponse> {
+        let plan = {
+            let guard = self.inner.lock().await;
+            guard.build_scrape_plan()
+        };
+        let result = plan.execute().await;
+        let now = Instant::now();
+        let mut guard = self.inner.lock().await;
+        guard.apply_scrape_result(&result, now);
+        let _ = self.stats_tx.send(guard.stats_snapshot());
+        result
+    }
+
+    pub async fn update_config(
+        &self,
+        config: FakerConfig,
+        http_client: Option<reqwest::Client>,
+    ) -> Result<()> {
+        let mut guard = self.inner.lock().await;
+        let result = guard.update_config(config, http_client);
+        let _ = self.stats_tx.send(guard.stats_snapshot());
+        result
     }
 }
 

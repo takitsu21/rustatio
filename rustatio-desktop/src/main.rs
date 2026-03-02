@@ -5,7 +5,7 @@ mod logging;
 mod persistence;
 mod state;
 
-use rustatio_core::{AppConfig, FakerState, RatioFaker};
+use rustatio_core::{AppConfig, FakerState, RatioFaker, RatioFakerHandle};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -32,12 +32,7 @@ fn save_state_sync(
 
     let mut instances = HashMap::new();
     for (id, instance) in fakers.iter() {
-        let Some(faker) = instance.faker.try_read().ok() else {
-            continue;
-        };
-        let Some(stats) = faker.stats_snapshot() else {
-            continue;
-        };
+        let stats = instance.faker.stats_snapshot();
         let mut config = instance.config.clone();
         config.completion_percent = stats.torrent_completion;
         instances.insert(
@@ -287,7 +282,7 @@ fn main() {
                             fakers_arc.write().await.insert(
                                 *id,
                                 FakerInstance {
-                                    faker: Arc::new(RwLock::new(faker)),
+                                    faker: Arc::new(RatioFakerHandle::new(faker)),
                                     torrent,
                                     summary,
                                     config: persisted.config.clone(),
@@ -343,7 +338,7 @@ fn main() {
                         }
                     };
 
-                    match faker.write().await.start().await {
+                    match faker.start().await {
                         Ok(()) => {
                             log_and_emit!(
                                 &app_handle,
@@ -374,7 +369,7 @@ fn main() {
 
                     let mut instances = HashMap::new();
                     for (id, instance) in fakers.iter() {
-                        let stats = instance.faker.read().await.get_stats().await;
+                        let stats = instance.faker.stats_snapshot();
                         let mut config = instance.config.clone();
                         config.completion_percent = stats.torrent_completion;
                         instances.insert(

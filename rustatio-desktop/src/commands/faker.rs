@@ -1,8 +1,7 @@
 use rustatio_core::validation;
-use rustatio_core::{FakerConfig, FakerStats, RatioFaker, TorrentInfo};
+use rustatio_core::{FakerConfig, FakerStats, RatioFaker, RatioFakerHandle, TorrentInfo};
 use std::sync::Arc;
 use tauri::{AppHandle, State};
-use tokio::sync::RwLock;
 
 use crate::logging::log_and_emit;
 use crate::state::{AppState, FakerInstance};
@@ -102,7 +101,7 @@ pub async fn start_faker(
     fakers.insert(
         instance_id,
         FakerInstance {
-            faker: Arc::new(RwLock::new(faker)),
+            faker: Arc::new(RatioFakerHandle::new(faker)),
             torrent: torrent_arc,
             summary: summary_arc,
             config,
@@ -136,8 +135,8 @@ pub async fn stop_faker(
     };
 
     // HTTP happens here (announce Stopped) — only this instance is locked
-    let final_stats = faker.read().await.get_stats().await;
-    faker.write().await.stop().await.map_err(|e| {
+    let final_stats = faker.stats_snapshot();
+    faker.stop().await.map_err(|e| {
         let error_msg = format!("Failed to stop faker: {e}");
         log_and_emit!(&app, instance_id, error, "{}", error_msg);
         error_msg
@@ -176,7 +175,7 @@ pub async fn update_faker(instance_id: u32, state: State<'_, AppState>) -> Resul
         Arc::clone(&instance.faker)
     };
 
-    faker.write().await.update().await.map_err(|e| format!("Failed to update faker: {e}"))?;
+    faker.update().await.map_err(|e| format!("Failed to update faker: {e}"))?;
 
     Ok(())
 }
@@ -195,14 +194,9 @@ pub async fn update_stats_only(
         Arc::clone(&instance.faker)
     };
 
-    faker
-        .write()
-        .await
-        .update_stats_only()
-        .await
-        .map_err(|e| format!("Failed to update stats: {e}"))?;
+    faker.update_stats_only().await.map_err(|e| format!("Failed to update stats: {e}"))?;
 
-    let stats = faker.read().await.get_stats().await;
+    let stats = faker.stats_snapshot();
     Ok(stats)
 }
 
@@ -215,7 +209,7 @@ pub async fn get_stats(instance_id: u32, state: State<'_, AppState>) -> Result<F
         Arc::clone(&instance.faker)
     };
 
-    let stats = faker.read().await.get_stats().await;
+    let stats = faker.stats_snapshot();
     Ok(stats)
 }
 
@@ -233,7 +227,7 @@ pub async fn scrape_tracker(
         Arc::clone(&instance.faker)
     };
 
-    let scrape = faker.read().await.scrape().await.map_err(|e| format!("Failed to scrape: {e}"))?;
+    let scrape = faker.scrape().await.map_err(|e| format!("Failed to scrape: {e}"))?;
 
     Ok((scrape.complete, scrape.incomplete, scrape.downloaded))
 }
@@ -254,7 +248,7 @@ pub async fn pause_faker(
         Arc::clone(&instance.faker)
     };
 
-    faker.write().await.pause().await.map_err(|e| format!("Failed to pause faker: {e}"))?;
+    faker.pause().await.map_err(|e| format!("Failed to pause faker: {e}"))?;
 
     log_and_emit!(&app, instance_id, info, "Faker paused successfully");
     Ok(())
@@ -276,7 +270,7 @@ pub async fn resume_faker(
         Arc::clone(&instance.faker)
     };
 
-    faker.write().await.resume().await.map_err(|e| format!("Failed to resume faker: {e}"))?;
+    faker.resume().await.map_err(|e| format!("Failed to resume faker: {e}"))?;
 
     log_and_emit!(&app, instance_id, info, "Faker resumed successfully");
     Ok(())

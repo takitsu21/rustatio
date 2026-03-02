@@ -7,8 +7,8 @@ services:
       - /dev/net/tun:/dev/net/tun
     environment:
       # Configure your VPN provider - see https://github.com/qdm12/gluetun-wiki
-      - VPN_SERVICE_PROVIDER=protonvpn  # or: mullvad, nordvpn, expressvpn, etc.
-      - VPN_TYPE=wireguard              # or: openvpn
+      - VPN_SERVICE_PROVIDER=protonvpn # or: mullvad, nordvpn, expressvpn, etc.
+      - VPN_TYPE=wireguard # or: openvpn
       # Provider-specific settings (example for ProtonVPN WireGuard)
       - WIREGUARD_PRIVATE_KEY=${WIREGUARD_PRIVATE_KEY}
       - SERVER_COUNTRIES=${SERVER_COUNTRIES:-Switzerland}
@@ -17,7 +17,7 @@ services:
       # Since the control server is only reachable within the container network namespace it is safe
       - HTTP_CONTROL_SERVER_AUTH_DEFAULT_ROLE={"auth":"none"}
     ports:
-      - "${WEBUI_PORT:-8080}:8080"  # Rustatio Web UI
+      - "${WEBUI_PORT:-8080}:8080" # Rustatio Web UI
     restart: unless-stopped
 
   rustatio:
