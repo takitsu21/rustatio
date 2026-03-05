@@ -9,6 +9,7 @@ use tokio::task::JoinSet;
 
 use crate::logging::log_and_emit;
 use crate::state::{hex_info_hash, now_secs, AppState, FakerInstance};
+use rustatio_watch::InstanceSource;
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -100,6 +101,7 @@ async fn import_torrent_files(
                 cumulative_downloaded: 0,
                 tags: config.tags.clone(),
                 created_at: now,
+                source: InstanceSource::Manual,
             },
         );
 
@@ -635,13 +637,14 @@ pub async fn list_summaries(state: State<'_, AppState>) -> Result<Vec<InstanceSu
                     instance.tags.clone(),
                     instance.summary.total_size,
                     instance.created_at,
+                    instance.source,
                 )
             })
             .collect()
     };
 
     let mut summaries = Vec::new();
-    for (id, faker, name, info_hash, tags, total_size, created_at) in instance_data {
+    for (id, faker, name, info_hash, tags, total_size, created_at, source) in instance_data {
         let stats = faker.stats_snapshot();
         let state_str = match stats.state {
             FakerState::Paused => "paused",
@@ -669,7 +672,10 @@ pub async fn list_summaries(state: State<'_, AppState>) -> Result<Vec<InstanceSu
             leechers: stats.leechers,
             left: stats.left,
             torrent_completion: stats.torrent_completion,
-            source: "desktop".to_string(),
+            source: match source {
+                InstanceSource::Manual => "manual".to_string(),
+                InstanceSource::WatchFolder => "watch_folder".to_string(),
+            },
             created_at,
         });
     }

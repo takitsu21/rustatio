@@ -1,0 +1,23 @@
+[package]
+name = "rustatio-watch"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Shared watch folder engine for Rustatio"
+
+[dependencies]
+rustatio-core = { path = "../rustatio-core", features = ["native"] }
+async-trait = "0.1"
+serde = { version = "1.0", features = ["derive"] }
+tokio = { version = "1.48", features = ["sync", "time", "macros", "rt"], default-features = false }
+notify = "6.1"
+tracing = "0.1"
+hex = "0.4"
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

@@ -1,5 +1,6 @@
 <script>
   import Button from '$lib/components/ui/button.svelte';
+  import ConfirmDialog from '../common/ConfirmDialog.svelte';
   import Input from '$lib/components/ui/input.svelte';
   import Select from '$lib/components/ui/select.svelte';
   import GridTagPopover from './GridTagPopover.svelte';
@@ -11,16 +12,7 @@
     gridInstances,
     filteredGridInstances,
   } from '$lib/gridStore.js';
-  import {
-    Play,
-    Square,
-    Pause,
-    Trash2,
-    Upload,
-    Search,
-    ChevronDown,
-    AlertTriangle,
-  } from '@lucide/svelte';
+  import { Play, Square, Pause, Trash2, Upload, Search, ChevronDown } from '@lucide/svelte';
 
   let { onImport = () => {} } = $props();
 
@@ -350,52 +342,13 @@
   </div>
 </div>
 
-{#if deleteConfirmVisible && selectionCount > 0}
-  <div
-    class="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4"
-    onclick={cancelDelete}
-    onkeydown={e => e.key === 'Escape' && cancelDelete()}
-    role="dialog"
-    aria-modal="true"
-    aria-labelledby="grid-delete-confirm-title"
-    tabindex="-1"
-  >
-    <div
-      class="bg-card text-card-foreground rounded-xl shadow-2xl max-w-sm w-full p-5 border border-border"
-      onclick={e => e.stopPropagation()}
-      onkeydown={e => e.stopPropagation()}
-      role="presentation"
-    >
-      <div class="flex items-center gap-3 mb-3">
-        <div
-          class="w-10 h-10 bg-stat-danger/10 rounded-lg flex items-center justify-center shrink-0"
-        >
-          <AlertTriangle size={20} class="text-stat-danger" />
-        </div>
-        <div>
-          <h3 id="grid-delete-confirm-title" class="text-sm font-semibold text-foreground">
-            Delete {selectionCount} Instance{selectionCount !== 1 ? 's' : ''}
-          </h3>
-          <p class="text-xs text-muted-foreground mt-0.5">
-            This will permanently delete the selected instance{selectionCount !== 1 ? 's' : ''}.
-          </p>
-        </div>
-      </div>
-      <p class="text-xs text-muted-foreground mb-4">This action cannot be undone.</p>
-      <div class="flex justify-end gap-2">
-        <button
-          onclick={cancelDelete}
-          class="px-3 py-1.5 text-xs font-medium rounded-md border border-border hover:bg-muted transition-colors cursor-pointer"
-        >
-          Cancel
-        </button>
-        <button
-          onclick={confirmDelete}
-          class="px-3 py-1.5 text-xs font-medium rounded-md bg-stat-danger text-white hover:bg-stat-danger/90 transition-colors cursor-pointer"
-        >
-          Delete
-        </button>
-      </div>
-    </div>
-  </div>
-{/if}
+<ConfirmDialog
+  bind:open={deleteConfirmVisible}
+  title={`Delete ${selectionCount} Instance${selectionCount !== 1 ? 's' : ''}`}
+  message={`This will permanently delete the selected instance${selectionCount !== 1 ? 's' : ''}.\n\nThis action cannot be undone.`}
+  confirmLabel="Delete"
+  kind="danger"
+  titleId="grid-delete-confirm-title"
+  onCancel={cancelDelete}
+  onConfirm={confirmDelete}
+/>

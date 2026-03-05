@@ -16,18 +16,60 @@ pub struct PersistedInstance {
     pub updated_at: u64,
     #[serde(default)]
     pub tags: Vec<String>,
+    #[serde(default)]
+    pub from_watch_folder: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct PersistedState {
     pub instances: HashMap<u32, PersistedInstance>,
     pub next_instance_id: u32,
+    #[serde(default)]
+    pub default_config: Option<FakerConfig>,
+    #[serde(default)]
+    pub watch_settings: Option<WatchSettings>,
     pub version: u32,
 }
 
 impl PersistedState {
     pub fn new() -> Self {
-        Self { instances: HashMap::new(), next_instance_id: 1, version: 1 }
+        Self {
+            instances: HashMap::new(),
+            next_instance_id: 1,
+            default_config: None,
+            watch_settings: None,
+            version: 1,
+        }
+    }
+}
+
+const fn default_watch_max_depth() -> u32 {
+    1
+}
+
+fn default_watch_auto_start() -> bool {
+    std::env::var("WATCH_AUTO_START")
+        .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
+        .unwrap_or(false)
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct WatchSettings {
+    #[serde(default = "default_watch_max_depth")]
+    pub max_depth: u32,
+    #[serde(default = "default_watch_auto_start")]
+    pub auto_start: bool,
+    #[serde(default)]
+    pub watch_dir: Option<String>,
+}
+
+impl Default for WatchSettings {
+    fn default() -> Self {
+        Self {
+            max_depth: default_watch_max_depth(),
+            auto_start: default_watch_auto_start(),
+            watch_dir: None,
+        }
     }
 }
 

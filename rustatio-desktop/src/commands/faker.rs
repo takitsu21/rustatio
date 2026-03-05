@@ -1,5 +1,6 @@
 use rustatio_core::validation;
 use rustatio_core::{FakerConfig, FakerStats, RatioFaker, RatioFakerHandle, TorrentInfo};
+use rustatio_watch::InstanceSource;
 use std::sync::Arc;
 use tauri::{AppHandle, State};
 
@@ -41,7 +42,7 @@ pub async fn start_faker(
 
     // Check if instance already exists (restarting) - preserve cumulative stats
     let mut config_with_cumulative = config.clone();
-    let (existing_tags, created_at) = {
+    let (existing_tags, created_at, existing_source) = {
         let fakers = state.fakers.read().await;
         if let Some(existing) = fakers.get(&instance_id) {
             if existing.torrent.info_hash == torrent_info_hash {
@@ -56,6 +57,7 @@ pub async fn start_faker(
                     existing.cumulative_downloaded,
                     config_with_cumulative.completion_percent
                 );
+                (existing.tags.clone(), existing.created_at, existing.source)
             } else {
                 log_and_emit!(
                     &app,
@@ -65,10 +67,10 @@ pub async fn start_faker(
                     existing.torrent.name,
                     torrent.name
                 );
+                (existing.tags.clone(), existing.created_at, InstanceSource::Manual)
             }
-            (existing.tags.clone(), existing.created_at)
         } else {
-            (vec![], crate::state::now_secs())
+            (vec![], crate::state::now_secs(), InstanceSource::Manual)
         }
     };
 
@@ -109,6 +111,7 @@ pub async fn start_faker(
             cumulative_downloaded,
             tags: existing_tags,
             created_at,
+            source: existing_source,
         },
     );
     drop(fakers);

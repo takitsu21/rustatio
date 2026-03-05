@@ -5,6 +5,7 @@
   import Label from '$lib/components/ui/label.svelte';
   import Select from '$lib/components/ui/select.svelte';
   import Checkbox from '$lib/components/ui/checkbox.svelte';
+  import BaseModal from '../common/BaseModal.svelte';
   import { gridActions } from '$lib/gridStore.js';
   import { api, getRunMode } from '$lib/api.js';
   import FolderBrowser from './FolderBrowser.svelte';
@@ -428,12 +429,6 @@
     }
   }
 
-  function handleBackdropClick(event) {
-    if (event.target === event.currentTarget) {
-      close();
-    }
-  }
-
   function close() {
     isOpen = false;
     resetForm();
@@ -442,505 +437,497 @@
 
 {#if isOpen}
   <!-- Dialog -->
-  <div
-    class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
-    onclick={handleBackdropClick}
-    onkeydown={e => e.key === 'Escape' && close()}
-    role="dialog"
-    aria-modal="true"
-    tabindex="-1"
+  <BaseModal
+    bind:open={isOpen}
+    onClose={close}
+    maxWidthClass="max-w-2xl"
+    panelClass="max-h-[85vh] overflow-y-auto"
   >
-    <div
-      class="bg-card border border-border rounded-xl shadow-2xl max-w-2xl w-full max-h-[85vh] overflow-y-auto"
-    >
-      <!-- Header -->
-      <div class="flex items-center justify-between p-4 border-b border-border">
-        <h2 class="text-lg font-semibold text-foreground">Import Torrents</h2>
+    <!-- Header -->
+    <div class="flex items-center justify-between p-4 border-b border-border">
+      <h2 class="text-lg font-semibold text-foreground">Import Torrents</h2>
+      <button
+        onclick={close}
+        class="p-1 rounded hover:bg-muted bg-transparent border-0 cursor-pointer"
+        aria-label="Close"
+      >
+        <X size={18} class="text-muted-foreground" />
+      </button>
+    </div>
+
+    <!-- Body -->
+    <div class="p-4 space-y-4">
+      <!-- Import Mode Tabs -->
+      <div class="flex gap-1 bg-muted/50 rounded-lg p-1">
         <button
-          onclick={close}
-          class="p-1 rounded hover:bg-muted bg-transparent border-0 cursor-pointer"
-          aria-label="Close"
+          class={cn(
+            'flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors border-0 cursor-pointer',
+            importMode === 'files'
+              ? 'bg-background text-foreground shadow-sm'
+              : 'text-muted-foreground hover:text-foreground bg-transparent'
+          )}
+          onclick={() => (importMode = 'files')}
         >
-          <X size={18} class="text-muted-foreground" />
+          <Upload size={14} />
+          Files
+        </button>
+        <button
+          class={cn(
+            'flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors border-0 cursor-pointer',
+            importMode === 'folder'
+              ? 'bg-background text-foreground shadow-sm'
+              : 'text-muted-foreground hover:text-foreground bg-transparent'
+          )}
+          onclick={() => (importMode = 'folder')}
+        >
+          <FolderOpen size={14} />
+          Folder
         </button>
       </div>
 
-      <!-- Body -->
-      <div class="p-4 space-y-4">
-        <!-- Import Mode Tabs -->
-        <div class="flex gap-1 bg-muted/50 rounded-lg p-1">
-          <button
-            class={cn(
-              'flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors border-0 cursor-pointer',
-              importMode === 'files'
-                ? 'bg-background text-foreground shadow-sm'
-                : 'text-muted-foreground hover:text-foreground bg-transparent'
-            )}
-            onclick={() => (importMode = 'files')}
+      <!-- File Upload Area -->
+      {#if importMode === 'files'}
+        <div
+          role="region"
+          aria-label="Drop zone for torrent files"
+          class="border-2 border-dashed border-border rounded-lg p-6 text-center hover:border-primary/50 transition-colors"
+          ondrop={handleDrop}
+          ondragover={handleDragOver}
+        >
+          <Upload size={24} class="mx-auto mb-2 text-muted-foreground" />
+          <p class="text-sm text-muted-foreground mb-2">
+            {isTauri
+              ? 'Click to browse for .torrent files'
+              : 'Drag & drop .torrent files here, or click to browse'}
+          </p>
+          {#if !isTauri}
+            <input
+              type="file"
+              accept=".torrent"
+              multiple
+              onchange={handleFileSelect}
+              class="hidden"
+              id="grid-file-input"
+            />
+          {/if}
+          <Button
+            size="sm"
+            variant="secondary"
+            class="cursor-pointer"
+            onclick={isTauri
+              ? handleFileSelect
+              : () => document.getElementById('grid-file-input')?.click()}
           >
-            <Upload size={14} />
-            Files
-          </button>
-          <button
-            class={cn(
-              'flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors border-0 cursor-pointer',
-              importMode === 'folder'
-                ? 'bg-background text-foreground shadow-sm'
-                : 'text-muted-foreground hover:text-foreground bg-transparent'
-            )}
-            onclick={() => (importMode = 'folder')}
-          >
-            <FolderOpen size={14} />
-            Folder
-          </button>
+            {#snippet children()}
+              Browse Files
+            {/snippet}
+          </Button>
         </div>
 
-        <!-- File Upload Area -->
-        {#if importMode === 'files'}
+        {#if selectedFiles.length > 0}
+          <div class="max-h-32 overflow-y-auto space-y-1">
+            {#each selectedFiles as file, i (file.name + i)}
+              <div class="flex items-center justify-between px-2 py-1 bg-muted/50 rounded text-xs">
+                <span class="flex items-center gap-1.5 truncate">
+                  <FileText size={12} class="text-muted-foreground flex-shrink-0" />
+                  {file.name}
+                </span>
+                <button
+                  onclick={() => removeFile(i)}
+                  class="p-0.5 rounded hover:bg-destructive/20 bg-transparent border-0 cursor-pointer"
+                >
+                  <X size={12} class="text-muted-foreground" />
+                </button>
+              </div>
+            {/each}
+            <p class="text-xs text-muted-foreground">{selectedFiles.length} file(s) selected</p>
+          </div>
+        {/if}
+      {:else}
+        <!-- Folder source toggle (server mode only) -->
+        {#if isServer}
+          <div class="flex gap-1 bg-muted/50 rounded-lg p-1">
+            <button
+              class={cn(
+                'flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-colors border-0 cursor-pointer',
+                folderSource === 'local'
+                  ? 'bg-background text-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground bg-transparent'
+              )}
+              onclick={() => (folderSource = 'local')}
+            >
+              Local Computer
+            </button>
+            <button
+              class={cn(
+                'flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-colors border-0 cursor-pointer',
+                folderSource === 'server'
+                  ? 'bg-background text-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground bg-transparent'
+              )}
+              onclick={() => (folderSource = 'server')}
+            >
+              Server Folder
+            </button>
+          </div>
+        {/if}
+
+        {#if useLocalFolderPicker}
+          <!-- Local folder: use webkitdirectory to select from the user's machine -->
           <div
             role="region"
-            aria-label="Drop zone for torrent files"
+            aria-label="Select a folder from your computer"
             class="border-2 border-dashed border-border rounded-lg p-6 text-center hover:border-primary/50 transition-colors"
-            ondrop={handleDrop}
-            ondragover={handleDragOver}
           >
-            <Upload size={24} class="mx-auto mb-2 text-muted-foreground" />
-            <p class="text-sm text-muted-foreground mb-2">
-              {isTauri
-                ? 'Click to browse for .torrent files'
-                : 'Drag & drop .torrent files here, or click to browse'}
-            </p>
-            {#if !isTauri}
-              <input
-                type="file"
-                accept=".torrent"
-                multiple
-                onchange={handleFileSelect}
-                class="hidden"
-                id="grid-file-input"
-              />
-            {/if}
+            <FolderOpen size={24} class="mx-auto mb-2 text-muted-foreground" />
+            <p class="text-sm text-muted-foreground mb-2">Select a folder from your computer</p>
+            <input
+              type="file"
+              webkitdirectory
+              multiple
+              onchange={handleLocalFolderSelect}
+              class="hidden"
+              id="grid-local-folder-input"
+            />
             <Button
               size="sm"
               variant="secondary"
               class="cursor-pointer"
-              onclick={isTauri
-                ? handleFileSelect
-                : () => document.getElementById('grid-file-input')?.click()}
+              onclick={() => document.getElementById('grid-local-folder-input')?.click()}
             >
               {#snippet children()}
-                Browse Files
+                Browse Folder
               {/snippet}
             </Button>
           </div>
 
-          {#if selectedFiles.length > 0}
+          {#if localFolderFiles.length > 0}
             <div class="max-h-32 overflow-y-auto space-y-1">
-              {#each selectedFiles as file, i (file.name + i)}
-                <div
-                  class="flex items-center justify-between px-2 py-1 bg-muted/50 rounded text-xs"
-                >
-                  <span class="flex items-center gap-1.5 truncate">
-                    <FileText size={12} class="text-muted-foreground flex-shrink-0" />
-                    {file.name}
-                  </span>
-                  <button
-                    onclick={() => removeFile(i)}
-                    class="p-0.5 rounded hover:bg-destructive/20 bg-transparent border-0 cursor-pointer"
-                  >
-                    <X size={12} class="text-muted-foreground" />
-                  </button>
+              {#each localFolderFiles as file, i (file.name + i)}
+                <div class="flex items-center gap-1.5 px-2 py-1 bg-muted/50 rounded text-xs">
+                  <FileText size={12} class="text-muted-foreground flex-shrink-0" />
+                  <span class="truncate">{file.name}</span>
                 </div>
               {/each}
-              <p class="text-xs text-muted-foreground">{selectedFiles.length} file(s) selected</p>
-            </div>
-          {/if}
-        {:else}
-          <!-- Folder source toggle (server mode only) -->
-          {#if isServer}
-            <div class="flex gap-1 bg-muted/50 rounded-lg p-1">
-              <button
-                class={cn(
-                  'flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-colors border-0 cursor-pointer',
-                  folderSource === 'local'
-                    ? 'bg-background text-foreground shadow-sm'
-                    : 'text-muted-foreground hover:text-foreground bg-transparent'
-                )}
-                onclick={() => (folderSource = 'local')}
-              >
-                Local Computer
-              </button>
-              <button
-                class={cn(
-                  'flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-colors border-0 cursor-pointer',
-                  folderSource === 'server'
-                    ? 'bg-background text-foreground shadow-sm'
-                    : 'text-muted-foreground hover:text-foreground bg-transparent'
-                )}
-                onclick={() => (folderSource = 'server')}
-              >
-                Server Folder
-              </button>
-            </div>
-          {/if}
-
-          {#if useLocalFolderPicker}
-            <!-- Local folder: use webkitdirectory to select from the user's machine -->
-            <div
-              role="region"
-              aria-label="Select a folder from your computer"
-              class="border-2 border-dashed border-border rounded-lg p-6 text-center hover:border-primary/50 transition-colors"
-            >
-              <FolderOpen size={24} class="mx-auto mb-2 text-muted-foreground" />
-              <p class="text-sm text-muted-foreground mb-2">Select a folder from your computer</p>
-              <input
-                type="file"
-                webkitdirectory
-                multiple
-                onchange={handleLocalFolderSelect}
-                class="hidden"
-                id="grid-local-folder-input"
-              />
-              <Button
-                size="sm"
-                variant="secondary"
-                class="cursor-pointer"
-                onclick={() => document.getElementById('grid-local-folder-input')?.click()}
-              >
-                {#snippet children()}
-                  Browse Folder
-                {/snippet}
-              </Button>
-            </div>
-
-            {#if localFolderFiles.length > 0}
-              <div class="max-h-32 overflow-y-auto space-y-1">
-                {#each localFolderFiles as file, i (file.name + i)}
-                  <div class="flex items-center gap-1.5 px-2 py-1 bg-muted/50 rounded text-xs">
-                    <FileText size={12} class="text-muted-foreground flex-shrink-0" />
-                    <span class="truncate">{file.name}</span>
-                  </div>
-                {/each}
-                <p class="text-xs text-muted-foreground">
-                  {localFolderFiles.length} .torrent file(s) found
-                </p>
-              </div>
-            {/if}
-          {:else}
-            <!-- Server folder or Tauri: path-based folder import -->
-            <div>
-              <Label>Folder Path</Label>
-              <div class="flex gap-2 mt-1">
-                <Input bind:value={folderPath} placeholder="/path/to/torrents" class="flex-1" />
-                {#if isTauri || isServer}
-                  <Button size="sm" variant="secondary" onclick={handleBrowseFolder}>
-                    {#snippet children()}
-                      Browse
-                    {/snippet}
-                  </Button>
-                {/if}
-              </div>
-              <p class="text-xs text-muted-foreground mt-1">
-                All .torrent files in this {isServer ? 'server ' : ''}directory will be imported
+              <p class="text-xs text-muted-foreground">
+                {localFolderFiles.length} .torrent file(s) found
               </p>
             </div>
           {/if}
-        {/if}
-
-        <!-- Preset Selection -->
-        {#if allPresets.length > 0}
+        {:else}
+          <!-- Server folder or Tauri: path-based folder import -->
           <div>
-            <Label>Preset</Label>
-            <div class="relative mt-1" bind:this={presetDropdownRef}>
-              <button
-                type="button"
-                onclick={() => (presetDropdownOpen = !presetDropdownOpen)}
-                class="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-              >
-                <span class="flex items-center gap-2">
-                  {#if selectedPresetId}
-                    {@const preset = allPresets.find(p => p.id === selectedPresetId)}
-                    {#if preset}
-                      <PresetIcon icon={preset.icon} size={16} class="text-primary" />
-                      <span>{preset.name}</span>
-                    {/if}
-                  {:else}
-                    <span class="text-muted-foreground">None (manual config)</span>
-                  {/if}
-                </span>
-                <ChevronDown
-                  size={16}
-                  class="text-muted-foreground transition-transform {presetDropdownOpen
-                    ? 'rotate-180'
-                    : ''}"
-                />
-              </button>
+            <Label>Folder Path</Label>
+            <div class="flex gap-2 mt-1">
+              <Input bind:value={folderPath} placeholder="/path/to/torrents" class="flex-1" />
+              {#if isTauri || isServer}
+                <Button size="sm" variant="secondary" onclick={handleBrowseFolder}>
+                  {#snippet children()}
+                    Browse
+                  {/snippet}
+                </Button>
+              {/if}
+            </div>
+            <p class="text-xs text-muted-foreground mt-1">
+              All .torrent files in this {isServer ? 'server ' : ''}directory will be imported
+            </p>
+          </div>
+        {/if}
+      {/if}
 
-              {#if presetDropdownOpen}
-                <div
-                  class="absolute z-50 mt-1 w-full rounded-md border border-border bg-popover shadow-md max-h-48 overflow-y-auto"
+      <!-- Preset Selection -->
+      {#if allPresets.length > 0}
+        <div>
+          <Label>Preset</Label>
+          <div class="relative mt-1" bind:this={presetDropdownRef}>
+            <button
+              type="button"
+              onclick={() => (presetDropdownOpen = !presetDropdownOpen)}
+              class="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+            >
+              <span class="flex items-center gap-2">
+                {#if selectedPresetId}
+                  {@const preset = allPresets.find(p => p.id === selectedPresetId)}
+                  {#if preset}
+                    <PresetIcon icon={preset.icon} size={16} class="text-primary" />
+                    <span>{preset.name}</span>
+                  {/if}
+                {:else}
+                  <span class="text-muted-foreground">None (manual config)</span>
+                {/if}
+              </span>
+              <ChevronDown
+                size={16}
+                class="text-muted-foreground transition-transform {presetDropdownOpen
+                  ? 'rotate-180'
+                  : ''}"
+              />
+            </button>
+
+            {#if presetDropdownOpen}
+              <div
+                class="absolute z-50 mt-1 w-full rounded-md border border-border bg-popover shadow-md max-h-48 overflow-y-auto"
+              >
+                <button
+                  type="button"
+                  onclick={() => selectPreset('')}
+                  class="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-muted transition-colors first:rounded-t-md {!selectedPresetId
+                    ? 'bg-muted'
+                    : ''}"
                 >
+                  <span class="text-muted-foreground">None (manual config)</span>
+                </button>
+                {#each allPresets as preset (preset.id)}
                   <button
                     type="button"
-                    onclick={() => selectPreset('')}
-                    class="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-muted transition-colors first:rounded-t-md {!selectedPresetId
+                    onclick={() => selectPreset(preset.id)}
+                    class="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-muted transition-colors last:rounded-b-md {preset.id ===
+                    selectedPresetId
                       ? 'bg-muted'
                       : ''}"
                   >
-                    <span class="text-muted-foreground">None (manual config)</span>
+                    <PresetIcon icon={preset.icon} size={16} class="text-primary flex-shrink-0" />
+                    <span>{preset.name}</span>
                   </button>
-                  {#each allPresets as preset (preset.id)}
-                    <button
-                      type="button"
-                      onclick={() => selectPreset(preset.id)}
-                      class="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-muted transition-colors last:rounded-b-md {preset.id ===
-                      selectedPresetId
-                        ? 'bg-muted'
-                        : ''}"
-                    >
-                      <PresetIcon icon={preset.icon} size={16} class="text-primary flex-shrink-0" />
-                      <span>{preset.name}</span>
-                    </button>
-                  {/each}
-                </div>
-              {/if}
-            </div>
-            {#if selectedPresetId}
-              {@const preset = allPresets.find(p => p.id === selectedPresetId)}
-              {#if preset?.description}
-                <p class="text-xs text-muted-foreground mt-1">{preset.description}</p>
-              {/if}
-            {/if}
-          </div>
-        {/if}
-
-        <!-- Mode Selection -->
-        <div>
-          <Label>Mode</Label>
-          <Select bind:value={mode} class="mt-1">
-            {#snippet children()}
-              <option value="seed">Seed (100% complete)</option>
-              <option value="leech">Leech (0% complete)</option>
-              <option value="custom">Custom</option>
-            {/snippet}
-          </Select>
-          {#if mode === 'custom'}
-            <div class="mt-2">
-              <Label>Completion %</Label>
-              <Input type="number" bind:value={customPercent} min="0" max="100" class="mt-1" />
-            </div>
-          {/if}
-        </div>
-
-        <!-- Rates -->
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <Label>Upload Rate (KB/s)</Label>
-            <Input type="number" bind:value={uploadRate} min="0" step="1" class="mt-1 text-xs" />
-          </div>
-          <div>
-            <Label>Download Rate (KB/s)</Label>
-            <Input type="number" bind:value={downloadRate} min="0" step="1" class="mt-1 text-xs" />
-          </div>
-        </div>
-
-        <!-- Timing -->
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <Label>Refresh Interval (sec)</Label>
-            <Input
-              type="number"
-              bind:value={updateIntervalSeconds}
-              min="1"
-              max="300"
-              step="1"
-              class="mt-1 text-xs"
-              onblur={handleRefreshIntervalBlur}
-            />
-          </div>
-          <div>
-            <Label>Scrape Interval (sec)</Label>
-            <Input
-              type="number"
-              bind:value={scrapeInterval}
-              min="10"
-              max="3600"
-              step="1"
-              class="mt-1 text-xs"
-              onblur={handleScrapeIntervalBlur}
-            />
-          </div>
-        </div>
-
-        <!-- Client Selection -->
-        <div>
-          <div class="flex items-center gap-2 mb-2">
-            <ClientIcon clientId={selectedClient} size={16} />
-            <Label>Client</Label>
-          </div>
-          <div class="grid grid-cols-3 gap-3">
-            <ClientSelect clients={clientTypes} bind:value={selectedClient} />
-            {#if selectedClient && clientVersions.length > 0}
-              <VersionSelect versions={clientVersions} bind:value={selectedVersion} />
-            {/if}
-            <div>
-              <Input
-                type="number"
-                bind:value={port}
-                min="1024"
-                max="65535"
-                placeholder="Port"
-                class="h-9"
-              />
-            </div>
-          </div>
-        </div>
-
-        <!-- Tags -->
-        <div>
-          <Label>Tags (comma-separated)</Label>
-          <Input bind:value={tagsInput} placeholder="tag1, tag2, tag3" class="mt-1" />
-        </div>
-
-        <!-- Auto Start -->
-        <div class="flex items-center gap-3">
-          <div class="flex items-center gap-2">
-            <Checkbox bind:checked={autoStart} id="grid-auto-start" />
-            <Label for="grid-auto-start" class="cursor-pointer">Auto-start after import</Label>
-          </div>
-          {#if autoStart}
-            <div class="flex items-center gap-2">
-              <Label>Stagger (sec)</Label>
-              <Input
-                type="number"
-                bind:value={staggerSecs}
-                min="0"
-                max="300"
-                class="h-8 w-20 text-xs"
-              />
-            </div>
-          {/if}
-        </div>
-
-        <!-- Advanced Settings (Collapsible) -->
-        <div class="border border-border rounded-lg overflow-hidden">
-          <button
-            class="flex items-center justify-between w-full p-3 bg-muted/30 hover:bg-muted/50 transition-colors border-0 cursor-pointer"
-            onclick={() => (advancedOpen = !advancedOpen)}
-          >
-            <span class="flex items-center gap-2 text-sm font-medium">
-              <Settings size={16} class="text-muted-foreground" />
-              Advanced Settings
-              {#if advancedActiveCount > 0}
-                <span class="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full">
-                  {advancedActiveCount} active
-                </span>
-              {/if}
-            </span>
-            <ChevronDown
-              size={16}
-              class="text-muted-foreground transition-transform {advancedOpen ? 'rotate-180' : ''}"
-            />
-          </button>
-
-          {#if advancedOpen}
-            <div class="p-4 space-y-4 border-t border-border">
-              <RandomizationSettings
-                bind:enabled={randomizeRates}
-                bind:rangePercent={randomRangePercent}
-                uploadRate={parseNumber(uploadRate, 50)}
-                downloadRate={parseNumber(downloadRate, 0)}
-              />
-
-              <ProgressiveRateSettings
-                bind:enabled={progressiveRatesEnabled}
-                bind:durationHours={progressiveDurationHours}
-                bind:targetUploadRate
-                bind:targetDownloadRate
-                uploadRate={parseNumber(uploadRate, 50)}
-                downloadRate={parseNumber(downloadRate, 0)}
-              />
-
-              <div>
-                <span class="text-sm font-medium mb-2 block">Stop & Idle Conditions</span>
-                <StopConditionSettings
-                  bind:stopAtRatioEnabled
-                  bind:stopAtRatio
-                  bind:stopAtUploadedEnabled
-                  bind:stopAtUploadedGB
-                  bind:stopAtDownloadedEnabled
-                  bind:stopAtDownloadedGB
-                  bind:stopAtSeedTimeEnabled
-                  bind:stopAtSeedTimeHours
-                  bind:idleWhenNoLeechers
-                  bind:idleWhenNoSeeders
-                  {completionPercent}
-                />
+                {/each}
               </div>
-            </div>
+            {/if}
+          </div>
+          {#if selectedPresetId}
+            {@const preset = allPresets.find(p => p.id === selectedPresetId)}
+            {#if preset?.description}
+              <p class="text-xs text-muted-foreground mt-1">{preset.description}</p>
+            {/if}
           {/if}
         </div>
+      {/if}
 
-        <!-- Import Result -->
-        {#if importResult}
-          <div
-            class={cn(
-              'p-3 rounded-lg text-sm',
-              importResult.error
-                ? 'bg-destructive/10 text-destructive'
-                : 'bg-stat-upload/10 text-stat-upload'
-            )}
-          >
-            {#if importResult.error}
-              {importResult.error}
-            {:else}
-              {importResult.imported?.length || 0} torrent(s) imported successfully
-              {#if importResult.errors?.length > 0}
-                <div class="mt-1 text-xs text-stat-ratio">
-                  {importResult.errors.length} error(s):
-                  {#each importResult.errors.slice(0, 3) as err, idx (idx)}
-                    <div>{err}</div>
-                  {/each}
-                  {#if importResult.errors.length > 3}
-                    <div>...and {importResult.errors.length - 3} more</div>
-                  {/if}
-                </div>
-              {/if}
-            {/if}
+      <!-- Mode Selection -->
+      <div>
+        <Label>Mode</Label>
+        <Select bind:value={mode} class="mt-1">
+          {#snippet children()}
+            <option value="seed">Seed (100% complete)</option>
+            <option value="leech">Leech (0% complete)</option>
+            <option value="custom">Custom</option>
+          {/snippet}
+        </Select>
+        {#if mode === 'custom'}
+          <div class="mt-2">
+            <Label>Completion %</Label>
+            <Input type="number" bind:value={customPercent} min="0" max="100" class="mt-1" />
           </div>
         {/if}
       </div>
 
-      <!-- Footer -->
-      <div class="flex items-center justify-end gap-2 p-4 border-t border-border">
-        <Button onclick={close} size="sm" variant="secondary">
-          {#snippet children()}
-            Cancel
-          {/snippet}
-        </Button>
-        <Button
-          onclick={handleImport}
-          size="sm"
-          disabled={importing ||
-            (importMode === 'files' && selectedFiles.length === 0) ||
-            (importMode === 'folder' && useLocalFolderPicker && localFolderFiles.length === 0) ||
-            (importMode === 'folder' && !useLocalFolderPicker && !folderPath.trim())}
-        >
-          {#snippet children()}
-            {#if importing}
-              Importing...
-            {:else if importMode === 'files'}
-              Import {selectedFiles.length} File(s)
-            {:else if useLocalFolderPicker}
-              Import {localFolderFiles.length} File(s)
-            {:else}
-              Import from Folder
-            {/if}
-          {/snippet}
-        </Button>
+      <!-- Rates -->
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <Label>Upload Rate (KB/s)</Label>
+          <Input type="number" bind:value={uploadRate} min="0" step="1" class="mt-1 text-xs" />
+        </div>
+        <div>
+          <Label>Download Rate (KB/s)</Label>
+          <Input type="number" bind:value={downloadRate} min="0" step="1" class="mt-1 text-xs" />
+        </div>
       </div>
+
+      <!-- Timing -->
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <Label>Refresh Interval (sec)</Label>
+          <Input
+            type="number"
+            bind:value={updateIntervalSeconds}
+            min="1"
+            max="300"
+            step="1"
+            class="mt-1 text-xs"
+            onblur={handleRefreshIntervalBlur}
+          />
+        </div>
+        <div>
+          <Label>Scrape Interval (sec)</Label>
+          <Input
+            type="number"
+            bind:value={scrapeInterval}
+            min="10"
+            max="3600"
+            step="1"
+            class="mt-1 text-xs"
+            onblur={handleScrapeIntervalBlur}
+          />
+        </div>
+      </div>
+
+      <!-- Client Selection -->
+      <div>
+        <div class="flex items-center gap-2 mb-2">
+          <ClientIcon clientId={selectedClient} size={16} />
+          <Label>Client</Label>
+        </div>
+        <div class="grid grid-cols-3 gap-3">
+          <ClientSelect clients={clientTypes} bind:value={selectedClient} />
+          {#if selectedClient && clientVersions.length > 0}
+            <VersionSelect versions={clientVersions} bind:value={selectedVersion} />
+          {/if}
+          <div>
+            <Input
+              type="number"
+              bind:value={port}
+              min="1024"
+              max="65535"
+              placeholder="Port"
+              class="h-9"
+            />
+          </div>
+        </div>
+      </div>
+
+      <!-- Tags -->
+      <div>
+        <Label>Tags (comma-separated)</Label>
+        <Input bind:value={tagsInput} placeholder="tag1, tag2, tag3" class="mt-1" />
+      </div>
+
+      <!-- Auto Start -->
+      <div class="flex items-center gap-3">
+        <div class="flex items-center gap-2">
+          <Checkbox bind:checked={autoStart} id="grid-auto-start" />
+          <Label for="grid-auto-start" class="cursor-pointer">Auto-start after import</Label>
+        </div>
+        {#if autoStart}
+          <div class="flex items-center gap-2">
+            <Label>Stagger (sec)</Label>
+            <Input
+              type="number"
+              bind:value={staggerSecs}
+              min="0"
+              max="300"
+              class="h-8 w-20 text-xs"
+            />
+          </div>
+        {/if}
+      </div>
+
+      <!-- Advanced Settings (Collapsible) -->
+      <div class="border border-border rounded-lg overflow-hidden">
+        <button
+          class="flex items-center justify-between w-full p-3 bg-muted/30 hover:bg-muted/50 transition-colors border-0 cursor-pointer"
+          onclick={() => (advancedOpen = !advancedOpen)}
+        >
+          <span class="flex items-center gap-2 text-sm font-medium">
+            <Settings size={16} class="text-muted-foreground" />
+            Advanced Settings
+            {#if advancedActiveCount > 0}
+              <span class="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full">
+                {advancedActiveCount} active
+              </span>
+            {/if}
+          </span>
+          <ChevronDown
+            size={16}
+            class="text-muted-foreground transition-transform {advancedOpen ? 'rotate-180' : ''}"
+          />
+        </button>
+
+        {#if advancedOpen}
+          <div class="p-4 space-y-4 border-t border-border">
+            <RandomizationSettings
+              bind:enabled={randomizeRates}
+              bind:rangePercent={randomRangePercent}
+              uploadRate={parseNumber(uploadRate, 50)}
+              downloadRate={parseNumber(downloadRate, 0)}
+            />
+
+            <ProgressiveRateSettings
+              bind:enabled={progressiveRatesEnabled}
+              bind:durationHours={progressiveDurationHours}
+              bind:targetUploadRate
+              bind:targetDownloadRate
+              uploadRate={parseNumber(uploadRate, 50)}
+              downloadRate={parseNumber(downloadRate, 0)}
+            />
+
+            <div>
+              <span class="text-sm font-medium mb-2 block">Stop & Idle Conditions</span>
+              <StopConditionSettings
+                bind:stopAtRatioEnabled
+                bind:stopAtRatio
+                bind:stopAtUploadedEnabled
+                bind:stopAtUploadedGB
+                bind:stopAtDownloadedEnabled
+                bind:stopAtDownloadedGB
+                bind:stopAtSeedTimeEnabled
+                bind:stopAtSeedTimeHours
+                bind:idleWhenNoLeechers
+                bind:idleWhenNoSeeders
+                {completionPercent}
+              />
+            </div>
+          </div>
+        {/if}
+      </div>
+
+      <!-- Import Result -->
+      {#if importResult}
+        <div
+          class={cn(
+            'p-3 rounded-lg text-sm',
+            importResult.error
+              ? 'bg-destructive/10 text-destructive'
+              : 'bg-stat-upload/10 text-stat-upload'
+          )}
+        >
+          {#if importResult.error}
+            {importResult.error}
+          {:else}
+            {importResult.imported?.length || 0} torrent(s) imported successfully
+            {#if importResult.errors?.length > 0}
+              <div class="mt-1 text-xs text-stat-ratio">
+                {importResult.errors.length} error(s):
+                {#each importResult.errors.slice(0, 3) as err, idx (idx)}
+                  <div>{err}</div>
+                {/each}
+                {#if importResult.errors.length > 3}
+                  <div>...and {importResult.errors.length - 3} more</div>
+                {/if}
+              </div>
+            {/if}
+          {/if}
+        </div>
+      {/if}
     </div>
-  </div>
+
+    <!-- Footer -->
+    <div class="flex items-center justify-end gap-2 p-4 border-t border-border">
+      <Button onclick={close} size="sm" variant="secondary">
+        {#snippet children()}
+          Cancel
+        {/snippet}
+      </Button>
+      <Button
+        onclick={handleImport}
+        size="sm"
+        disabled={importing ||
+          (importMode === 'files' && selectedFiles.length === 0) ||
+          (importMode === 'folder' && useLocalFolderPicker && localFolderFiles.length === 0) ||
+          (importMode === 'folder' && !useLocalFolderPicker && !folderPath.trim())}
+      >
+        {#snippet children()}
+          {#if importing}
+            Importing...
+          {:else if importMode === 'files'}
+            Import {selectedFiles.length} File(s)
+          {:else if useLocalFolderPicker}
+            Import {localFolderFiles.length} File(s)
+          {:else}
+            Import from Folder
+          {/if}
+        {/snippet}
+      </Button>
+    </div>
+  </BaseModal>
 
   <FolderBrowser bind:isOpen={folderBrowserOpen} onSelect={handleFolderSelected} />
 {/if}

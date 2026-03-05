@@ -1,20 +1,87 @@
-use super::lifecycle::InstanceLifecycle;
-use super::persistence::InstanceSource;
-use super::state::AppState;
-use notify::{Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
-use rustatio_core::TorrentSummary;
+use crate::services::lifecycle::InstanceLifecycle;
+use crate::services::persistence::InstanceSource;
+use crate::services::state::AppState;
+use rustatio_watch::{
+    EngineConfig, InstanceSource as WatchSource, InstanceState, NewInstance, WatchEngine,
+    WatchService as EngineWatchService,
+};
 use serde::Serialize;
-use std::collections::{HashMap, HashSet};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
-use tokio::sync::{mpsc, RwLock};
 use utoipa::ToSchema;
+
+fn env_bool(name: &str, default: bool) -> bool {
+    std::env::var(name).map(|v| v.eq_ignore_ascii_case("true") || v == "1").unwrap_or(default)
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct WatchStatus {
+    pub enabled: bool,
+    pub watch_dir: String,
+    pub auto_start: bool,
+    pub file_count: usize,
+    pub loaded_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct WatchedFile {
+    pub filename: String,
+    pub path: String,
+    pub status: WatchedFileStatus,
+    pub info_hash: Option<String>,
+    pub name: Option<String>,
+    pub size: u64,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq, ToSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum WatchedFileStatus {
+    Pending,
+    Loaded,
+    Invalid,
+}
+
+impl From<rustatio_watch::WatchStatus> for WatchStatus {
+    fn from(status: rustatio_watch::WatchStatus) -> Self {
+        Self {
+            enabled: status.enabled,
+            watch_dir: status.watch_dir,
+            auto_start: status.auto_start,
+            file_count: status.file_count,
+            loaded_count: status.loaded_count,
+        }
+    }
+}
+
+impl From<rustatio_watch::WatchedFileStatus> for WatchedFileStatus {
+    fn from(status: rustatio_watch::WatchedFileStatus) -> Self {
+        match status {
+            rustatio_watch::WatchedFileStatus::Pending => Self::Pending,
+            rustatio_watch::WatchedFileStatus::Loaded => Self::Loaded,
+            rustatio_watch::WatchedFileStatus::Invalid => Self::Invalid,
+        }
+    }
+}
+
+impl From<rustatio_watch::WatchedFile> for WatchedFile {
+    fn from(file: rustatio_watch::WatchedFile) -> Self {
+        Self {
+            filename: file.filename,
+            path: file.path,
+            status: file.status.into(),
+            info_hash: file.info_hash,
+            name: file.name,
+            size: file.size,
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct WatchConfig {
     pub watch_dir: PathBuf,
     pub auto_start: bool,
     pub enabled: bool,
+    pub max_depth: u32,
 }
 
 #[derive(Debug, Clone)]
@@ -28,9 +95,12 @@ impl WatchConfig {
         let watch_dir = std::env::var("WATCH_DIR").unwrap_or_else(|_| "/torrents".to_string());
         let watch_path = PathBuf::from(&watch_dir);
 
-        let auto_start = std::env::var("WATCH_AUTO_START")
-            .map(|v| v.to_lowercase() == "true" || v == "1")
-            .unwrap_or(false);
+        let auto_start = env_bool("WATCH_AUTO_START", false);
+
+        let max_depth = std::env::var("WATCH_MAX_DEPTH")
+            .ok()
+            .and_then(|value| value.parse::<u32>().ok())
+            .unwrap_or(1);
 
         let auto_detect = || {
             if watch_path.exists() && watch_path.is_dir() {
@@ -56,660 +126,160 @@ impl WatchConfig {
             },
         );
 
-        (Self { watch_dir: watch_path, auto_start, enabled }, disabled_reason)
+        (Self { watch_dir: watch_path, auto_start, enabled, max_depth }, disabled_reason)
     }
 }
 
-#[derive(Debug, Clone, Serialize, ToSchema)]
-pub struct WatchedFile {
-    pub filename: String,
-    pub path: String,
-    pub status: WatchedFileStatus,
-    pub info_hash: Option<String>,
-    pub name: Option<String>,
-    pub size: u64,
-}
-
-#[derive(Debug, Clone, Serialize, PartialEq, Eq, ToSchema)]
-#[serde(rename_all = "lowercase")]
-pub enum WatchedFileStatus {
-    Pending,
-    Loaded,
-    Invalid,
-}
-
-#[derive(Debug, Clone, Serialize, ToSchema)]
-pub struct WatchStatus {
-    pub enabled: bool,
-    pub watch_dir: String,
-    pub auto_start: bool,
-    pub file_count: usize,
-    pub loaded_count: usize,
-}
-
-pub struct WatchService {
-    config: WatchConfig,
+pub struct ServerWatchEngine {
     state: AppState,
-    loaded_hashes: Arc<RwLock<HashSet<[u8; 20]>>>,
-    path_to_hash: Arc<RwLock<HashMap<PathBuf, [u8; 20]>>>,
-    shutdown_tx: Option<mpsc::Sender<()>>,
 }
 
-impl WatchService {
-    pub fn new(config: WatchConfig, state: AppState) -> Self {
-        Self {
-            config,
-            state,
-            loaded_hashes: Arc::new(RwLock::new(HashSet::new())),
-            path_to_hash: Arc::new(RwLock::new(HashMap::new())),
-            shutdown_tx: None,
-        }
+impl ServerWatchEngine {
+    pub const fn new(state: AppState) -> Self {
+        Self { state }
     }
+}
 
-    /// Initialize loaded hashes from existing instances and auto-start watch folder instances
-    pub async fn init_from_state(&self) {
+#[async_trait::async_trait]
+impl WatchEngine for ServerWatchEngine {
+    async fn list_instances(&self) -> Vec<InstanceState> {
         let instances = self.state.list_instances().await;
-        let mut hashes = self.loaded_hashes.write().await;
+        instances
+            .into_iter()
+            .map(|inst| InstanceState {
+                id: inst.id,
+                info_hash: inst.torrent.info_hash,
+                source: match inst.source {
+                    InstanceSource::Manual => WatchSource::Manual,
+                    InstanceSource::WatchFolder => WatchSource::WatchFolder,
+                },
+                state: match inst.stats.state {
+                    rustatio_core::FakerState::Paused => "paused",
+                    _ if inst.stats.is_idling => "idle",
+                    rustatio_core::FakerState::Idle => "idle",
+                    rustatio_core::FakerState::Starting => "starting",
+                    rustatio_core::FakerState::Running => "running",
+                    rustatio_core::FakerState::Stopping => "stopping",
+                    rustatio_core::FakerState::Stopped => "stopped",
+                }
+                .to_string(),
+                name: inst.torrent.name.clone(),
+            })
+            .collect()
+    }
 
-        let mut watch_folder_to_start = Vec::new();
+    async fn create_instance(&self, instance: NewInstance) -> Result<(), String> {
+        self.state
+            .create_instance_with_event(
+                &instance.id,
+                instance.info,
+                instance.config,
+                instance.auto_start,
+            )
+            .await
+    }
 
-        for instance in &instances {
-            hashes.insert(instance.torrent.info_hash);
+    async fn start_instance(&self, id: &str) -> Result<(), String> {
+        self.state.start_instance(id).await
+    }
 
-            // Collect watch folder instances that need to be auto-started
-            if self.config.auto_start
-                && instance.source == InstanceSource::WatchFolder
-                && !matches!(
-                    instance.stats.state,
-                    rustatio_core::FakerState::Starting
-                        | rustatio_core::FakerState::Running
-                        | rustatio_core::FakerState::Stopping
-                )
-            {
-                watch_folder_to_start.push((instance.id.clone(), instance.torrent.name.clone()));
-            }
-        }
+    async fn delete_instance_by_info_hash(&self, info_hash: &[u8; 20]) -> Result<(), String> {
+        self.state.delete_instance_by_info_hash(info_hash).await
+    }
 
-        if !hashes.is_empty() {
-            tracing::info!("Initialized watch service with {} existing torrents", hashes.len());
-        }
+    async fn find_instance_by_info_hash(&self, info_hash: &[u8; 20]) -> Option<String> {
+        self.state.find_instance_by_info_hash(info_hash).await
+    }
 
-        // Drop write lock before scanning directory
-        drop(hashes);
+    async fn update_instance_source_by_info_hash(
+        &self,
+        info_hash: &[u8; 20],
+        source: WatchSource,
+    ) -> Result<(), String> {
+        let mapped = match source {
+            WatchSource::Manual => InstanceSource::Manual,
+            WatchSource::WatchFolder => InstanceSource::WatchFolder,
+        };
+        self.state.update_instance_source_by_info_hash(info_hash, mapped).await
+    }
 
-        self.populate_path_to_hash_mapping().await;
+    async fn default_config(&self) -> Option<rustatio_core::FakerConfig> {
+        self.state.get_default_config().await
+    }
 
-        // Auto-start watch folder instances that weren't running
-        for (id, name) in watch_folder_to_start {
-            tracing::info!("Auto-starting watch folder instance {} ({})", id, name);
-            if let Err(e) = self.state.start_instance(&id).await {
-                tracing::warn!("Failed to auto-start watch folder instance {}: {}", id, e);
-            }
+    fn next_instance_id(&self) -> String {
+        self.state.next_instance_id()
+    }
+}
+
+pub struct WatchServiceWrapper {
+    inner: EngineWatchService<ServerWatchEngine>,
+}
+
+impl WatchServiceWrapper {
+    pub fn new(config: WatchConfig, state: AppState) -> Self {
+        let engine = Arc::new(ServerWatchEngine::new(state));
+        let inner = EngineWatchService::new(
+            EngineConfig {
+                watch_dir: config.watch_dir,
+                auto_start: config.auto_start,
+                enabled: config.enabled,
+                max_depth: config.max_depth,
+            },
+            engine,
+        );
+        Self { inner }
+    }
+
+    pub fn config(&self) -> WatchConfig {
+        let config = self.inner.config();
+        WatchConfig {
+            watch_dir: config.watch_dir,
+            auto_start: config.auto_start,
+            enabled: config.enabled,
+            max_depth: config.max_depth,
         }
     }
 
-    async fn populate_path_to_hash_mapping(&self) {
-        if !self.config.watch_dir.exists() {
-            return;
-        }
+    pub fn set_max_depth(&mut self, depth: u32) {
+        self.inner.set_max_depth(depth);
+    }
 
-        let loaded = self.loaded_hashes.read().await;
-        let mut path_mapping = self.path_to_hash.write().await;
-
-        let entries = match std::fs::read_dir(&self.config.watch_dir) {
-            Ok(entries) => entries,
-            Err(e) => {
-                tracing::warn!("Failed to read watch directory for path mapping: {}", e);
-                return;
-            }
-        };
-
-        let mut mapped_count = 0;
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if !is_torrent_file(&path) {
-                continue;
-            }
-
-            // Try to parse the torrent to get its info_hash
-            let Ok(data) = std::fs::read(&path) else {
-                continue;
-            };
-
-            let Ok(torrent) = TorrentSummary::from_bytes(&data) else {
-                continue;
-            };
-
-            // Only add to mapping if this hash is in our loaded set
-            if loaded.contains(&torrent.info_hash) {
-                let canonical = path.canonicalize().unwrap_or_else(|_| path.clone());
-                path_mapping.insert(canonical.clone(), torrent.info_hash);
-                tracing::debug!(
-                    "Mapped {} to info_hash {}",
-                    canonical.display(),
-                    hex::encode(torrent.info_hash)
-                );
-                mapped_count += 1;
-            }
-        }
-
-        if mapped_count > 0 {
-            tracing::info!("Populated path_to_hash mapping with {} entries", mapped_count);
-        }
+    pub fn set_auto_start(&mut self, enabled: bool) {
+        self.inner.set_auto_start(enabled);
     }
 
     pub async fn start(&mut self) -> Result<(), String> {
-        if !self.config.enabled {
-            tracing::info!("Watch folder service is disabled");
-            return Ok(());
-        }
-
-        // Create watch directory if it doesn't exist
-        if !self.config.watch_dir.exists() {
-            if let Err(e) = std::fs::create_dir_all(&self.config.watch_dir) {
-                return Err(format!("Failed to create watch directory: {e}"));
-            }
-            tracing::info!("Created watch directory: {:?}", self.config.watch_dir);
-        }
-
-        // Initialize loaded hashes from existing state
-        self.init_from_state().await;
-
-        // Scan existing files on startup
-        self.scan_directory().await;
-
-        // Start file watcher
-        let (shutdown_tx, shutdown_rx) = mpsc::channel(1);
-        self.shutdown_tx = Some(shutdown_tx);
-
-        let watch_dir = self.config.watch_dir.clone();
-        let auto_start = self.config.auto_start;
-        let state = self.state.clone();
-        let loaded_hashes = Arc::clone(&self.loaded_hashes);
-        let path_to_hash = Arc::clone(&self.path_to_hash);
-
-        tokio::spawn(async move {
-            let runner = WatchRunner {
-                watch_dir,
-                auto_start,
-                state,
-                loaded_hashes,
-                path_to_hash,
-                shutdown_rx,
-            };
-            if let Err(e) = runner.run().await {
-                tracing::error!("Watch service error: {}", e);
-            }
-        });
-
-        tracing::info!(
-            "Watch folder service started: {:?} (auto_start={})",
-            self.config.watch_dir,
-            self.config.auto_start
-        );
-
-        Ok(())
+        self.inner.start().await
     }
 
     pub async fn stop(&mut self) {
-        if let Some(tx) = self.shutdown_tx.take() {
-            let _ = tx.send(()).await;
-            tracing::info!("Watch folder service stopped");
-        }
-    }
-
-    async fn scan_directory(&self) {
-        let entries = match std::fs::read_dir(&self.config.watch_dir) {
-            Ok(entries) => entries,
-            Err(e) => {
-                tracing::warn!("Failed to scan watch directory: {}", e);
-                return;
-            }
-        };
-
-        let mut count = 0;
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if is_torrent_file(&path) {
-                if let Err(e) = process_torrent_file(
-                    &path,
-                    self.config.auto_start,
-                    &self.state,
-                    &self.loaded_hashes,
-                    &self.path_to_hash,
-                )
-                .await
-                {
-                    tracing::warn!("Failed to process {:?}: {}", path, e);
-                } else {
-                    count += 1;
-                }
-            }
-        }
-
-        if count > 0 {
-            tracing::info!("Loaded {} torrent(s) from watch folder on startup", count);
-        }
+        self.inner.stop().await;
     }
 
     pub async fn get_status(&self) -> WatchStatus {
-        let loaded_count = self.loaded_hashes.read().await.len();
-        let file_count = std::fs::read_dir(&self.config.watch_dir)
-            .map(|entries| {
-                entries
-                    .filter(|e| e.as_ref().map(|e| is_torrent_file(&e.path())).unwrap_or(false))
-                    .count()
-            })
-            .unwrap_or(0);
-
-        WatchStatus {
-            enabled: self.config.enabled,
-            watch_dir: self.config.watch_dir.to_string_lossy().to_string(),
-            auto_start: self.config.auto_start,
-            file_count,
-            loaded_count,
-        }
+        self.inner.get_status().await.into()
     }
 
     pub async fn list_files(&self) -> Vec<WatchedFile> {
-        let mut files = Vec::new();
-        let loaded_hashes = self.loaded_hashes.read().await;
-
-        let Ok(entries) = std::fs::read_dir(&self.config.watch_dir) else {
-            return files;
-        };
-
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if !is_torrent_file(&path) {
-                continue;
-            }
-
-            let filename =
-                path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-
-            let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
-
-            // Try to parse the torrent to get info
-            let (status, info_hash, name) =
-                std::fs::read(&path).map_or((WatchedFileStatus::Invalid, None, None), |data| {
-                    match TorrentSummary::from_bytes(&data) {
-                        Ok(torrent) => {
-                            let hash = torrent.info_hash;
-                            let hash_hex = hex::encode(hash);
-
-                            let status = if loaded_hashes.contains(&hash) {
-                                WatchedFileStatus::Loaded
-                            } else {
-                                WatchedFileStatus::Pending
-                            };
-
-                            (status, Some(hash_hex), Some(torrent.name))
-                        }
-                        Err(_) => (WatchedFileStatus::Invalid, None, None),
-                    }
-                });
-
-            files.push(WatchedFile {
-                filename,
-                path: path.to_string_lossy().to_string(),
-                status,
-                info_hash,
-                name,
-                size,
-            });
-        }
-
-        // Sort by filename
-        files.sort_by(|a, b| a.filename.cmp(&b.filename));
-        files
-    }
-
-    /// Remove an `info_hash` from the loaded set (for force-deleting watch folder instances)
-    pub async fn remove_info_hash(&self, info_hash: &[u8; 20]) {
-        let removed = self.loaded_hashes.write().await.remove(info_hash);
-        if removed {
-            tracing::info!(
-                "Removed info_hash {} from watch service, torrent can be reloaded",
-                hex::encode(info_hash)
-            );
-        }
+        self.inner.list_files().await.into_iter().map(Into::into).collect()
     }
 
     pub async fn reload_file(&self, filename: &str) -> Result<(), String> {
-        let path = self.config.watch_dir.join(filename);
-
-        // Security: ensure the path is within watch_dir
-        let canonical_watch = self
-            .config
-            .watch_dir
-            .canonicalize()
-            .map_err(|e| format!("Failed to canonicalize watch dir: {e}"))?;
-        let canonical_file = path.canonicalize().map_err(|e| format!("File not found: {e}"))?;
-
-        if !canonical_file.starts_with(&canonical_watch) {
-            return Err("Invalid file path".to_string());
-        }
-
-        // Get the info_hash if this file was previously loaded
-        let info_hash = {
-            let path_to_hash = self.path_to_hash.read().await;
-            path_to_hash.get(&canonical_file).copied()
-        };
-
-        // Remove from tracking so it can be reloaded
-        if let Some(hash) = info_hash {
-            self.path_to_hash.write().await.remove(&canonical_file);
-            self.loaded_hashes.write().await.remove(&hash);
-
-            // Delete the existing instance
-            if let Err(e) = self.state.delete_instance_by_info_hash(&hash).await {
-                tracing::warn!("Failed to delete existing instance: {}", e);
-            }
-        }
-
-        // Re-process the file
-        process_torrent_file(
-            &canonical_file,
-            self.config.auto_start,
-            &self.state,
-            &self.loaded_hashes,
-            &self.path_to_hash,
-        )
-        .await?;
-
-        tracing::info!("Reloaded torrent file: {}", filename);
-        Ok(())
+        self.inner.reload_file(filename).await
     }
 
     pub async fn reload_all(&self) -> Result<u32, String> {
-        if !self.config.watch_dir.exists() {
-            return Err("Watch directory does not exist".to_string());
-        }
-
-        let entries = std::fs::read_dir(&self.config.watch_dir)
-            .map_err(|e| format!("Failed to read watch directory: {e}"))?;
-
-        let mut count = 0;
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if is_torrent_file(&path) {
-                // Check if already loaded
-                let Ok(data) = std::fs::read(&path) else {
-                    continue;
-                };
-
-                let Ok(torrent) = TorrentSummary::from_bytes(&data) else {
-                    continue;
-                };
-
-                // Skip if already loaded
-                if self.loaded_hashes.read().await.contains(&torrent.info_hash) {
-                    continue;
-                }
-
-                // Process the file
-                if let Err(e) = process_torrent_file(
-                    &path,
-                    self.config.auto_start,
-                    &self.state,
-                    &self.loaded_hashes,
-                    &self.path_to_hash,
-                )
-                .await
-                {
-                    tracing::warn!("Failed to process {:?}: {}", path, e);
-                } else {
-                    count += 1;
-                }
-            }
-        }
-
-        if count > 0 {
-            tracing::info!("Reloaded {} torrent(s) from watch folder", count);
-        }
-
-        Ok(count)
+        self.inner.reload_all().await
     }
 
     pub async fn delete_file(&self, filename: &str) -> Result<(), String> {
-        let path = self.config.watch_dir.join(filename);
+        self.inner.delete_file(filename).await
+    }
 
-        // Security: ensure the path is within watch_dir
-        let canonical_watch = self
-            .config
-            .watch_dir
-            .canonicalize()
-            .map_err(|e| format!("Failed to canonicalize watch dir: {e}"))?;
-        let canonical_file = path.canonicalize().map_err(|e| format!("File not found: {e}"))?;
-
-        if !canonical_file.starts_with(&canonical_watch) {
-            return Err("Invalid file path".to_string());
-        }
-
-        // Get the info_hash before deleting the file so we can delete the instance
-        let info_hash = {
-            let path_to_hash = self.path_to_hash.read().await;
-            path_to_hash.get(&canonical_file).copied()
-        };
-
-        // Delete the file
-        std::fs::remove_file(&canonical_file).map_err(|e| format!("Failed to delete file: {e}"))?;
-
-        tracing::info!("Deleted torrent file: {}", filename);
-
-        // Delete the corresponding instance if we have its info_hash
-        if let Some(hash) = info_hash {
-            // Remove from path_to_hash mapping
-            self.path_to_hash.write().await.remove(&canonical_file);
-            // Remove from loaded_hashes
-            self.loaded_hashes.write().await.remove(&hash);
-            // First, change the instance source to Manual (in case delete fails)
-            if let Err(e) =
-                self.state.update_instance_source_by_info_hash(&hash, InstanceSource::Manual).await
-            {
-                tracing::warn!("Failed to update instance source: {}", e);
-            }
-            // Then delete the instance
-            if let Err(e) = self.state.delete_instance_by_info_hash(&hash).await {
-                tracing::warn!("Failed to delete instance for removed torrent: {}", e);
-            }
-        }
-
-        Ok(())
+    pub async fn remove_info_hash(&self, info_hash: &[u8; 20]) {
+        self.inner.remove_info_hash(info_hash).await;
     }
 }
 
-fn is_torrent_file(path: &Path) -> bool {
-    path.is_file() && path.extension().is_some_and(|e| e == "torrent")
-}
-
-async fn process_torrent_file(
-    path: &Path,
-    auto_start: bool,
-    state: &AppState,
-    loaded_hashes: &Arc<RwLock<HashSet<[u8; 20]>>>,
-    path_to_hash: &Arc<RwLock<HashMap<PathBuf, [u8; 20]>>>,
-) -> Result<(), String> {
-    // Read torrent file
-    let data = std::fs::read(path).map_err(|e| format!("Failed to read torrent file: {e}"))?;
-
-    // Parse torrent
-    let torrent =
-        TorrentSummary::from_bytes(&data).map_err(|e| format!("Failed to parse torrent: {e}"))?;
-
-    let info_hash = torrent.info_hash;
-
-    // Check for duplicates
-    {
-        let hashes = loaded_hashes.read().await;
-        if hashes.contains(&info_hash) {
-            tracing::warn!(
-                "Skipping duplicate torrent '{}' (info_hash: {})",
-                torrent.name,
-                hex::encode(info_hash)
-            );
-            return Ok(());
-        }
-    }
-
-    // Create instance with event emission for real-time sync
-    let instance_id = state.next_instance_id();
-
-    // Use default config from settings if available, otherwise use built-in defaults
-    let config = state.get_default_config().await.unwrap_or_default();
-
-    // Use create_instance_with_event so connected frontends get notified
-    state.create_instance_with_event(&instance_id, torrent.to_info(), config, auto_start).await?;
-
-    // Track as loaded
-    loaded_hashes.write().await.insert(info_hash);
-
-    // Record the path to info_hash mapping for deletion handling
-    let canonical_path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
-    path_to_hash.write().await.insert(canonical_path, info_hash);
-
-    tracing::info!(
-        "Loaded torrent '{}' from watch folder as instance {}",
-        torrent.name,
-        instance_id
-    );
-
-    // Auto-start if enabled
-    if auto_start {
-        if let Err(e) = state.start_instance(&instance_id).await {
-            tracing::warn!("Failed to auto-start instance {}: {}", instance_id, e);
-        } else {
-            tracing::info!("Auto-started instance {}", instance_id);
-        }
-    }
-
-    Ok(())
-}
-
-struct WatchRunner {
-    watch_dir: PathBuf,
-    auto_start: bool,
-    state: AppState,
-    loaded_hashes: Arc<RwLock<HashSet<[u8; 20]>>>,
-    path_to_hash: Arc<RwLock<HashMap<PathBuf, [u8; 20]>>>,
-    shutdown_rx: mpsc::Receiver<()>,
-}
-
-impl WatchRunner {
-    async fn run(mut self) -> Result<(), String> {
-        let (tx, mut rx) = mpsc::channel(100);
-
-        // Create watcher
-        let mut watcher = RecommendedWatcher::new(
-            move |res: Result<Event, notify::Error>| {
-                if let Ok(event) = res {
-                    let _ = tx.blocking_send(event);
-                }
-            },
-            Config::default(),
-        )
-        .map_err(|e| format!("Failed to create watcher: {e}"))?;
-
-        // Start watching
-        watcher
-            .watch(&self.watch_dir, RecursiveMode::NonRecursive)
-            .map_err(|e| format!("Failed to watch directory: {e}"))?;
-
-        tracing::debug!("File watcher started for {:?}", self.watch_dir);
-
-        loop {
-            tokio::select! {
-                _ = self.shutdown_rx.recv() => {
-                    tracing::debug!("File watcher received shutdown signal");
-                    break;
-                }
-                Some(event) = rx.recv() => {
-                    // Process create and modify events for .torrent files
-                    if matches!(event.kind, EventKind::Create(_) | EventKind::Modify(_)) {
-                        for path in event.paths {
-                            if is_torrent_file(&path) {
-                                // Small delay to ensure file is fully written
-                                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-
-                                if let Err(e) = process_torrent_file(
-                                    &path,
-                                    self.auto_start,
-                                    &self.state,
-                                    &self.loaded_hashes,
-                                    &self.path_to_hash,
-                                ).await {
-                                    tracing::warn!("Failed to process {:?}: {}", path, e);
-                                }
-                            }
-                        }
-                    }
-                    // Handle file removal events
-                    else if matches!(event.kind, EventKind::Remove(_)) {
-                        for path in event.paths {
-                            // Check if this was a torrent file we were tracking
-                            // Note: We can't canonicalize the path because the file no longer exists
-                            // So we need to search for it by matching the path or filename
-
-                            // Try to find the info_hash for this path
-                            let (info_hash, matched_path) = {
-                                let mapping = self.path_to_hash.read().await;
-
-                                // First try exact match with the path as given
-                                if let Some(&hash) = mapping.get(&path) {
-                                    (Some(hash), Some(path.clone()))
-                                } else {
-                                    // Try to find by matching filename in watch directory
-                                    // This handles the case where notify gives us a non-canonical path
-                                    // but we stored the canonical version
-                                    let filename = path.file_name();
-                                    filename.map_or((None, None), |fname| {
-                                        let mut found = None;
-                                        for (stored_path, &hash) in mapping.iter() {
-                                            if stored_path.file_name() == Some(fname) {
-                                                found = Some((hash, stored_path.clone()));
-                                                break;
-                                            }
-                                        }
-                                        match found {
-                                            Some((hash, stored_path)) => (Some(hash), Some(stored_path)),
-                                            None => (None, None),
-                                        }
-                                    })
-                                }
-                            };
-
-                            if let Some(hash) = info_hash {
-                                tracing::info!("Torrent file removed from watch folder: {:?}", path);
-
-                                // Remove from path_to_hash mapping
-                                if let Some(stored_path) = matched_path {
-                                    self.path_to_hash.write().await.remove(&stored_path);
-                                }
-
-                                // Remove from loaded_hashes
-                                self.loaded_hashes.write().await.remove(&hash);
-
-                                // First, change the instance source to Manual
-                                // This ensures it can be deleted via UI if the delete below fails
-                                if let Err(e) = self.state
-                                    .update_instance_source_by_info_hash(&hash, InstanceSource::Manual)
-                                    .await
-                                {
-                                    tracing::warn!("Failed to update instance source: {}", e);
-                                }
-
-                                // Then delete the corresponding instance
-                                if let Err(e) = self.state.delete_instance_by_info_hash(&hash).await {
-                                    tracing::warn!("Failed to delete instance for removed torrent: {}", e);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        Ok(())
-    }
-}
+pub type WatchService = WatchServiceWrapper;

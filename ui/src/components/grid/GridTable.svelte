@@ -1,5 +1,6 @@
 <script>
   import { cn } from '$lib/utils.js';
+  import ConfirmDialog from '../common/ConfirmDialog.svelte';
   import { selectedIds, gridActions, gridSort } from '$lib/gridStore.js';
   import TagBadge from './TagBadge.svelte';
   import {
@@ -15,7 +16,6 @@
     Trash2,
     Copy,
     Pencil,
-    AlertTriangle,
   } from '@lucide/svelte';
 
   let { data = [], oncontextaction = () => {} } = $props();
@@ -216,13 +216,63 @@
     { id: 'seeders', header: 'S/L', width: 65, sortable: true },
   ];
 
+  function setItemSelected(id, shouldSelect) {
+    selectedIds.update(s => {
+      const next = new Set(s);
+      if (shouldSelect) {
+        next.add(id);
+      } else {
+        next.delete(id);
+      }
+      return next;
+    });
+  }
+
+  function setRangeSelected(fromIdx, toIdx, shouldSelect) {
+    if (fromIdx == null || toIdx == null) return;
+
+    const start = Math.max(0, Math.min(fromIdx, toIdx));
+    const end = Math.min(data.length - 1, Math.max(fromIdx, toIdx));
+
+    selectedIds.update(s => {
+      const next = new Set(s);
+      for (let i = start; i <= end; i++) {
+        const id = data[i]?.id;
+        if (id == null) continue;
+        if (shouldSelect) {
+          next.add(id);
+        } else {
+          next.delete(id);
+        }
+      }
+      return next;
+    });
+  }
+
   function handleRowClick(e, instance) {
     const currentIndex = data.findIndex(d => d.id === instance.id);
+    if (currentIndex < 0) return;
+
+    const shouldSelect = !$selectedIds.has(instance.id);
     if (e.shiftKey && lastSelectedIndex !== null && lastSelectedIndex !== currentIndex) {
-      gridActions.selectRange(lastSelectedIndex, currentIndex);
+      setRangeSelected(lastSelectedIndex, currentIndex, shouldSelect);
     } else {
-      gridActions.toggleSelect(instance.id);
+      setItemSelected(instance.id, shouldSelect);
     }
+    lastSelectedIndex = currentIndex;
+  }
+
+  function handleCheckboxChange(e, instance) {
+    const currentIndex = data.findIndex(d => d.id === instance.id);
+    if (currentIndex < 0) return;
+
+    const shouldSelect = Boolean(e.currentTarget.checked);
+    if (e.shiftKey && lastSelectedIndex !== null && lastSelectedIndex !== currentIndex) {
+      setRangeSelected(lastSelectedIndex, currentIndex, shouldSelect);
+    } else {
+      setItemSelected(instance.id, shouldSelect);
+    }
+
     lastSelectedIndex = currentIndex;
   }
 
@@ -245,6 +295,13 @@
 
   let allSelected = $derived(data.length > 0 && data.every(d => $selectedIds.has(d.id)));
   let someSelected = $derived(data.some(d => $selectedIds.has(d.id)) && !allSelected);
+
+  $effect(() => {
+    if (lastSelectedIndex === null) return;
+    if (lastSelectedIndex >= data.length) {
+      lastSelectedIndex = null;
+    }
+  });
 </script>
 
 <svelte:window onmousedown={handleWindowMousedown} onkeydown={handleWindowKeydown} />
@@ -323,7 +380,7 @@
                 type="checkbox"
                 checked={isSelected}
                 onclick={e => e.stopPropagation()}
-                onchange={() => gridActions.toggleSelect(instance.id)}
+                onchange={e => handleCheckboxChange(e, instance)}
                 class="h-3.5 w-3.5 rounded border-input accent-primary cursor-pointer"
               />
             </td>
@@ -479,53 +536,13 @@
   </div>
 {/if}
 
-<!-- Delete confirmation dialog -->
-{#if deleteConfirmVisible && deleteTarget}
-  <div
-    class="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4"
-    onclick={cancelDelete}
-    onkeydown={e => e.key === 'Escape' && cancelDelete()}
-    role="dialog"
-    aria-modal="true"
-    aria-labelledby="delete-confirm-title"
-    tabindex="-1"
-  >
-    <div
-      class="bg-card text-card-foreground rounded-xl shadow-2xl max-w-sm w-full p-5 border border-border"
-      onclick={e => e.stopPropagation()}
-      onkeydown={e => e.stopPropagation()}
-      role="presentation"
-    >
-      <div class="flex items-center gap-3 mb-3">
-        <div
-          class="w-10 h-10 bg-stat-danger/10 rounded-lg flex items-center justify-center shrink-0"
-        >
-          <AlertTriangle size={20} class="text-stat-danger" />
-        </div>
-        <div>
-          <h3 id="delete-confirm-title" class="text-sm font-semibold text-foreground">
-            Delete Instance
-          </h3>
-          <p class="text-xs text-muted-foreground mt-0.5 break-all">
-            {deleteTarget.name}
-          </p>
-        </div>
-      </div>
-      <p class="text-xs text-muted-foreground mb-4">This action cannot be undone.</p>
-      <div class="flex justify-end gap-2">
-        <button
-          onclick={cancelDelete}
-          class="px-3 py-1.5 text-xs font-medium rounded-md border border-border hover:bg-muted transition-colors cursor-pointer"
-        >
-          Cancel
-        </button>
-        <button
-          onclick={confirmDelete}
-          class="px-3 py-1.5 text-xs font-medium rounded-md bg-stat-danger text-white hover:bg-stat-danger/90 transition-colors cursor-pointer"
-        >
-          Delete
-        </button>
-      </div>
-    </div>
-  </div>
-{/if}
+<ConfirmDialog
+  bind:open={deleteConfirmVisible}
+  title="Delete Instance"
+  message={`${deleteTarget?.name || ''}\n\nThis action cannot be undone.`}
+  confirmLabel="Delete"
+  kind="danger"
+  titleId="delete-confirm-title"
+  onCancel={cancelDelete}
+  onConfirm={confirmDelete}
+/>
