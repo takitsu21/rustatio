@@ -12,8 +12,8 @@ local rust_linters = new Mapping<String, Step> {
   // rustatio-wasm excluded: requires wasm32 target, can't compile natively
   ["cargo-clippy"] {
     glob = List("rustatio-core/**/*.rs", "rustatio-cli/**/*.rs", "rustatio-server/**/*.rs", "rustatio-desktop/**/*.rs")
-    check = "cargo clippy -p rustatio-core -p rustatio-cli -p rustatio-server -p rustatio --all-targets -- -D warnings"
-    fix = "cargo clippy -p rustatio-core -p rustatio-cli -p rustatio-server -p rustatio --all-targets --fix --allow-dirty --allow-staged -- -D warnings"
+    check = "cargo clippy -p rustatio-core -p rustatio-cli -p rustatio-server -p rustatio -p rustatio-watch --all-targets -- -D warnings"
+    fix = "cargo clippy -p rustatio-core -p rustatio-cli -p rustatio-server -p rustatio -p rustatio-watch --all-targets --fix --allow-dirty --allow-staged -- -D warnings"
   }
 }
 
