@@ -1,7 +1,17 @@
-amends "package://github.com/jdx/hk/releases/download/v1.36.0/hk@1.36.0#/Config.pkl"
-import "package://github.com/jdx/hk/releases/download/v1.36.0/hk@1.36.0#/Builtins.pkl"
+amends "package://github.com/jdx/hk/releases/download/v1.38.0/hk@1.38.0#/Config.pkl"
+import "package://github.com/jdx/hk/releases/download/v1.38.0/hk@1.38.0#/Builtins.pkl"
 
-exclude = List("target", "node_modules", "dist", "ui/src/lib/wasm", "flatpak", "torrents", "nyaa_torrents", ".opencode")
+exclude =
+  List(
+    "target",
+    "node_modules",
+    "dist",
+    "ui/src/lib/wasm",
+    "flatpak",
+    "torrents",
+    "nyaa_torrents",
+    ".opencode",
+  )
 
 // --- Linters & Formatters ---
 
@@ -11,9 +21,17 @@ local rust_linters = new Mapping<String, Step> {
   }
   // rustatio-wasm excluded: requires wasm32 target, can't compile natively
   ["cargo-clippy"] {
-    glob = List("rustatio-core/**/*.rs", "rustatio-cli/**/*.rs", "rustatio-server/**/*.rs", "rustatio-desktop/**/*.rs")
-    check = "cargo clippy -p rustatio-core -p rustatio-cli -p rustatio-server -p rustatio -p rustatio-watch --all-targets -- -D warnings"
-    fix = "cargo clippy -p rustatio-core -p rustatio-cli -p rustatio-server -p rustatio -p rustatio-watch --all-targets --fix --allow-dirty --allow-staged -- -D warnings"
+    glob =
+      List(
+        "rustatio-core/**/*.rs",
+        "rustatio-cli/**/*.rs",
+        "rustatio-server/**/*.rs",
+        "rustatio-desktop/**/*.rs",
+      )
+    check =
+      "cargo clippy -p rustatio-core -p rustatio-cli -p rustatio-server -p rustatio --all-targets -- -D warnings"
+    fix =
+      "cargo clippy -p rustatio-core -p rustatio-cli -p rustatio-server -p rustatio --all-targets --fix --allow-dirty --allow-staged -- -D warnings"
   }
 }
 
