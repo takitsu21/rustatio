@@ -179,7 +179,7 @@ run = [
     "echo '🔍 Running cargo clippy...'",
     "hk check --all --step cargo-clippy",
     "echo '🧪 Running Rust tests...'",
-    "cargo test -p rustatio-core -p rustatio-cli",
+    "cargo test -p rustatio-core -p rustatio-cli -p rustatio-watch",
     "echo '✅ Rust checks passed!'"
 ]
 
