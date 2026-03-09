@@ -79,6 +79,29 @@ jobs:
           message: "Release ${{ steps.new_version.outputs.tag }}"
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.new_version.outputs.tag }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release ${TAG} already exists"
+          else
+            gh release create "$TAG" \
+              --draft \
+              --title "$TAG" \
+              --notes "" \
+              --verify-tag
+          fi
+
+          gh release view "$TAG" --json isDraft --jq '.isDraft' | {
+            read -r draft
+            if [ "$draft" != "true" ]; then
+              echo "Expected draft release for ${TAG}, got published release" >&2
+              exit 1
+            fi
+          }
+
   build-web-assets:
     name: Build Web Assets
     needs: prepare-release
@@ -192,13 +215,11 @@ jobs:
         run: cargo build --release --target x86_64-unknown-linux-gnu -p rustatio-cli
 
       - name: Upload CLI binary to release
-        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2
-        with:
-          tag_name: ${{ needs.prepare-release.outputs.tag }}
-          files: target/x86_64-unknown-linux-gnu/release/rustatio
-          fail_on_unmatched_files: true
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.prepare-release.outputs.tag }}
+        run: |
+          gh release upload "$TAG" target/x86_64-unknown-linux-gnu/release/rustatio --clobber
 
   build-docker:
     name: Build Docker Image (${{ matrix.platform }})
@@ -365,6 +386,7 @@ jobs:
     runs-on: ${{ matrix.platform }}
     permissions:
       contents: write
+    environment: release-signing
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
@@ -466,6 +488,16 @@ jobs:
             sed -i "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" package.json
           fi
 
+      - name: Read release status
+        id: release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.prepare-release.outputs.tag }}
+        run: |
+          draft=$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}" --jq '.draft')
+          echo "draft=$draft" >> "$GITHUB_OUTPUT"
+
       - name: Build Tauri App
         uses: tauri-apps/tauri-action@73fb865345c54760d875b94642314f8c0c894afa # v0
         env:
@@ -476,7 +508,7 @@ jobs:
           projectPath: rustatio-desktop
           tagName: ${{ needs.prepare-release.outputs.tag }}
           releaseName: ${{ needs.prepare-release.outputs.tag }}
-          releaseDraft: true
+          releaseDraft: ${{ steps.release.outputs.draft == 'true' }}
           prerelease: false
           args: ${{ matrix.args }}
           includeUpdaterJson: true
@@ -510,17 +542,27 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Publish release
-        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2
-        with:
-          tag_name: ${{ needs.prepare-release.outputs.tag }}
-          name: ${{ needs.prepare-release.outputs.tag }}
-          draft: false
-          generate_release_notes: true
-          fail_on_unmatched_files: false
-          make_latest: true
+      - name: Generate release notes
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.prepare-release.outputs.tag }}
+        run: |
+          gh api \
+            --method POST \
+            "repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
+            -f tag_name="$TAG" > "$RUNNER_TEMP/release-notes.json"
+          jq -r .body "$RUNNER_TEMP/release-notes.json" > "$RUNNER_TEMP/release-notes.md"
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.prepare-release.outputs.tag }}
+        run: |
+          gh release edit "$TAG" \
+            --draft=false \
+            --latest \
+            --notes-file "$RUNNER_TEMP/release-notes.md" \
+            --title "$TAG"
 
       - name: Release published
         env:

@@ -36,7 +36,7 @@
       "endpoints": [
         "https://github.com/takitsu21/rustatio/releases/latest/download/latest.json"
       ],
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDgxMkYzQTg0RDJCOUMxQ0UKUldUT3diblNoRG92Z2RBVnhHS0NjbVpNMXZCMGUvZ0JKelBrR1lMVVl0dlFlRG90TFp4M3oxcTMK"
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDI1NThGQ0JBNjFBOTA0RjkKUldUNUJLbGh1dnhZSmFnMDRxRzMxVmZEN0JiTW5GVmtmYTFpNStWZlZJWVo0eGJsWXhKMjBWOVMK"
     }
   },
   "app": {
