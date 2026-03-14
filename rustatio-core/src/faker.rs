@@ -185,7 +185,7 @@ impl From<PresetSettings> for FakerConfig {
             idle_when_no_seeders: p.idle_when_no_seeders.unwrap_or(false),
             scrape_interval: 60,
             post_stop_action: match p.post_stop_action.as_deref() {
-                Some("stop") => PostStopAction::StopSeeding,
+                Some("stop_seeding") => PostStopAction::StopSeeding,
                 Some("delete_instance") => PostStopAction::DeleteInstance,
                 _ => PostStopAction::Idle,
             },
