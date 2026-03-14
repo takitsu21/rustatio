@@ -704,7 +704,10 @@ export const instanceActions = {
       }
 
       // Save session since we probably modified real instances
-      saveSession(get(instances).filter(i => i.id !== 'bulk-edit'), get(activeInstanceId));
+      saveSession(
+        get(instances).filter(i => i.id !== 'bulk-edit'),
+        get(activeInstanceId)
+      );
       return;
     }
 
@@ -759,7 +762,7 @@ export const instanceActions = {
   },
 
   // Create or update a temporary bulk edit instance
-  createBulkInstance: (targetIds) => {
+  createBulkInstance: targetIds => {
     if (!targetIds || targetIds.length === 0) return;
 
     const currentInstances = get(instances);
@@ -784,8 +787,10 @@ export const instanceActions = {
       // Pass along the names for the UI to display
       bulkNames: validTargetIds.map(id => {
         const i = currentInstances.find(inst => inst.id === id);
-        return i ? (i.name || i.torrent?.name || i.torrentPath || 'Unknown Torrent') : 'Unknown Torrent';
-      })
+        return i
+          ? i.name || i.torrent?.name || i.torrentPath || 'Unknown Torrent'
+          : 'Unknown Torrent';
+      }),
     };
     bulkInstance.torrentPath = 'Multiple Torrents';
     bulkInstance.statusMessage = 'Editing multiple instances';
@@ -806,7 +811,7 @@ export const instanceActions = {
   },
 
   // Remove an instance from the current bulk edit selection
-  removeTargetInstance: (targetId) => {
+  removeTargetInstance: targetId => {
     const bulkId = get(activeInstanceId);
     if (bulkId !== 'bulk-edit') return; // Not in bulk edit mode
 
@@ -833,7 +838,9 @@ export const instanceActions = {
           // Re-generate names list
           const remainingNames = updatedTargetIds.map(id => {
             const i = insts.find(inst => inst.id === id);
-            return i ? (i.name || i.torrent?.name || i.torrentPath || 'Unknown Torrent') : 'Unknown Torrent';
+            return i
+              ? i.name || i.torrent?.name || i.torrentPath || 'Unknown Torrent'
+              : 'Unknown Torrent';
           });
 
           return {
@@ -843,8 +850,8 @@ export const instanceActions = {
               ...inst.torrent,
               name: `Multiple Torrents (${updatedTargetIds.length})`,
               bulkIds: updatedTargetIds,
-              bulkNames: remainingNames
-            }
+              bulkNames: remainingNames,
+            },
           };
         }
         return inst;
