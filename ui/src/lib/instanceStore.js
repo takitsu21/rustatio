@@ -10,8 +10,10 @@ const bytesToMB = bytes => Math.round((bytes || 0) / (1024 * 1024));
 
 // Compute the effective (randomized) stop ratio
 export function computeEffectiveRatio(stopAtRatio, randomizeRatio, randomRatioRangePercent) {
+  if (!randomizeRatio) {
+    return null;
+  }
   const base = parseFloat(stopAtRatio) || 2.0;
-  if (!randomizeRatio) return base;
   const range = (parseFloat(randomRatioRangePercent) || 10) / 100;
   const variation = 1 + (Math.random() * 2 - 1) * range;
   return parseFloat((base * variation).toFixed(4));

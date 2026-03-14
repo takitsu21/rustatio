@@ -425,6 +425,24 @@ impl RatioFaker {
         let tracker_client = TrackerClient::new(client_config, http_client)
             .map_err(|e| FakerError::ConfigError(e.to_string()))?;
 
+        // Apply ratio randomization if enabled
+        let mut config = config;
+        if config.randomize_ratio {
+            if let Some(base_ratio) = config.stop_at_ratio {
+                let range = config.random_ratio_range_percent.clamp(0.0, 100.0) / 100.0;
+                let mut rng = rand::rng();
+                let variation: f64 = 1.0 + (rng.random::<f64>() * 2.0 - 1.0) * range;
+                let effective = (base_ratio * variation * 10000.0).round() / 10000.0;
+                log_debug!(
+                    "Randomized stop ratio: base={:.4}, range=±{:.0}%, effective={:.4}",
+                    base_ratio,
+                    config.random_ratio_range_percent,
+                    effective
+                );
+                config.stop_at_ratio = Some(effective);
+            }
+        }
+
         // Calculate how much of THIS torrent is already downloaded
         let completion = config.completion_percent.clamp(0.0, 100.0) / 100.0;
         let torrent_downloaded = (torrent.total_size as f64 * completion) as u64;

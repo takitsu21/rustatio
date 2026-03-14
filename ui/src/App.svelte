@@ -1085,9 +1085,7 @@
       random_range_percent: parseFloat(instance.randomRangePercent ?? 20),
       randomize_ratio: instance.randomizeRatio ?? false,
       random_ratio_range_percent: parseFloat(instance.randomRatioRangePercent ?? 10),
-      stop_at_ratio: instance.stopAtRatioEnabled
-        ? parseFloat(instance.effectiveStopAtRatio ?? instance.stopAtRatio ?? 2.0)
-        : null,
+      stop_at_ratio: instance.stopAtRatioEnabled ? parseFloat(instance.stopAtRatio ?? 2.0) : null,
       stop_at_uploaded: instance.stopAtUploadedEnabled
         ? parseFloat(instance.stopAtUploadedGB ?? 10) * 1024 * 1024 * 1024
         : null,
@@ -1600,7 +1598,7 @@
                   completionPercent={$activeInstance.completionPercent}
                   isRunning={$activeInstance.isRunning || false}
                   onUpdate={updates => {
-                    // Recompute effective ratio when ratio-related settings change
+                    // Recompute effective ratio preview when ratio-related settings change
                     if (
                       'stopAtRatio' in updates ||
                       'randomizeRatio' in updates ||
@@ -1609,15 +1607,13 @@
                     ) {
                       const inst = $activeInstance;
                       const merged = { ...inst, ...updates };
-                      if (merged.stopAtRatioEnabled && merged.randomizeRatio) {
-                        updates.effectiveStopAtRatio = computeEffectiveRatio(
-                          merged.stopAtRatio,
-                          merged.randomizeRatio,
-                          merged.randomRatioRangePercent
-                        );
-                      } else {
-                        updates.effectiveStopAtRatio = null;
-                      }
+                      updates.effectiveStopAtRatio = merged.stopAtRatioEnabled
+                        ? computeEffectiveRatio(
+                            merged.stopAtRatio,
+                            merged.randomizeRatio,
+                            merged.randomRatioRangePercent
+                          )
+                        : null;
                     }
                     instanceActions.updateInstance($activeInstance.id, updates);
                     // Sync config to server (debounced) so it persists across page refreshes
