@@ -90,8 +90,9 @@ function createDefaultInstance(id, defaults = {}) {
       defaults.idleWhenNoLeechers !== undefined ? defaults.idleWhenNoLeechers : false,
     idleWhenNoSeeders:
       defaults.idleWhenNoSeeders !== undefined ? defaults.idleWhenNoSeeders : false,
-    postStopAction:
-      defaults.postStopAction !== undefined ? defaults.postStopAction : 'idle',
+
+    // Post stop action
+    postStopAction: defaults.postStopAction !== undefined ? defaults.postStopAction : 'idle',
 
     // Scrape interval
     scrapeInterval: defaults.scrapeInterval !== undefined ? defaults.scrapeInterval : 60,
