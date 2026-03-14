@@ -312,7 +312,7 @@
         onchange={() => onchange?.({ postStopAction })}
       >
         <option value="idle">Continue seeding (idle)</option>
-        <option value="stop">Stop seeding</option>
+        <option value="stop_seeding">Stop seeding</option>
         <option value="delete_instance">Delete instance</option>
       </select>
     </div>
