@@ -238,7 +238,8 @@
   {#if hasThresholdCondition}
     <div class="flex items-center gap-3 p-3 border-t border-border bg-muted/30">
       <Settings size={16} class="text-muted-foreground" />
-      <Label for="post-stop-action" class="flex-1 text-sm font-medium">When conditions are met</Label
+      <Label for="post-stop-action" class="flex-1 text-sm font-medium"
+        >When conditions are met</Label
       >
       <select
         id="post-stop-action"
