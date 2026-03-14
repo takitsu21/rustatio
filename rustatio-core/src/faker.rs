@@ -431,7 +431,7 @@ impl RatioFaker {
             if let Some(base_ratio) = config.stop_at_ratio {
                 let range = config.random_ratio_range_percent.clamp(0.0, 100.0) / 100.0;
                 let mut rng = rand::rng();
-                let variation: f64 = 1.0 + (rng.random::<f64>() * 2.0 - 1.0) * range;
+                let variation: f64 = rng.random::<f64>().mul_add(2.0, -1.0).mul_add(range, 1.0);
                 let effective = (base_ratio * variation * 10000.0).round() / 10000.0;
                 log_debug!(
                     "Randomized stop ratio: base={:.4}, range=±{:.0}%, effective={:.4}",
