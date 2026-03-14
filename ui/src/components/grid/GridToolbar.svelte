@@ -12,8 +12,6 @@
     gridInstances,
     filteredGridInstances,
   } from '$lib/gridStore.js';
-  import { instanceActions } from '$lib/instanceStore.js';
-  import { viewMode } from '$lib/gridStore.js';
   import { Play, Square, Pause, Trash2, Upload, Search, ChevronDown } from '@lucide/svelte';
 
   let { onImport = () => {} } = $props();
