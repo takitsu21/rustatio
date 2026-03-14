@@ -92,6 +92,14 @@ pub enum Commands {
         #[arg(long, default_value = "20.0", value_name = "PERCENT")]
         random_range: f64,
 
+        /// Randomize the stop ratio target within a percentage range
+        #[arg(long)]
+        randomize_ratio: bool,
+
+        /// Randomization range percentage for stop ratio (default: 10%)
+        #[arg(long, default_value = "10.0", value_name = "PERCENT")]
+        random_ratio_range: f64,
+
         /// Enable progressive rate adjustment
         #[arg(long)]
         progressive: bool,
