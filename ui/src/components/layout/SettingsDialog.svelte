@@ -42,7 +42,22 @@
 
   // Window Close Behavior state
   const CLOSE_BEHAVIOR_KEY = 'rustatio-close-behavior';
-  let closeBehavior = $state(localStorage.getItem(CLOSE_BEHAVIOR_KEY) || 'prompt');
+  function getCloseBehavior() {
+    return localStorage.getItem(CLOSE_BEHAVIOR_KEY) || 'prompt';
+  }
+
+  let closeBehavior = $state(getCloseBehavior());
+
+  function saveCloseBehavior(behavior) {
+    closeBehavior = behavior;
+    localStorage.setItem(CLOSE_BEHAVIOR_KEY, behavior);
+  }
+
+  $effect(() => {
+    if (isOpen) {
+      closeBehavior = getCloseBehavior();
+    }
+  });
 
   function saveCloseBehavior(behavior) {
     closeBehavior = behavior;
