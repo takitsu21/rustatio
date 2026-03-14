@@ -92,19 +92,30 @@
             max="30"
             step="1"
             class="flex-1 h-1.5 rounded-lg cursor-pointer accent-primary"
-            style="background: linear-gradient(to right, hsl(var(--primary)) {((randomRatioRangePercent - 1) / 29) * 100}%, hsl(var(--muted)) {((randomRatioRangePercent - 1) / 29) * 100}%);"
+            style="background: linear-gradient(to right, hsl(var(--primary)) {((randomRatioRangePercent -
+              1) /
+              29) *
+              100}%, hsl(var(--muted)) {((randomRatioRangePercent - 1) / 29) * 100}%);"
             oninput={() => onchange?.({ randomRatioRangePercent })}
           />
-          <span class="text-sm font-bold text-primary min-w-[4ch] text-right">±{randomRatioRangePercent}%</span>
+          <span class="text-sm font-bold text-primary min-w-[4ch] text-right"
+            >±{randomRatioRangePercent}%</span
+          >
         </div>
         <div class="px-10 pb-2">
           <div class="text-xs text-muted-foreground">
             Range
-            <span class="font-medium text-primary">{(stopAtRatio * (1 - randomRatioRangePercent / 100)).toFixed(2)}</span>
+            <span class="font-medium text-primary"
+              >{(stopAtRatio * (1 - randomRatioRangePercent / 100)).toFixed(2)}</span
+            >
             —
-            <span class="font-medium text-primary">{(stopAtRatio * (1 + randomRatioRangePercent / 100)).toFixed(2)}</span>
+            <span class="font-medium text-primary"
+              >{(stopAtRatio * (1 + randomRatioRangePercent / 100)).toFixed(2)}</span
+            >
             {#if effectiveStopAtRatio != null}
-              · Effective: <span class="font-semibold text-primary">{effectiveStopAtRatio.toFixed(4)}</span>
+              · Effective: <span class="font-semibold text-primary"
+                >{effectiveStopAtRatio.toFixed(4)}</span
+              >
             {/if}
           </div>
         </div>

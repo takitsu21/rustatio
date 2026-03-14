@@ -1613,7 +1613,7 @@
                         updates.effectiveStopAtRatio = computeEffectiveRatio(
                           merged.stopAtRatio,
                           merged.randomizeRatio,
-                          merged.randomRatioRangePercent,
+                          merged.randomRatioRangePercent
                         );
                       } else {
                         updates.effectiveStopAtRatio = null;
@@ -1631,7 +1631,8 @@
                     completionPercent={$activeInstance.completionPercent ?? 100}
                     torrentSize={$activeInstance.torrent?.total_size ?? 0}
                     stopAtRatioEnabled={$activeInstance.stopAtRatioEnabled}
-                    stopAtRatio={$activeInstance.effectiveStopAtRatio ?? $activeInstance.stopAtRatio}
+                    stopAtRatio={$activeInstance.effectiveStopAtRatio ??
+                      $activeInstance.stopAtRatio}
                     stopAtUploadedEnabled={$activeInstance.stopAtUploadedEnabled}
                     stopAtUploadedGB={$activeInstance.stopAtUploadedGB}
                     stopAtDownloadedEnabled={$activeInstance.stopAtDownloadedEnabled}

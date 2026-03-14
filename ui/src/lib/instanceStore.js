@@ -59,8 +59,7 @@ function createDefaultInstance(id, defaults = {}) {
     stopAtRatioEnabled:
       defaults.stopAtRatioEnabled !== undefined ? defaults.stopAtRatioEnabled : false,
     stopAtRatio: defaults.stopAtRatio !== undefined ? defaults.stopAtRatio : 2.0,
-    randomizeRatio:
-      defaults.randomizeRatio !== undefined ? defaults.randomizeRatio : false,
+    randomizeRatio: defaults.randomizeRatio !== undefined ? defaults.randomizeRatio : false,
     randomRatioRangePercent:
       defaults.randomRatioRangePercent !== undefined ? defaults.randomRatioRangePercent : 10,
     effectiveStopAtRatio:
@@ -70,7 +69,7 @@ function createDefaultInstance(id, defaults = {}) {
           ? computeEffectiveRatio(
               defaults.stopAtRatio ?? 2.0,
               true,
-              defaults.randomRatioRangePercent ?? 10,
+              defaults.randomRatioRangePercent ?? 10
             )
           : null,
     stopAtUploadedEnabled:
