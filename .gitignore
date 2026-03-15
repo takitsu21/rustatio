@@ -12,6 +12,11 @@ gen/
 # Logs
 *.log
 
+# App State
+desktop-state.json
+desktop-config.json
+rustatio.toml
+
 # OS
 .DS_Store
 Thumbs.db
