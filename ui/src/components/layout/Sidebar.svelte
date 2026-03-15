@@ -406,7 +406,7 @@
           isCollapsed && 'lg:opacity-0 lg:w-0 lg:overflow-hidden'
         )}
       >
-        {isGridMode ? 'Grid Mode' : isWatchMode ? 'Watch Mode' : 'Instances'}
+        {isGridMode ? 'Standard Mode' : isWatchMode ? 'Watch Mode' : 'Detailed Mode'}
       </h2>
 
       <!-- Desktop Toggle Button -->
@@ -429,33 +429,12 @@
           <button
             class={cn(
               'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors text-left relative cursor-pointer',
-              !isGridMode && !isWatchMode
-                ? 'bg-muted text-foreground'
-                : 'text-muted-foreground hover:text-foreground hover:bg-muted/70'
-            )}
-            onclick={() => viewMode.set('standard')}
-            title="Standard view - manage individual instances"
-          >
-            <span
-              class={cn(
-                'absolute left-1 top-2 bottom-2 w-0.5 rounded-full',
-                !isGridMode && !isWatchMode ? 'bg-primary' : 'bg-transparent'
-              )}
-              aria-hidden="true"
-            ></span>
-            <List size={16} class="flex-shrink-0" />
-            <span class="flex-1 min-w-0 truncate">Standard</span>
-          </button>
-
-          <button
-            class={cn(
-              'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors text-left relative cursor-pointer',
               isGridMode
                 ? 'bg-muted text-foreground'
                 : 'text-muted-foreground hover:text-foreground hover:bg-muted/70'
             )}
             onclick={() => viewMode.set('grid')}
-            title="Grid view - manage many instances at once"
+            title="Standard view - manage many instances at once"
           >
             <span
               class={cn(
@@ -465,7 +444,28 @@
               aria-hidden="true"
             ></span>
             <LayoutGrid size={16} class="flex-shrink-0" />
-            <span class="flex-1 min-w-0 truncate">Grid</span>
+            <span class="flex-1 min-w-0 truncate">Standard</span>
+          </button>
+
+          <button
+            class={cn(
+              'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors text-left relative cursor-pointer',
+              !isGridMode && !isWatchMode
+                ? 'bg-muted text-foreground'
+                : 'text-muted-foreground hover:text-foreground hover:bg-muted/70'
+            )}
+            onclick={() => viewMode.set('standard')}
+            title="Detailed view - manage individual instances"
+          >
+            <span
+              class={cn(
+                'absolute left-1 top-2 bottom-2 w-0.5 rounded-full',
+                !isGridMode && !isWatchMode ? 'bg-primary' : 'bg-transparent'
+              )}
+              aria-hidden="true"
+            ></span>
+            <List size={16} class="flex-shrink-0" />
+            <span class="flex-1 min-w-0 truncate">Detailed</span>
           </button>
 
           <button
