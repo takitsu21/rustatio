@@ -33,7 +33,17 @@ checksum = "sha256:4013cbcee8928abca015884e3f89d01804f6e1d9f40a4ea01dcdd0aba3e60
 url = "https://github.com/WebAssembly/binaryen/releases/download/version_126/binaryen-version_126-aarch64-linux.tar.gz"
 url_api = "https://api.github.com/repos/WebAssembly/binaryen/releases/assets/355561172"
 
+[tools."github:WebAssembly/binaryen"."platforms.linux-arm64-musl"]
+checksum = "sha256:4013cbcee8928abca015884e3f89d01804f6e1d9f40a4ea01dcdd0aba3e609f5"
+url = "https://github.com/WebAssembly/binaryen/releases/download/version_126/binaryen-version_126-aarch64-linux.tar.gz"
+url_api = "https://api.github.com/repos/WebAssembly/binaryen/releases/assets/355561172"
+
 [tools."github:WebAssembly/binaryen"."platforms.linux-x64"]
+checksum = "sha256:e487e0eac1f02a6739816c617270b033e5d3f8ca90439301fd0286460322fd76"
+url = "https://github.com/WebAssembly/binaryen/releases/download/version_126/binaryen-version_126-x86_64-linux.tar.gz"
+url_api = "https://api.github.com/repos/WebAssembly/binaryen/releases/assets/355563725"
+
+[tools."github:WebAssembly/binaryen"."platforms.linux-x64-musl"]
 checksum = "sha256:e487e0eac1f02a6739816c617270b033e5d3f8ca90439301fd0286460322fd76"
 url = "https://github.com/WebAssembly/binaryen/releases/download/version_126/binaryen-version_126-x86_64-linux.tar.gz"
 url_api = "https://api.github.com/repos/WebAssembly/binaryen/releases/assets/355563725"
@@ -113,7 +123,15 @@ backend = "core:node"
 checksum = "sha256:54c128f5286a4392a1fd1c765729b074a6873abff8a4f9bb3d63d571c2855e41"
 url = "https://nodejs.org/dist/v25.8.0/node-v25.8.0-linux-arm64.tar.gz"
 
+[tools.node."platforms.linux-arm64-musl"]
+checksum = "sha256:54c128f5286a4392a1fd1c765729b074a6873abff8a4f9bb3d63d571c2855e41"
+url = "https://nodejs.org/dist/v25.8.0/node-v25.8.0-linux-arm64.tar.gz"
+
 [tools.node."platforms.linux-x64"]
+checksum = "sha256:2ae6f70d74a459c0a96456e486dc60f3e7e65d7752ad302771834e58b27500af"
+url = "https://nodejs.org/dist/v25.8.0/node-v25.8.0-linux-x64.tar.gz"
+
+[tools.node."platforms.linux-x64-musl"]
 checksum = "sha256:2ae6f70d74a459c0a96456e486dc60f3e7e65d7752ad302771834e58b27500af"
 url = "https://nodejs.org/dist/v25.8.0/node-v25.8.0-linux-x64.tar.gz"
 

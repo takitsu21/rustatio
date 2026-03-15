@@ -488,16 +488,6 @@ jobs:
             sed -i "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" package.json
           fi
 
-      - name: Read release status
-        id: release
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ needs.prepare-release.outputs.tag }}
-        run: |
-          draft=$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}" --jq '.draft')
-          echo "draft=$draft" >> "$GITHUB_OUTPUT"
-
       - name: Build Tauri App
         uses: tauri-apps/tauri-action@73fb865345c54760d875b94642314f8c0c894afa # action-v0.6.1
         env:
@@ -508,7 +498,7 @@ jobs:
           projectPath: rustatio-desktop
           tagName: ${{ needs.prepare-release.outputs.tag }}
           releaseName: ${{ needs.prepare-release.outputs.tag }}
-          releaseDraft: ${{ steps.release.outputs.draft == 'true' }}
+          releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
           includeUpdaterJson: true
