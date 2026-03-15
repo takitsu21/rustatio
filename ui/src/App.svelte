@@ -1116,7 +1116,9 @@
       randomize_ratio: instance.randomizeRatio ?? false,
       random_ratio_range_percent: parseFloat(instance.randomRatioRangePercent ?? 10),
       stop_at_ratio: instance.stopAtRatioEnabled ? parseFloat(instance.stopAtRatio ?? 2.0) : null,
-      effective_stop_at_ratio: instance.stopAtRatioEnabled ? instance.effectiveStopAtRatio ?? null : null,
+      effective_stop_at_ratio: instance.stopAtRatioEnabled
+        ? (instance.effectiveStopAtRatio ?? null)
+        : null,
       stop_at_uploaded: instance.stopAtUploadedEnabled
         ? parseFloat(instance.stopAtUploadedGB ?? 10) * 1024 * 1024 * 1024
         : null,
