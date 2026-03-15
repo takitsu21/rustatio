@@ -1,3 +1,4 @@
+use crate::faker::PostStopAction;
 use crate::torrent::ClientType;
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -64,6 +65,8 @@ pub struct InstanceConfig {
     pub stop_at_seed_time_hours: f64,
     pub idle_when_no_leechers: bool,
     pub idle_when_no_seeders: bool,
+    #[serde(default)]
+    pub post_stop_action: PostStopAction,
     pub progressive_rates_enabled: bool,
     pub target_upload_rate: f64,
     pub target_download_rate: f64,

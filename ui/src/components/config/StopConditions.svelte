@@ -14,6 +14,7 @@
     stopAtSeedTimeHours,
     idleWhenNoLeechers,
     idleWhenNoSeeders,
+    postStopAction,
     completionPercent = 100,
     isRunning,
     onUpdate,
@@ -30,6 +31,7 @@
   let localStopAtSeedTimeHours = $state(24);
   let localIdleWhenNoLeechers = $state(false);
   let localIdleWhenNoSeeders = $state(false);
+  let localPostStopAction = $state('idle');
 
   // Track if we're currently editing to prevent external updates from interfering
   let isEditing = $state(false);
@@ -48,6 +50,7 @@
       localStopAtSeedTimeHours = stopAtSeedTimeHours;
       localIdleWhenNoLeechers = idleWhenNoLeechers;
       localIdleWhenNoSeeders = idleWhenNoSeeders;
+      localPostStopAction = postStopAction;
     }
   });
 
@@ -100,6 +103,7 @@
     bind:stopAtSeedTimeHours={localStopAtSeedTimeHours}
     bind:idleWhenNoLeechers={localIdleWhenNoLeechers}
     bind:idleWhenNoSeeders={localIdleWhenNoSeeders}
+    bind:postStopAction={localPostStopAction}
     {completionPercent}
     disabled={isRunning}
     onchange={updates => {

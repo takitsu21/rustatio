@@ -633,6 +633,24 @@
     });
   }
 
+  // Handle post-stop delete action (delete_instance)
+  // Backend stopped the faker; this removes the instance from the frontend store.
+  async function handlePostStopDelete(instanceId, stats) {
+    if (!stats.stop_condition_met || stats.post_stop_action !== 'delete_instance') {
+      return false;
+    }
+
+    clearInstanceIntervals(instanceId);
+
+    // Use removeInstance which creates a replacement empty instance when deleting the last one
+    try {
+      await instanceActions.removeInstance(instanceId, true);
+    } catch (error) {
+      console.warn('Post-stop delete cleanup error:', error);
+    }
+    return true;
+  }
+
   // Handle polling error
   function handlePollingError(instanceId, error) {
     devLog('error', 'Polling error:', error);
@@ -655,8 +673,14 @@
   // Derive status message/type/icon from stats (for idling state)
   function getStatusFromStats(stats) {
     if (stats.is_idling) {
-      const reason =
-        stats.idling_reason === 'no_leechers' ? 'No leechers available' : 'No seeders available';
+      let reason;
+      if (stats.idling_reason === 'stop_condition_met') {
+        reason = 'Stop condition met';
+      } else if (stats.idling_reason === 'no_leechers') {
+        reason = 'No leechers available';
+      } else {
+        reason = 'No seeders available';
+      }
       return {
         statusMessage: `Idling - ${reason}`,
         statusType: 'idling',
@@ -710,6 +734,9 @@
 
         instanceActions.updateInstance(instanceId, updates);
 
+        if (await handlePostStopDelete(instanceId, stats)) {
+          return;
+        }
         if (shouldAutoStop(stats)) {
           await handleAutoStop(instanceId, stats);
         }
@@ -749,6 +776,9 @@
 
           instanceActions.updateInstance(instanceId, updates);
 
+          if (await handlePostStopDelete(instanceId, stats)) {
+            return;
+          }
           if (shouldAutoStop(stats)) {
             await handleAutoStop(instanceId, stats);
           }
@@ -1109,6 +1139,7 @@
         : null,
       idle_when_no_leechers: instance.idleWhenNoLeechers ?? false,
       idle_when_no_seeders: instance.idleWhenNoSeeders ?? false,
+      post_stop_action: instance.postStopAction || 'idle',
       progressive_rates: instance.progressiveRatesEnabled ?? false,
       target_upload_rate: instance.progressiveRatesEnabled
         ? parseFloat(instance.targetUploadRate ?? 100)
@@ -1607,6 +1638,7 @@
                   stopAtSeedTimeHours={$activeInstance.stopAtSeedTimeHours}
                   idleWhenNoLeechers={$activeInstance.idleWhenNoLeechers}
                   idleWhenNoSeeders={$activeInstance.idleWhenNoSeeders}
+                  postStopAction={$activeInstance.postStopAction}
                   completionPercent={$activeInstance.completionPercent}
                   isRunning={$activeInstance.isRunning || false}
                   onUpdate={updates => {
