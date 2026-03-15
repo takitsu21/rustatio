@@ -238,7 +238,7 @@
             return;
           }
 
-          saveSession(insts, activeInst.id);
+          saveSession(insts.filter(i => i.id !== 'bulk-edit'), activeInst.id);
         }, 500);
       }
     });

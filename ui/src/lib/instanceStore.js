@@ -926,6 +926,9 @@ export const instanceActions = {
 
       instances.update(current => {
         const filtered = current.filter(inst => {
+          // Never prune the temporary bulk-edit instance
+          if (inst.id === 'bulk-edit') return true;
+
           if (backendIds.has(String(inst.id))) return true;
 
           const hasLoadedTorrent = Boolean(inst.torrent) || Boolean(inst.torrentPath);
