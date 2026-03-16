@@ -27,7 +27,7 @@ use crate::api::{
     )
 )]
 pub async fn get_default_config(State(state): State<ServerState>) -> Response {
-    let config = state.app.get_default_config().await;
+    let config = state.app.get_effective_default_config().await;
     ApiSuccess::response(config)
 }
 

@@ -39,6 +39,10 @@ pub struct FakerConfig {
     /// Port to announce
     pub port: u16,
 
+    /// Sync announced port from the VPN forwarded port when available
+    #[serde(default)]
+    pub vpn_port_sync: bool,
+
     /// Client to emulate
     pub client_type: ClientType,
 
@@ -126,6 +130,7 @@ pub struct PresetSettings {
     pub upload_rate: Option<f64>,
     pub download_rate: Option<f64>,
     pub port: Option<u16>,
+    pub vpn_port_sync: Option<bool>,
     pub selected_client: Option<ClientType>,
     pub selected_client_version: Option<String>,
     pub completion_percent: Option<f64>,
@@ -178,6 +183,7 @@ impl From<PresetSettings> for FakerConfig {
             upload_rate: p.upload_rate.unwrap_or(50.0),
             download_rate: p.download_rate.unwrap_or(100.0),
             port: p.port.unwrap_or(6881),
+            vpn_port_sync: p.vpn_port_sync.unwrap_or(false),
             client_type: p.selected_client.unwrap_or(ClientType::QBittorrent),
             client_version: p.selected_client_version,
             initial_uploaded: 0,
@@ -230,6 +236,7 @@ impl Default for FakerConfig {
             upload_rate: 50.0,    // 50 KB/s
             download_rate: 100.0, // 100 KB/s
             port: 6881,
+            vpn_port_sync: false,
             client_type: ClientType::QBittorrent,
             client_version: None,
             initial_uploaded: 0,
@@ -399,6 +406,34 @@ impl ScrapePlan {
 }
 
 impl RatioFaker {
+    fn resolve_stop_ratio(config: &mut FakerConfig) {
+        if config.randomize_ratio {
+            if let Some(base_ratio) = config.stop_at_ratio {
+                let effective = if let Some(precomputed) = config.effective_stop_at_ratio {
+                    log_info!(
+                        "Using pre-computed stop ratio: base={:.4}, effective={:.4}",
+                        base_ratio,
+                        precomputed
+                    );
+                    precomputed
+                } else {
+                    let range = config.random_ratio_range_percent.clamp(0.0, 100.0) / 100.0;
+                    let mut rng = rand::rng();
+                    let variation: f64 = rng.random::<f64>().mul_add(2.0, -1.0).mul_add(range, 1.0);
+                    let computed = (base_ratio * variation * 10000.0).round() / 10000.0;
+                    log_info!(
+                        "Randomized stop ratio: base={:.4}, range=±{:.0}%, effective={:.4}",
+                        base_ratio,
+                        config.random_ratio_range_percent,
+                        computed
+                    );
+                    computed
+                };
+                config.stop_at_ratio = Some(effective);
+            }
+        }
+    }
+
     /// Create a new `RatioFaker`.
     ///
     /// * `torrent` — shared torrent metadata (`Arc` avoids duplicating large data per instance).
@@ -434,34 +469,8 @@ impl RatioFaker {
         let tracker_client = TrackerClient::new(client_config, http_client)
             .map_err(|e| FakerError::ConfigError(e.to_string()))?;
 
-        // Apply ratio randomization if enabled
         let mut config = config;
-        if config.randomize_ratio {
-            if let Some(base_ratio) = config.stop_at_ratio {
-                // Use pre-computed effective ratio from frontend if provided
-                let effective = if let Some(precomputed) = config.effective_stop_at_ratio {
-                    log_info!(
-                        "Using pre-computed stop ratio: base={:.4}, effective={:.4}",
-                        base_ratio,
-                        precomputed
-                    );
-                    precomputed
-                } else {
-                    let range = config.random_ratio_range_percent.clamp(0.0, 100.0) / 100.0;
-                    let mut rng = rand::rng();
-                    let variation: f64 = rng.random::<f64>().mul_add(2.0, -1.0).mul_add(range, 1.0);
-                    let computed = (base_ratio * variation * 10000.0).round() / 10000.0;
-                    log_info!(
-                        "Randomized stop ratio: base={:.4}, range=±{:.0}%, effective={:.4}",
-                        base_ratio,
-                        config.random_ratio_range_percent,
-                        computed
-                    );
-                    computed
-                };
-                config.stop_at_ratio = Some(effective);
-            }
-        }
+        Self::resolve_stop_ratio(&mut config);
 
         // Calculate how much of THIS torrent is already downloaded
         let completion = config.completion_percent.clamp(0.0, 100.0) / 100.0;
@@ -1038,6 +1047,7 @@ impl RatioFaker {
         config: FakerConfig,
         http_client: Option<reqwest::Client>,
     ) -> Result<()> {
+        let mut config = config;
         let client_type_changed = config.client_type != self.config.client_type
             || config.client_version != self.config.client_version;
 
@@ -1066,6 +1076,9 @@ impl RatioFaker {
 
         self.stats.left = new_left;
         self.stats.torrent_completion = new_torrent_completion;
+
+        Self::resolve_stop_ratio(&mut config);
+        self.stats.effective_stop_at_ratio = config.stop_at_ratio;
 
         self.config = config;
         Ok(())
@@ -1589,6 +1602,7 @@ mod tests {
         let config = FakerConfig::default();
         assert_eq!(config.upload_rate, 50.0);
         assert_eq!(config.download_rate, 100.0);
+        assert!(!config.vpn_port_sync);
     }
 
     #[test]
@@ -1599,6 +1613,7 @@ mod tests {
         assert_eq!(config.upload_rate, 50.0);
         assert_eq!(config.download_rate, 100.0);
         assert_eq!(config.port, 6881);
+        assert!(!config.vpn_port_sync);
         assert_eq!(config.client_type, ClientType::QBittorrent);
         assert_eq!(config.completion_percent, 100.0);
         assert!(config.randomize_rates);
@@ -1616,6 +1631,7 @@ mod tests {
             upload_rate: Some(100.0),
             download_rate: Some(200.0),
             port: Some(51413),
+            vpn_port_sync: Some(true),
             selected_client: Some(ClientType::Transmission),
             completion_percent: Some(50.0),
             randomize_rates: Some(false),
@@ -1635,6 +1651,7 @@ mod tests {
         assert_eq!(config.upload_rate, 100.0);
         assert_eq!(config.download_rate, 200.0);
         assert_eq!(config.port, 51413);
+        assert!(config.vpn_port_sync);
         assert_eq!(config.client_type, ClientType::Transmission);
         assert_eq!(config.completion_percent, 50.0);
         assert!(!config.randomize_rates);
@@ -1663,5 +1680,87 @@ mod tests {
         // Even though values are set, they should be None because enabled is false
         assert!(config.stop_at_ratio.is_none());
         assert!(config.stop_at_uploaded.is_none());
+    }
+
+    #[test]
+    fn test_faker_config_deserializes_missing_vpn_port_sync_as_false() {
+        let json = r#"{
+            "upload_rate": 50.0,
+            "download_rate": 100.0,
+            "port": 6881,
+            "client_type": "qbittorrent",
+            "client_version": null,
+            "initial_uploaded": 0,
+            "initial_downloaded": 0,
+            "completion_percent": 100.0,
+            "num_want": 50,
+            "randomize_rates": true,
+            "random_range_percent": 20.0,
+            "randomize_ratio": false,
+            "random_ratio_range_percent": 10.0,
+            "stop_at_ratio": null,
+            "effective_stop_at_ratio": null,
+            "stop_at_uploaded": null,
+            "stop_at_downloaded": null,
+            "stop_at_seed_time": null,
+            "idle_when_no_leechers": false,
+            "idle_when_no_seeders": false,
+            "scrape_interval": 60,
+            "progressive_rates": false,
+            "target_upload_rate": null,
+            "target_download_rate": null,
+            "progressive_duration": 3600
+        }"#;
+
+        let parsed = serde_json::from_str::<FakerConfig>(json);
+        assert!(parsed.is_ok());
+        let parsed = parsed.unwrap_or_default();
+        assert!(!parsed.vpn_port_sync);
+    }
+
+    #[test]
+    fn update_config_uses_precomputed_effective_stop_ratio() {
+        let torrent = Arc::new(TorrentInfo {
+            info_hash: [7u8; 20],
+            announce: "https://tracker.test/announce".to_string(),
+            announce_list: None,
+            name: "sample".to_string(),
+            total_size: 1024,
+            piece_length: 256,
+            num_pieces: 4,
+            creation_date: None,
+            comment: None,
+            created_by: None,
+            is_single_file: true,
+            file_count: 1,
+            files: Vec::new(),
+        });
+
+        let faker = RatioFaker::new(
+            torrent,
+            FakerConfig {
+                stop_at_ratio: Some(2.0),
+                randomize_ratio: true,
+                effective_stop_at_ratio: Some(1.8689),
+                ..FakerConfig::default()
+            },
+            None,
+        );
+        assert!(faker.is_ok());
+        let mut faker = faker.unwrap_or_else(|_| panic!("failed to create faker"));
+
+        let updated = faker.update_config(
+            FakerConfig {
+                stop_at_ratio: Some(2.0),
+                randomize_ratio: true,
+                effective_stop_at_ratio: Some(1.8689),
+                ..FakerConfig::default()
+            },
+            None,
+        );
+        assert!(updated.is_ok());
+
+        assert_eq!(faker.config.stop_at_ratio, Some(1.8689));
+        assert_eq!(faker.stats.effective_stop_at_ratio, Some(1.8689));
     }
 }

@@ -2,7 +2,10 @@
   import Card from '$lib/components/ui/card.svelte';
   import Label from '$lib/components/ui/label.svelte';
   import Input from '$lib/components/ui/input.svelte';
-  import { Settings, ArrowUpDown, Clock, Timer, Upload, Download } from '@lucide/svelte';
+  import Checkbox from '$lib/components/ui/checkbox.svelte';
+  import InlineHelp from '$lib/components/common/InlineHelp.svelte';
+  import { cn } from '$lib/utils.js';
+  import { Settings, ArrowUpDown, Clock, Timer, Upload, Download, Lock } from '@lucide/svelte';
   import ClientIcon from './ClientIcon.svelte';
   import ClientSelect from './ClientSelect.svelte';
   import VersionSelect from './VersionSelect.svelte';
@@ -15,6 +18,10 @@
     selectedClient,
     selectedClientVersion,
     port,
+    currentForwardedPort = null,
+    vpnPortSyncEnabled = true,
+    networkStatusError = null,
+    vpnPortSync,
     uploadRate,
     downloadRate,
     completionPercent,
@@ -35,6 +42,7 @@
   let localSelectedClient = $state('qbittorrent');
   let localSelectedClientVersion = $state(null);
   let localPort = $state(6881);
+  let localVpnPortSync = $state(false);
   let localUploadRate = $state(50);
   let localDownloadRate = $state(100);
   let localCompletionPercent = $state(0);
@@ -56,7 +64,11 @@
     if (!isEditing) {
       localSelectedClient = selectedClient;
       localSelectedClientVersion = selectedClientVersion;
-      localPort = port;
+      localVpnPortSync = vpnPortSync ?? false;
+      localPort =
+        localVpnPortSync && vpnPortSyncEnabled && currentForwardedPort
+          ? currentForwardedPort
+          : port;
       localUploadRate = uploadRate;
       localDownloadRate = downloadRate;
       localCompletionPercent = completionPercent;
@@ -72,10 +84,27 @@
     }
   });
 
+  $effect(() => {
+    if (
+      localVpnPortSync &&
+      vpnPortSyncEnabled &&
+      currentForwardedPort &&
+      localPort !== currentForwardedPort
+    ) {
+      localPort = currentForwardedPort;
+    }
+  });
+
   // Helper to call onUpdate
   function updateValue(key, value) {
     if (onUpdate) {
       onUpdate({ [key]: value });
+    }
+  }
+
+  function updateValues(values) {
+    if (onUpdate) {
+      onUpdate(values);
     }
   }
 
@@ -182,6 +211,25 @@
   function handleBlur() {
     isEditing = false;
   }
+
+  function handleVpnPortSyncChange(checked) {
+    if (checked && (!vpnPortSyncEnabled || networkStatusError === 'unavailable')) {
+      return;
+    }
+
+    localVpnPortSync = checked;
+
+    if (checked && currentForwardedPort) {
+      localPort = currentForwardedPort;
+      updateValues({
+        vpnPortSync: checked,
+        port: currentForwardedPort,
+      });
+      return;
+    }
+
+    updateValue('vpnPortSync', checked);
+  }
 </script>
 
 <Card class="p-3">
@@ -218,19 +266,72 @@
           />
         </div>
         <div>
-          <Label for="port" class="text-xs text-muted-foreground mb-1.5 block">Port</Label>
+          <div class="mb-1.5 flex items-center justify-between gap-2">
+            <Label for="port" class="text-xs text-muted-foreground">Port</Label>
+            <div class="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+              <Checkbox
+                id="vpn-port-sync"
+                bind:checked={localVpnPortSync}
+                disabled={isRunning ||
+                  (!vpnPortSyncEnabled && !localVpnPortSync) ||
+                  (networkStatusError === 'unavailable' && !localVpnPortSync)}
+                onchange={handleVpnPortSyncChange}
+              />
+              <Label for="vpn-port-sync" class="cursor-pointer flex items-center gap-1">
+                <Lock size={11} /> VPN sync
+              </Label>
+              <InlineHelp text="Use Gluetun's current forwarded port when available." />
+            </div>
+          </div>
           <Input
             id="port"
             type="number"
             bind:value={localPort}
-            disabled={isRunning}
+            disabled={isRunning || (localVpnPortSync && vpnPortSyncEnabled)}
             min="1024"
             max="65535"
-            class="h-9"
+            class={cn(
+              'h-9 transition-colors',
+              localVpnPortSync &&
+                vpnPortSyncEnabled &&
+                'border-stat-upload/50 bg-stat-upload/10 text-stat-upload placeholder:text-stat-upload/60',
+              localVpnPortSync &&
+                vpnPortSyncEnabled &&
+                currentForwardedPort &&
+                'ring-1 ring-stat-upload/30 focus-visible:ring-stat-upload'
+            )}
             onfocus={handleFocus}
             onblur={handlePortBlur}
             oninput={handlePortInput}
           />
+          {#if localVpnPortSync && vpnPortSyncEnabled && currentForwardedPort}
+            <p class="mt-1 text-[11px] text-foreground/80">
+              Current forwarded port: <span class="font-mono">{currentForwardedPort}</span>
+            </p>
+          {:else if !vpnPortSyncEnabled && localVpnPortSync}
+            <p class="mt-1 text-[11px] text-amber-400">
+              VPN sync is disabled on the server. Uncheck it for this instance or set
+              <span class="font-mono">VPN_PORT_SYNC=on</span> and restart Rustatio.
+            </p>
+          {:else if !vpnPortSyncEnabled}
+            <p class="mt-1 text-[11px] text-amber-400">
+              VPN sync is disabled on the server. Set <span class="font-mono">VPN_PORT_SYNC=on</span
+              >
+              and restart Rustatio to enable it.
+            </p>
+          {:else if networkStatusError === 'unavailable'}
+            <p class="mt-1 text-[11px] text-amber-400">
+              Gluetun status is unavailable. Check that Gluetun is running with port forwarding
+              enabled.
+            </p>
+          {:else if localVpnPortSync && vpnPortSyncEnabled && !currentForwardedPort}
+            <p class="mt-1 text-[11px] text-amber-400">
+              Waiting for a forwarded port from Gluetun. Make sure <span class="font-mono"
+                >VPN_PORT_FORWARDING=on</span
+              >
+              is enabled and the VPN provider supports it.
+            </p>
+          {/if}
         </div>
       </div>
     </div>

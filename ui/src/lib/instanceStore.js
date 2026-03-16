@@ -48,6 +48,7 @@ function createDefaultInstance(id, defaults = {}) {
     uploadRate: defaults.uploadRate !== undefined ? defaults.uploadRate : 50,
     downloadRate: defaults.downloadRate !== undefined ? defaults.downloadRate : 100,
     port: defaults.port !== undefined ? defaults.port : 6881,
+    vpnPortSync: defaults.vpnPortSync !== undefined ? defaults.vpnPortSync : false,
     completionPercent: defaults.completionPercent !== undefined ? defaults.completionPercent : 0,
     initialUploaded: defaults.initialUploaded !== undefined ? defaults.initialUploaded : 0,
     initialDownloaded: defaults.initialDownloaded !== undefined ? defaults.initialDownloaded : 0,
@@ -108,6 +109,33 @@ function createDefaultInstance(id, defaults = {}) {
   };
 }
 
+async function getServerEffectiveDefaults() {
+  try {
+    return (await api.getDefaultConfig()) || {};
+  } catch {
+    return {};
+  }
+}
+
+async function buildNewInstanceDefaults(defaults = {}) {
+  const presetDefaults = getDefaultPreset()?.settings || {};
+  const serverDefaults = !isTauri ? await getServerEffectiveDefaults() : {};
+
+  return {
+    ...serverDefaults,
+    ...presetDefaults,
+    ...defaults,
+    vpnPortSync:
+      defaults.vpnPortSync !== undefined
+        ? defaults.vpnPortSync
+        : presetDefaults.vpnPortSync !== undefined
+          ? presetDefaults.vpnPortSync
+          : serverDefaults.vpnPortSync !== undefined
+            ? serverDefaults.vpnPortSync
+            : false,
+  };
+}
+
 // Global lock to prevent concurrent config saves from different sources
 export let isConfigSaving = false;
 
@@ -135,6 +163,7 @@ async function saveSession(instances, activeId) {
         upload_rate: parseFloat(inst.uploadRate),
         download_rate: parseFloat(inst.downloadRate),
         port: parseInt(inst.port),
+        vpn_port_sync: !!inst.vpnPortSync,
         completion_percent: parseFloat(inst.completionPercent),
         initial_uploaded: parseInt(inst.initialUploaded) * 1024 * 1024,
         initial_downloaded: parseInt(inst.initialDownloaded) * 1024 * 1024,
@@ -177,6 +206,7 @@ async function saveSession(instances, activeId) {
           upload_rate: parseFloat(inst.uploadRate),
           download_rate: parseFloat(inst.downloadRate),
           port: parseInt(inst.port),
+          vpn_port_sync: !!inst.vpnPortSync,
           completion_percent: parseFloat(inst.completionPercent),
           initial_uploaded: parseInt(inst.initialUploaded) * 1024 * 1024, // Convert MB to bytes
           initial_downloaded: parseInt(inst.initialDownloaded) * 1024 * 1024,
@@ -246,6 +276,7 @@ function loadSessionFromStorage(config = null) {
         uploadRate: inst.upload_rate,
         downloadRate: inst.download_rate,
         port: inst.port,
+        vpnPortSync: inst.vpn_port_sync || false,
         completionPercent: inst.completion_percent,
         initialUploaded: bytesToMB(inst.initial_uploaded),
         initialDownloaded: bytesToMB(inst.initial_downloaded),
@@ -309,38 +340,40 @@ function updateActiveInstanceStore() {
 }
 
 function buildInstanceDefaultsFromServer(serverInst) {
+  const config = serverInst.config || serverInst;
   return {
     source: serverInst.source || 'manual',
-    selectedClient: serverInst.config.client_type,
-    selectedClientVersion: serverInst.config.client_version,
-    uploadRate: serverInst.config.upload_rate,
-    downloadRate: serverInst.config.download_rate,
-    port: serverInst.config.port,
-    completionPercent: serverInst.config.completion_percent,
-    initialUploaded: bytesToMB(serverInst.config.initial_uploaded),
-    initialDownloaded: bytesToMB(serverInst.config.initial_downloaded),
+    selectedClient: config.client_type,
+    selectedClientVersion: config.client_version,
+    uploadRate: config.upload_rate,
+    downloadRate: config.download_rate,
+    port: config.port,
+    vpnPortSync: config.vpn_port_sync || false,
+    completionPercent: config.completion_percent,
+    initialUploaded: bytesToMB(config.initial_uploaded),
+    initialDownloaded: bytesToMB(config.initial_downloaded),
     cumulativeUploaded: bytesToMB(serverInst.stats.uploaded),
     cumulativeDownloaded: bytesToMB(serverInst.stats.downloaded),
-    randomizeRates: serverInst.config.randomize_rates,
-    randomRangePercent: serverInst.config.random_range_percent,
-    stopAtRatioEnabled: serverInst.config.stop_at_ratio !== null,
-    stopAtRatio: serverInst.config.stop_at_ratio || 2.0,
-    randomizeRatio: serverInst.config.randomize_ratio || false,
-    randomRatioRangePercent: serverInst.config.random_ratio_range_percent ?? 10,
+    randomizeRates: config.randomize_rates,
+    randomRangePercent: config.random_range_percent,
+    stopAtRatioEnabled: config.stop_at_ratio !== null,
+    stopAtRatio: config.stop_at_ratio || 2.0,
+    randomizeRatio: config.randomize_ratio || false,
+    randomRatioRangePercent: config.random_ratio_range_percent ?? 10,
     effectiveStopAtRatio: null,
-    stopAtUploadedEnabled: serverInst.config.stop_at_uploaded !== null,
-    stopAtUploadedGB: (serverInst.config.stop_at_uploaded || 0) / (1024 * 1024 * 1024),
-    stopAtDownloadedEnabled: serverInst.config.stop_at_downloaded !== null,
-    stopAtDownloadedGB: (serverInst.config.stop_at_downloaded || 0) / (1024 * 1024 * 1024),
-    stopAtSeedTimeEnabled: serverInst.config.stop_at_seed_time !== null,
-    stopAtSeedTimeHours: (serverInst.config.stop_at_seed_time || 0) / 3600,
-    idleWhenNoLeechers: serverInst.config.idle_when_no_leechers || false,
-    idleWhenNoSeeders: serverInst.config.idle_when_no_seeders || false,
-    progressiveRatesEnabled: serverInst.config.progressive_rates || false,
-    targetUploadRate: serverInst.config.target_upload_rate || 100,
-    targetDownloadRate: serverInst.config.target_download_rate || 200,
-    progressiveDurationHours: (serverInst.config.progressive_duration || 3600) / 3600,
-    scrapeInterval: serverInst.config.scrape_interval || 60,
+    stopAtUploadedEnabled: config.stop_at_uploaded !== null,
+    stopAtUploadedGB: (config.stop_at_uploaded || 0) / (1024 * 1024 * 1024),
+    stopAtDownloadedEnabled: config.stop_at_downloaded !== null,
+    stopAtDownloadedGB: (config.stop_at_downloaded || 0) / (1024 * 1024 * 1024),
+    stopAtSeedTimeEnabled: config.stop_at_seed_time !== null,
+    stopAtSeedTimeHours: (config.stop_at_seed_time || 0) / 3600,
+    idleWhenNoLeechers: config.idle_when_no_leechers || false,
+    idleWhenNoSeeders: config.idle_when_no_seeders || false,
+    progressiveRatesEnabled: config.progressive_rates || false,
+    targetUploadRate: config.target_upload_rate || 100,
+    targetDownloadRate: config.target_download_rate || 200,
+    progressiveDurationHours: (config.progressive_duration || 3600) / 3600,
+    scrapeInterval: config.scrape_interval || 60,
   };
 }
 
@@ -594,8 +627,7 @@ export const instanceActions = {
         // No saved session - create first instance with default preset if available
         const instanceId = await api.createInstance();
 
-        const defaultPreset = getDefaultPreset();
-        const effectiveDefaults = defaultPreset ? defaultPreset.settings : {};
+        const effectiveDefaults = await buildNewInstanceDefaults();
 
         const newInstance = createDefaultInstance(instanceId, effectiveDefaults);
         instances.set([newInstance]);
@@ -614,11 +646,7 @@ export const instanceActions = {
     try {
       const instanceId = await api.createInstance();
 
-      // Merge default preset settings with any passed defaults
-      const defaultPreset = getDefaultPreset();
-      const effectiveDefaults = defaultPreset
-        ? { ...defaultPreset.settings, ...defaults }
-        : defaults;
+      const effectiveDefaults = await buildNewInstanceDefaults(defaults);
 
       const newInstance = createDefaultInstance(instanceId, effectiveDefaults);
 
@@ -655,8 +683,7 @@ export const instanceActions = {
       let newInstance = null;
       if (currentInstances.length === 1) {
         newInstanceId = await api.createInstance();
-        const defaultPreset = getDefaultPreset();
-        const effectiveDefaults = defaultPreset ? { ...defaultPreset.settings } : {};
+        const effectiveDefaults = await buildNewInstanceDefaults();
         newInstance = createDefaultInstance(newInstanceId, effectiveDefaults);
       }
 
@@ -927,6 +954,7 @@ export const instanceActions = {
               uploadRate: serverDefaults.uploadRate,
               downloadRate: serverDefaults.downloadRate,
               port: serverDefaults.port,
+              vpnPortSync: serverDefaults.vpnPortSync,
               completionPercent: serverDefaults.completionPercent,
               randomizeRates: serverDefaults.randomizeRates,
               randomRangePercent: serverDefaults.randomRangePercent,
@@ -978,8 +1006,7 @@ export const instanceActions = {
 
     // Fallback: create a frontend instance and hydrate torrent from backend
     if (gridSummary) {
-      const defaultPreset = getDefaultPreset();
-      const defaults = defaultPreset ? defaultPreset.settings : {};
+      const defaults = await buildNewInstanceDefaults();
       const source = gridSummary.source === 'watch_folder' ? 'watch_folder' : 'manual';
       const instance = createDefaultInstance(normalizedId, { ...defaults, source });
       instance.torrentPath = gridSummary.name || '';
@@ -1039,9 +1066,7 @@ export const instanceActions = {
     const currentInstances = get(instances);
     if (currentInstances.some(inst => inst.id === id)) return;
 
-    const defaultPreset = getDefaultPreset();
-    const presetDefaults = defaultPreset ? defaultPreset.settings : {};
-    const defaults = { ...presetDefaults, ...importDefaults };
+    const defaults = await buildNewInstanceDefaults(importDefaults);
     const instance = createDefaultInstance(id, defaults);
 
     try {
@@ -1184,8 +1209,7 @@ export const instanceActions = {
     let newInstance = null;
     if (currentInstances.length === 1) {
       const newId = await api.createInstance();
-      const defaultPreset = getDefaultPreset();
-      const defaults = defaultPreset ? { ...defaultPreset.settings } : {};
+      const defaults = await buildNewInstanceDefaults();
       newInstance = createDefaultInstance(newId, defaults);
     }
 

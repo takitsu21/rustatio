@@ -1,6 +1,6 @@
 //! Network and VPN status endpoints.
 
-use axum::{http::StatusCode, response::Response, routing::get, Router};
+use axum::{extract::State, http::StatusCode, response::Response, routing::get, Router};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -15,6 +15,8 @@ pub struct NetworkStatus {
     pub country: Option<String>,
     pub organization: Option<String>,
     pub is_vpn: bool,
+    pub forwarded_port: Option<u16>,
+    pub vpn_port_sync_enabled: bool,
 }
 
 #[derive(Deserialize)]
@@ -27,6 +29,11 @@ struct GluetunPublicIp {
     public_ip: String,
     country: Option<String>,
     organization: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct GluetunForwardedPort {
+    port: u16,
 }
 
 #[utoipa::path(
@@ -42,19 +49,24 @@ struct GluetunPublicIp {
         (status = 503, description = "Gluetun not available", body = ApiError)
     )
 )]
-pub async fn get_network_status() -> Response {
-    try_gluetun_detection().await.map_or_else(
-        || {
-            ApiError::response(
+pub async fn get_network_status(State(state): State<ServerState>) -> Response {
+    try_gluetun_detection(state.app.current_forwarded_port(), state.app.vpn_port_sync_enabled())
+        .await
+        .map_or_else(
+            || {
+                ApiError::response(
                 StatusCode::SERVICE_UNAVAILABLE,
                 "Gluetun not available. Network status requires Docker with gluetun VPN container.",
             )
-        },
-        ApiSuccess::response,
-    )
+            },
+            ApiSuccess::response,
+        )
 }
 
-async fn try_gluetun_detection() -> Option<NetworkStatus> {
+async fn try_gluetun_detection(
+    current_forwarded_port: Option<u16>,
+    vpn_port_sync_enabled: bool,
+) -> Option<NetworkStatus> {
     let client =
         reqwest::Client::builder().timeout(std::time::Duration::from_millis(1000)).build().ok()?;
 
@@ -79,11 +91,24 @@ async fn try_gluetun_detection() -> Option<NetworkStatus> {
         .await
         .ok()?;
 
+    let forwarded_port = match client.get("http://localhost:8000/v1/portforward").send().await {
+        Ok(response) => match response.error_for_status() {
+            Ok(response) => match response.json::<GluetunForwardedPort>().await {
+                Ok(data) if data.port > 0 => Some(data.port),
+                _ => current_forwarded_port,
+            },
+            Err(_) => current_forwarded_port,
+        },
+        Err(_) => current_forwarded_port,
+    };
+
     Some(NetworkStatus {
         ip: public_ip.public_ip,
         country: public_ip.country,
         organization: public_ip.organization,
         is_vpn,
+        forwarded_port,
+        vpn_port_sync_enabled,
     })
 }
 

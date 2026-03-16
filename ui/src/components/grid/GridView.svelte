@@ -1,6 +1,6 @@
 <script>
   import { onDestroy } from 'svelte';
-  import { listenToInstanceEvents } from '$lib/api.js';
+  import { api, listenToInstanceEvents } from '$lib/api.js';
   import { filteredGridInstances, gridActions, viewMode } from '$lib/gridStore.js';
   import { instanceActions } from '$lib/instanceStore.js';
   import GridToolbar from './GridToolbar.svelte';
@@ -8,6 +8,18 @@
   import GridImportDialog from './GridImportDialog.svelte';
 
   let importDialogOpen = $state(false);
+  let networkStatus = $state(null);
+  let networkStatusError = $state(null);
+
+  async function refreshNetworkStatus() {
+    networkStatusError = null;
+    try {
+      networkStatus = await api.getNetworkStatus();
+    } catch (error) {
+      networkStatus = null;
+      networkStatusError = error.message || 'Failed to fetch';
+    }
+  }
 
   // Debounce rapid instance events (e.g. during restoration) into a single fetch
   let debounceTimer = null;
@@ -18,6 +30,7 @@
 
   // Start polling and SSE on mount
   gridActions.startPolling(3000);
+  refreshNetworkStatus();
 
   const cleanupEvents = listenToInstanceEvents(event => {
     if (event.type === 'created' || event.type === 'deleted' || event.type === 'state_changed') {
@@ -83,4 +96,10 @@
   {/if}
 </div>
 
-<GridImportDialog bind:isOpen={importDialogOpen} />
+<GridImportDialog
+  bind:isOpen={importDialogOpen}
+  currentForwardedPort={networkStatus?.forwarded_port ?? networkStatus?.forwardedPort ?? null}
+  vpnPortSyncEnabled={networkStatus?.vpn_port_sync_enabled ?? true}
+  {networkStatusError}
+  onRefreshNetworkStatus={refreshNetworkStatus}
+/>

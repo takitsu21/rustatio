@@ -36,6 +36,10 @@
     onStopAll = () => {},
     onPauseAll = () => {},
     onResumeAll = () => {},
+    networkStatus = null,
+    networkStatusLoading = false,
+    networkStatusError = null,
+    onRefreshNetworkStatus = () => {},
     isOpen = $bindable(false),
     isCollapsed = $bindable(false),
   } = $props();
@@ -961,7 +965,13 @@
   <!-- Footer with Network Status and Version -->
   <div class="border-t border-border p-3 space-y-2">
     <!-- Network Status -->
-    <NetworkStatus isCollapsed={isCompact} />
+    <NetworkStatus
+      isCollapsed={isCompact}
+      {networkStatus}
+      {networkStatusLoading}
+      {networkStatusError}
+      {onRefreshNetworkStatus}
+    />
 
     <!-- Version + GitHub -->
     {#if !isCompact}

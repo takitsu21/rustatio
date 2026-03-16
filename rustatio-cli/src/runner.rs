@@ -279,6 +279,7 @@ pub fn create_faker_config(config: &RunnerConfig) -> FakerConfig {
         upload_rate: config.upload_rate,
         download_rate: config.download_rate,
         port: config.port,
+        vpn_port_sync: false,
         client_type: config.client.into(),
         client_version: config.client_version.clone(),
         initial_uploaded: config.initial_uploaded,

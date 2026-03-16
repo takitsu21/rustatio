@@ -10,6 +10,7 @@ use rustatio_core::{
     TorrentInfo, TorrentSummary,
 };
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::Arc;
 use tokio::sync::{broadcast, RwLock};
 
@@ -22,6 +23,8 @@ pub struct AppState {
     default_config: Arc<RwLock<Option<FakerConfig>>>,
     watch_settings: Arc<RwLock<Option<WatchSettings>>>,
     http_client: reqwest::Client,
+    forwarded_port: Arc<AtomicU16>,
+    server_vpn_port_sync: bool,
 }
 
 pub struct InstanceBuildContext {
@@ -65,11 +68,52 @@ impl AppState {
             default_config: Arc::new(RwLock::new(None)),
             watch_settings: Arc::new(RwLock::new(None)),
             http_client: reqwest::Client::new(),
+            forwarded_port: Arc::new(AtomicU16::new(0)),
+            server_vpn_port_sync: std::env::var("VPN_PORT_SYNC")
+                .map(|v| matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"))
+                .unwrap_or(false),
         }
+    }
+
+    pub fn current_forwarded_port(&self) -> Option<u16> {
+        match self.forwarded_port.load(Ordering::Relaxed) {
+            0 => None,
+            port => Some(port),
+        }
+    }
+
+    pub fn set_current_forwarded_port(&self, port: Option<u16>) {
+        self.forwarded_port.store(port.unwrap_or(0), Ordering::Relaxed);
+    }
+
+    pub const fn vpn_port_sync_enabled(&self) -> bool {
+        self.server_vpn_port_sync
+    }
+
+    fn apply_forwarded_port_to_config(&self, config: &mut FakerConfig) {
+        if config.vpn_port_sync {
+            if let Some(port) = self.current_forwarded_port() {
+                config.port = port;
+            }
+        }
+    }
+
+    const fn apply_cumulative_totals(config: &mut FakerConfig, uploaded: u64, downloaded: u64) {
+        config.initial_uploaded = uploaded;
+        config.initial_downloaded = downloaded;
     }
 
     pub async fn get_default_config(&self) -> Option<FakerConfig> {
         self.default_config.read().await.clone()
+    }
+
+    pub async fn get_effective_default_config(&self) -> FakerConfig {
+        let mut config = self.get_default_config().await.unwrap_or_else(|| FakerConfig {
+            vpn_port_sync: self.server_vpn_port_sync,
+            ..FakerConfig::default()
+        });
+        self.apply_forwarded_port_to_config(&mut config);
+        config
     }
 
     pub async fn set_default_config(&self, config: Option<FakerConfig>) -> Result<(), String> {
@@ -239,10 +283,14 @@ impl AppState {
     ) -> Result<(), String> {
         let mut instances = self.instances.write().await;
         let instance = instances.get_mut(id).ok_or("Instance not found")?;
-
+        let mut config = config;
+        self.apply_forwarded_port_to_config(&mut config);
         let mut faker_config = config.clone();
-        faker_config.initial_uploaded = instance.cumulative_uploaded;
-        faker_config.initial_downloaded = instance.cumulative_downloaded;
+        Self::apply_cumulative_totals(
+            &mut faker_config,
+            instance.cumulative_uploaded,
+            instance.cumulative_downloaded,
+        );
 
         instance
             .faker
@@ -261,6 +309,8 @@ impl AppState {
     ) -> Result<(), String> {
         let mut instances = self.instances.write().await;
         let instance = instances.get_mut(id).ok_or("Instance not found")?;
+        let mut config = config;
+        self.apply_forwarded_port_to_config(&mut config);
         instance.config = config.clone();
 
         instance
@@ -268,6 +318,12 @@ impl AppState {
             .update_config(config, Some(self.http_client.clone()))
             .await
             .map_err(|e| format!("Failed to update faker config: {e}"))?;
+
+        drop(instances);
+
+        if let Err(e) = self.save_state().await {
+            tracing::warn!("Failed to save state after updating instance config: {}", e);
+        }
 
         Ok(())
     }
@@ -283,9 +339,15 @@ impl AppState {
         for (id, config) in entries {
             match instances.get_mut(&id) {
                 Some(instance) => {
+                    let mut config = config;
+                    self.apply_forwarded_port_to_config(&mut config);
+
                     let mut faker_config = config.clone();
-                    faker_config.initial_uploaded = instance.cumulative_uploaded;
-                    faker_config.initial_downloaded = instance.cumulative_downloaded;
+                    Self::apply_cumulative_totals(
+                        &mut faker_config,
+                        instance.cumulative_uploaded,
+                        instance.cumulative_downloaded,
+                    );
 
                     let result = instance
                         .faker
@@ -316,12 +378,14 @@ impl AppState {
         torrent: TorrentInfo,
         config: FakerConfig,
     ) -> Result<(), String> {
+        let mut config = config;
+        self.apply_forwarded_port_to_config(&mut config);
         let context = InstanceBuildContext::new(id, torrent, config, InstanceSource::Manual);
         self.create_instance_internal(context).await
     }
 
     pub async fn create_idle_instance(&self, id: &str, torrent: TorrentInfo) -> Result<(), String> {
-        let config = FakerConfig::default();
+        let config = self.get_effective_default_config().await;
         let context = InstanceBuildContext::new(id, torrent, config, InstanceSource::Manual);
         let torrent = Arc::clone(&context.torrent);
         self.create_instance_internal(context).await?;
@@ -343,6 +407,8 @@ impl AppState {
         config: FakerConfig,
         auto_started: bool,
     ) -> Result<(), String> {
+        let mut config = config;
+        self.apply_forwarded_port_to_config(&mut config);
         let context = InstanceBuildContext::new(id, torrent, config, InstanceSource::WatchFolder);
         let torrent = Arc::clone(&context.torrent);
         self.create_instance_internal(context).await?;
@@ -442,6 +508,44 @@ impl AppState {
         }
 
         result
+    }
+
+    pub async fn apply_vpn_forwarded_port(&self, port: u16) -> Result<usize, String> {
+        self.set_current_forwarded_port(Some(port));
+
+        let mut instances = self.instances.write().await;
+        let mut updated = 0usize;
+
+        for instance in instances.values_mut() {
+            let state = instance.faker.stats_snapshot().state;
+            let is_running =
+                matches!(state, FakerState::Starting | FakerState::Running | FakerState::Paused);
+
+            if !instance.config.vpn_port_sync || instance.config.port == port || is_running {
+                continue;
+            }
+
+            let mut config = instance.config.clone();
+            config.port = port;
+
+            let mut faker_config = config.clone();
+            Self::apply_cumulative_totals(
+                &mut faker_config,
+                instance.cumulative_uploaded,
+                instance.cumulative_downloaded,
+            );
+
+            instance
+                .faker
+                .update_config(faker_config, Some(self.http_client.clone()))
+                .await
+                .map_err(|e| format!("Failed to update synced port: {e}"))?;
+
+            instance.config = config;
+            updated += 1;
+        }
+
+        Ok(updated)
     }
 
     pub async fn get_instance_info_for_delete(
@@ -583,6 +687,8 @@ impl AppState {
         context: InstanceBuildContext,
         tags: Vec<String>,
     ) -> Result<(), String> {
+        let mut context = context;
+        self.apply_forwarded_port_to_config(&mut context.config);
         let id = context.id.clone();
         self.create_instance_internal(context).await?;
 
@@ -631,8 +737,11 @@ impl AppState {
         existing: &ExistingInstanceState,
     ) -> FakerConfig {
         let mut faker_config = context.config.clone();
-        faker_config.initial_uploaded = existing.cumulative_uploaded;
-        faker_config.initial_downloaded = existing.cumulative_downloaded;
+        Self::apply_cumulative_totals(
+            &mut faker_config,
+            existing.cumulative_uploaded,
+            existing.cumulative_downloaded,
+        );
         if let Some(completion) = existing.completion_percent {
             faker_config.completion_percent = completion;
         }
@@ -736,5 +845,161 @@ impl EventBroadcaster for AppState {
 
     fn emit_instance_event(&self, event: InstanceEvent) {
         let _ = self.instance_sender.send(event);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rustatio_core::{FakerConfig, TorrentInfo};
+
+    fn torrent() -> TorrentInfo {
+        TorrentInfo {
+            info_hash: [7u8; 20],
+            announce: "https://tracker.test/announce".to_string(),
+            announce_list: None,
+            name: "sample".to_string(),
+            total_size: 1024,
+            piece_length: 256,
+            num_pieces: 4,
+            creation_date: None,
+            comment: None,
+            created_by: None,
+            is_single_file: true,
+            file_count: 1,
+            files: Vec::new(),
+        }
+    }
+
+    #[tokio::test]
+    async fn apply_vpn_forwarded_port_updates_only_synced_instances() {
+        let temp = tempfile::tempdir();
+        assert!(temp.is_ok());
+        let temp = temp.unwrap_or_else(|_| panic!("failed to create tempdir"));
+        let state = AppState::new(&temp.path().to_string_lossy());
+
+        let synced = FakerConfig { vpn_port_sync: true, port: 6881, ..FakerConfig::default() };
+
+        let fixed = FakerConfig { vpn_port_sync: false, port: 60000, ..FakerConfig::default() };
+
+        let created_synced = state.create_instance("synced", torrent(), synced).await;
+        assert!(created_synced.is_ok());
+        let created_fixed = state.create_instance("fixed", torrent(), fixed).await;
+        assert!(created_fixed.is_ok());
+
+        let applied = state.apply_vpn_forwarded_port(51413).await;
+        assert!(applied.is_ok());
+        assert_eq!(applied.unwrap_or_default(), 1);
+
+        let instances = state.list_instances().await;
+        let synced_inst = instances.iter().find(|inst| inst.id == "synced");
+        assert!(synced_inst.is_some());
+        assert_eq!(synced_inst.map(|inst| inst.config.port), Some(51413));
+
+        let fixed_inst = instances.iter().find(|inst| inst.id == "fixed");
+        assert!(fixed_inst.is_some());
+        assert_eq!(fixed_inst.map(|inst| inst.config.port), Some(60000));
+    }
+
+    #[tokio::test]
+    async fn effective_default_config_uses_forwarded_port_when_sync_enabled() {
+        let temp = tempfile::tempdir();
+        assert!(temp.is_ok());
+        let temp = temp.unwrap_or_else(|_| panic!("failed to create tempdir"));
+        let state = AppState::new(&temp.path().to_string_lossy());
+
+        let config = FakerConfig { vpn_port_sync: true, port: 6881, ..FakerConfig::default() };
+
+        let saved = state.set_default_config(Some(config)).await;
+        assert!(saved.is_ok());
+        state.set_current_forwarded_port(Some(45123));
+
+        let effective = state.get_effective_default_config().await;
+        assert!(effective.vpn_port_sync);
+        assert_eq!(effective.port, 45123);
+    }
+
+    #[tokio::test]
+    async fn update_instance_config_uses_forwarded_port_when_sync_enabled() {
+        let temp = tempfile::tempdir();
+        assert!(temp.is_ok());
+        let temp = temp.unwrap_or_else(|_| panic!("failed to create tempdir"));
+        let state = AppState::new(&temp.path().to_string_lossy());
+
+        let config = FakerConfig { vpn_port_sync: true, port: 6881, ..FakerConfig::default() };
+
+        let created = state.create_instance("synced", torrent(), config).await;
+        assert!(created.is_ok());
+
+        state.set_current_forwarded_port(Some(51413));
+
+        let updated = state
+            .update_instance_config(
+                "synced",
+                FakerConfig { vpn_port_sync: true, port: 6881, ..FakerConfig::default() },
+            )
+            .await;
+        assert!(updated.is_ok());
+
+        let instances = state.list_instances().await;
+        let synced_inst = instances.iter().find(|inst| inst.id == "synced");
+        assert!(synced_inst.is_some());
+        assert_eq!(synced_inst.map(|inst| inst.config.port), Some(51413));
+    }
+
+    #[tokio::test]
+    async fn update_instance_config_only_persists_vpn_sync_flag() {
+        let temp = tempfile::tempdir();
+        assert!(temp.is_ok());
+        let temp = temp.unwrap_or_else(|_| panic!("failed to create tempdir"));
+        let state = AppState::new(&temp.path().to_string_lossy());
+
+        let created = state.create_instance("synced", torrent(), FakerConfig::default()).await;
+        assert!(created.is_ok());
+
+        state.set_current_forwarded_port(Some(51413));
+
+        let updated = state
+            .update_instance_config_only(
+                "synced",
+                FakerConfig { vpn_port_sync: true, port: 6881, ..FakerConfig::default() },
+            )
+            .await;
+        assert!(updated.is_ok());
+
+        let reloaded = state.persistence.load().await;
+        let persisted = reloaded.instances.get("synced");
+        assert!(persisted.is_some());
+        assert_eq!(persisted.map(|inst| inst.config.vpn_port_sync), Some(true));
+        assert_eq!(persisted.map(|inst| inst.config.port), Some(51413));
+    }
+
+    #[tokio::test]
+    async fn apply_vpn_forwarded_port_keeps_running_instance_port_until_restart() {
+        let temp = tempfile::tempdir();
+        assert!(temp.is_ok());
+        let temp = temp.unwrap_or_else(|_| panic!("failed to create tempdir"));
+        let state = AppState::new(&temp.path().to_string_lossy());
+
+        let created = state
+            .create_instance(
+                "synced",
+                torrent(),
+                FakerConfig { vpn_port_sync: true, port: 40000, ..FakerConfig::default() },
+            )
+            .await;
+        assert!(created.is_ok());
+
+        let started = state.start_instance("synced").await;
+        assert!(started.is_ok());
+
+        let applied = state.apply_vpn_forwarded_port(51413).await;
+        assert!(applied.is_ok());
+        assert_eq!(applied.unwrap_or_default(), 0);
+
+        let instances = state.list_instances().await;
+        let synced_inst = instances.iter().find(|inst| inst.id == "synced");
+        assert!(synced_inst.is_some());
+        assert_eq!(synced_inst.map(|inst| inst.config.port), Some(40000));
     }
 }

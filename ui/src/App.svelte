@@ -105,6 +105,10 @@
     }
   }
 
+  function getForwardedPort(status) {
+    return status?.forwarded_port ?? status?.forwardedPort ?? null;
+  }
+
   // Store cleanup functions
   let unsubActiveInstance = null;
   let unsubSessionSave = null;
@@ -113,7 +117,10 @@
   let instanceEventsCleanup = null;
   let closeRequestedCleanup = null;
   let desktopReconcileIntervalId = null;
-
+  let networkStatusIntervalId = null;
+  let networkStatus = $state(null);
+  let networkStatusLoading = $state(false);
+  let networkStatusError = $state(null);
   // Debounce timer for syncing config to server
   let configSyncTimeout = null;
 
@@ -122,6 +129,7 @@
 
   // Track previous client to detect changes
   let previousClient = null;
+  let previousClientInstanceId = null;
 
   // Global error handler
   if (typeof window !== 'undefined') {
@@ -134,6 +142,37 @@
     window.addEventListener('unhandledrejection', event => {
       console.error('Unhandled promise rejection:', event.reason);
     });
+  }
+
+  async function refreshNetworkStatus() {
+    networkStatusLoading = true;
+    networkStatusError = null;
+
+    try {
+      const result = await api.getNetworkStatus();
+      if (result) {
+        networkStatus = result;
+      } else {
+        networkStatus = null;
+        networkStatusError = 'unavailable';
+      }
+    } catch (error) {
+      networkStatusError = error.message || 'Failed to fetch';
+    } finally {
+      networkStatusLoading = false;
+    }
+  }
+
+  function startNetworkStatusPolling() {
+    if (networkStatusIntervalId) return;
+    refreshNetworkStatus();
+    networkStatusIntervalId = setInterval(refreshNetworkStatus, 15000);
+  }
+
+  function stopNetworkStatusPolling() {
+    if (!networkStatusIntervalId) return;
+    clearInterval(networkStatusIntervalId);
+    networkStatusIntervalId = null;
   }
 
   // Load configuration on mount
@@ -202,7 +241,9 @@
       if (
         inst.selectedClient &&
         !inst.isRunning &&
+        !inst.vpnPortSync &&
         clientDefaultPorts[inst.selectedClient] &&
+        previousClientInstanceId === inst.id &&
         previousClient !== null &&
         previousClient !== inst.selectedClient
       ) {
@@ -213,6 +254,7 @@
 
       // Track current client for next comparison
       previousClient = inst.selectedClient;
+      previousClientInstanceId = inst.id;
     });
 
     // Config save is handled by saveSession below, so we don't need a separate subscription
@@ -390,6 +432,7 @@
 
     // Initialize instance store (will restore session from localStorage)
     await instanceActions.initialize();
+    startNetworkStatusPolling();
 
     // Start polling for any instances that were restored in a running state (server mode)
     // This ensures UI updates after page refresh when instances are still running on server
@@ -501,6 +544,8 @@
     if (beforeUnloadHandler) {
       window.removeEventListener('beforeunload', beforeUnloadHandler);
     }
+
+    stopNetworkStatusPolling();
 
     // Clean up config sync timeout
     if (configSyncTimeout) {
@@ -1102,6 +1147,7 @@
       upload_rate: parseFloat(instance.uploadRate ?? 50),
       download_rate: parseFloat(instance.downloadRate ?? 100),
       port: parseInt(instance.port ?? 6881),
+      vpn_port_sync: instance.vpnPortSync ?? false,
       client_type: instance.selectedClient || 'qbittorrent',
       client_version:
         instance.selectedClientVersion ||
@@ -1437,6 +1483,10 @@
       onStopAll={stopAllInstances}
       onPauseAll={pauseAllInstances}
       onResumeAll={resumeAllInstances}
+      {networkStatus}
+      {networkStatusLoading}
+      {networkStatusError}
+      onRefreshNetworkStatus={refreshNetworkStatus}
     />
 
     <!-- Main Content -->
@@ -1575,6 +1625,10 @@
                   selectedClient={$activeInstance.selectedClient}
                   selectedClientVersion={$activeInstance.selectedClientVersion}
                   port={$activeInstance.port}
+                  currentForwardedPort={getForwardedPort(networkStatus)}
+                  vpnPortSyncEnabled={networkStatus?.vpn_port_sync_enabled ?? true}
+                  {networkStatusError}
+                  vpnPortSync={$activeInstance.vpnPortSync}
                   uploadRate={$activeInstance.uploadRate}
                   downloadRate={$activeInstance.downloadRate}
                   completionPercent={$activeInstance.completionPercent}

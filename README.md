@@ -218,6 +218,7 @@ services:
       # Configure your VPN provider - see https://github.com/qdm12/gluetun-wiki
       - VPN_SERVICE_PROVIDER=protonvpn  # or: mullvad, nordvpn, expressvpn, etc.
       - VPN_TYPE=wireguard              # or: openvpn
+      - VPN_PORT_FORWARDING=on          # if you want to enable port forwarding
       # Provider-specific settings (example for ProtonVPN WireGuard)
       - WIREGUARD_PRIVATE_KEY=${WIREGUARD_PRIVATE_KEY}
       - SERVER_COUNTRIES=${SERVER_COUNTRIES:-Switzerland}
@@ -226,7 +227,7 @@ services:
       # Since the control server is only reachable within the container network namespace it is safe
       - HTTP_CONTROL_SERVER_AUTH_DEFAULT_ROLE={"auth":"none"}
     ports:
-      - "${WEBUI_PORT:-8080}:8080"  # Rustatio Web UI
+      - "${WEBUI_PORT:-8080}:8080" # Rustatio Web UI
     restart: unless-stopped
 
   rustatio:
@@ -235,6 +236,7 @@ services:
     environment:
       - PORT=8080
       - RUST_LOG=${RUST_LOG:-trace}
+      - VPN_PORT_SYNC=${VPN_PORT_SYNC:-on}
       - PUID=${PUID:-1000}
       - PGID=${PGID:-1000}
       # Optional authentication for your server (Recommended if exposing on internet)
@@ -242,7 +244,7 @@ services:
     volumes:
       - rustatio_data:/data
       # Optional: Uncomment to enable watch folder feature
-      # - ${TORRENTS_DIR:-./torrents}:/torrents
+      # - ${TORRENTS_DIR:-/path/to/your/torrents}:/torrents
     restart: unless-stopped
     network_mode: service:gluetun
     depends_on:
@@ -254,6 +256,16 @@ volumes:
 ```
 
 > **Note**: The `ports` are defined on the `gluetun` container since Rustatio uses its network stack. See the [gluetun wiki](https://github.com/qdm12/gluetun-wiki) for VPN provider-specific configuration.
+
+> **Dynamic forwarded port sync**: When `VPN_PORT_SYNC=on`, new server instances can enable `VPN sync` in the UI so Rustatio follows Gluetun's current forwarded port automatically. Existing instances stay on their saved manual port unless you enable the toggle for that instance.
+
+> **Requirements for VPN sync**:
+> - Gluetun port forwarding must be enabled with `VPN_PORT_FORWARDING=on`
+> - Rustatio server-side sync must be enabled with `VPN_PORT_SYNC=on`
+> - Gluetun must expose a real forwarded port (not `0`) for your VPN provider/server
+> - Running instances keep their current port until restart; new/stopped instances pick up the latest forwarded port automatically
+
+If `VPN sync` is enabled in the UI but no forwarded port is available yet, Rustatio will warn you and keep waiting until Gluetun reports one.
 
 **Docker Features**:
 - ✅ No CORS limitations (server handles tracker requests)

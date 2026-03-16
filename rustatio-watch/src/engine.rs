@@ -463,7 +463,8 @@ async fn process_torrent_file<E: WatchEngine>(
     }
 
     let new_id = context.engine.next_instance_id();
-    let config = context.engine.default_config().await.unwrap_or_default();
+    let config =
+        context.engine.default_config().await.unwrap_or_else(rustatio_core::FakerConfig::default);
     let instance = NewInstance { id: new_id.clone(), info: torrent.to_info(), config, auto_start };
 
     context.engine.create_instance(instance).await?;

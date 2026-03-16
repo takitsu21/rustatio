@@ -9,6 +9,7 @@ services:
       # Configure your VPN provider - see https://github.com/qdm12/gluetun-wiki
       - VPN_SERVICE_PROVIDER=protonvpn # or: mullvad, nordvpn, expressvpn, etc.
       - VPN_TYPE=wireguard # or: openvpn
+      - VPN_PORT_FORWARDING=on # if you want to enable port forwarding
       # Provider-specific settings (example for ProtonVPN WireGuard)
       - WIREGUARD_PRIVATE_KEY=${WIREGUARD_PRIVATE_KEY}
       - SERVER_COUNTRIES=${SERVER_COUNTRIES:-Switzerland}
@@ -26,6 +27,7 @@ services:
     environment:
       - PORT=8080
       - RUST_LOG=${RUST_LOG:-trace}
+      - VPN_PORT_SYNC=${VPN_PORT_SYNC:-on} # must be enabled alongisde with gluetun VPN_PORT_FORWARDING
       - PUID=${PUID:-1000}
       - PGID=${PGID:-1000}
       # Optional authentication for your server (Recommended if exposing on internet)

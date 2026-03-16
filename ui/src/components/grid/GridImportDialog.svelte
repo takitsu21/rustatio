@@ -5,6 +5,7 @@
   import Label from '$lib/components/ui/label.svelte';
   import Select from '$lib/components/ui/select.svelte';
   import Checkbox from '$lib/components/ui/checkbox.svelte';
+  import InlineHelp from '$lib/components/common/InlineHelp.svelte';
   import BaseModal from '../common/BaseModal.svelte';
   import { gridActions } from '$lib/gridStore.js';
   import { api, getRunMode } from '$lib/api.js';
@@ -20,7 +21,13 @@
   import ProgressiveRateSettings from '../config/ProgressiveRateSettings.svelte';
   import StopConditionSettings from '../config/StopConditionSettings.svelte';
 
-  let { isOpen = $bindable(false) } = $props();
+  let {
+    isOpen = $bindable(false),
+    currentForwardedPort = null,
+    vpnPortSyncEnabled = true,
+    networkStatusError = null,
+    onRefreshNetworkStatus = () => {},
+  } = $props();
 
   const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
   const isServer = getRunMode() === 'server';
@@ -54,6 +61,7 @@
   let selectedClient = $state('');
   let selectedVersion = $state('');
   let port = $state(6881);
+  let vpnPortSync = $state(false);
 
   // Preset selection
   let selectedPresetId = $state('');
@@ -145,6 +153,7 @@
     if (s.uploadRate != null) uploadRate = s.uploadRate;
     if (s.downloadRate != null) downloadRate = s.downloadRate;
     if (s.port != null) port = s.port;
+    if (s.vpnPortSync != null) vpnPortSync = s.vpnPortSync;
     if (s.selectedClient != null) selectedClient = s.selectedClient;
     if (s.selectedClientVersion != null) selectedVersion = s.selectedClientVersion;
 
@@ -264,6 +273,28 @@
     return Number.isFinite(parsed) ? parsed : fallback;
   }
 
+  function handleVpnPortSyncChange(checked) {
+    if (checked && (!vpnPortSyncEnabled || networkStatusError === 'unavailable')) {
+      return;
+    }
+
+    vpnPortSync = checked;
+    if (checked && currentForwardedPort) {
+      port = currentForwardedPort;
+    }
+  }
+
+  $effect(() => {
+    if (
+      vpnPortSync &&
+      vpnPortSyncEnabled &&
+      currentForwardedPort &&
+      port !== currentForwardedPort
+    ) {
+      port = currentForwardedPort;
+    }
+  });
+
   function buildConfig() {
     const tags = tagsInput
       .split(',')
@@ -298,6 +329,7 @@
       uploadRate: resolvedUploadRate,
       downloadRate: resolvedDownloadRate,
       port: parseInt(port) || 6881,
+      vpnPortSync,
       selectedClient: selectedClient || undefined,
       selectedClientVersion: selectedVersion || undefined,
       completionPercent,
@@ -385,6 +417,7 @@
     selectedClient = '';
     selectedVersion = '';
     port = 6881;
+    vpnPortSync = false;
     selectedPresetId = '';
     presetDropdownOpen = false;
     randomizeRates = true;
@@ -770,24 +803,73 @@
 
       <!-- Client Selection -->
       <div>
-        <div class="flex items-center gap-2 mb-2">
-          <ClientIcon clientId={selectedClient} size={16} />
-          <Label>Client</Label>
+        <div class="mb-2 flex items-center justify-between gap-3">
+          <div class="flex items-center gap-2">
+            <ClientIcon clientId={selectedClient} size={16} />
+            <Label>Client</Label>
+          </div>
+          <div class="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+            <Checkbox
+              checked={vpnPortSync}
+              disabled={(!vpnPortSyncEnabled && !vpnPortSync) ||
+                (networkStatusError === 'unavailable' && !vpnPortSync)}
+              id="grid-vpn-port-sync"
+              onchange={handleVpnPortSyncChange}
+            />
+            <Label for="grid-vpn-port-sync" class="cursor-pointer">VPN sync</Label>
+            <InlineHelp text="Imported instances will sync their announce port from Gluetun." />
+          </div>
         </div>
         <div class="grid grid-cols-3 gap-3">
           <ClientSelect clients={clientTypes} bind:value={selectedClient} />
           {#if selectedClient && clientVersions.length > 0}
             <VersionSelect versions={clientVersions} bind:value={selectedVersion} />
           {/if}
-          <div>
+          <div class="self-start">
             <Input
               type="number"
               bind:value={port}
+              disabled={vpnPortSync && vpnPortSyncEnabled}
               min="1024"
               max="65535"
               placeholder="Port"
               class="h-9"
             />
+            {#if !vpnPortSyncEnabled && vpnPortSync}
+              <p class="mt-1 text-[11px] text-amber-400">
+                VPN sync is disabled on the server. Uncheck it or enable
+                <span class="font-mono">VPN_PORT_SYNC=on</span> and restart Rustatio.
+              </p>
+            {:else if !vpnPortSyncEnabled}
+              <p class="mt-1 text-[11px] text-amber-400">
+                VPN sync is disabled on the server. Set <span class="font-mono"
+                  >VPN_PORT_SYNC=on</span
+                >
+                and restart Rustatio.
+              </p>
+            {:else if networkStatusError === 'unavailable'}
+              <div class="mt-1 flex items-center gap-2 text-[11px] text-amber-400">
+                <span>Gluetun status is unavailable.</span>
+                <button
+                  type="button"
+                  class="underline underline-offset-2 hover:text-amber-300"
+                  onclick={onRefreshNetworkStatus}
+                >
+                  Retry
+                </button>
+              </div>
+            {:else if vpnPortSync && vpnPortSyncEnabled && !currentForwardedPort}
+              <p class="mt-1 text-[11px] text-amber-400">
+                Waiting for a forwarded port from Gluetun. Make sure <span class="font-mono"
+                  >VPN_PORT_FORWARDING=on</span
+                >
+                is enabled and the VPN provider supports it.
+              </p>
+            {:else if vpnPortSync && vpnPortSyncEnabled && currentForwardedPort}
+              <p class="mt-1 text-[11px] text-foreground/80">
+                Current forwarded port: <span class="font-mono">{currentForwardedPort}</span>
+              </p>
+            {/if}
           </div>
         </div>
       </div>
