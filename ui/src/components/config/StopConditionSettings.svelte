@@ -2,7 +2,16 @@
   import Checkbox from '$lib/components/ui/checkbox.svelte';
   import Input from '$lib/components/ui/input.svelte';
   import Label from '$lib/components/ui/label.svelte';
-  import { Percent, Upload, Download, Clock, Users, Pause, Settings, Shuffle } from '@lucide/svelte';
+  import {
+    Percent,
+    Upload,
+    Download,
+    Clock,
+    Users,
+    Pause,
+    Settings,
+    Shuffle,
+  } from '@lucide/svelte';
 
   let {
     stopAtRatioEnabled = $bindable(false),
