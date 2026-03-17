@@ -16,6 +16,17 @@ function _getBulkInstanceNames(ids, instances) {
   });
 }
 
+// Compute the effective (randomized) stop ratio
+export function computeEffectiveRatio(stopAtRatio, randomizeRatio, randomRatioRangePercent) {
+  if (!randomizeRatio) {
+    return null;
+  }
+  const base = parseFloat(stopAtRatio) || 2.0;
+  const range = (parseFloat(randomRatioRangePercent) || 10) / 100;
+  const variation = 1 + (Math.random() * 2 - 1) * range;
+  return parseFloat((base * variation).toFixed(4));
+}
+
 // Create default instance state
 function createDefaultInstance(id, defaults = {}) {
   return {
@@ -58,6 +69,19 @@ function createDefaultInstance(id, defaults = {}) {
     stopAtRatioEnabled:
       defaults.stopAtRatioEnabled !== undefined ? defaults.stopAtRatioEnabled : false,
     stopAtRatio: defaults.stopAtRatio !== undefined ? defaults.stopAtRatio : 2.0,
+    randomizeRatio: defaults.randomizeRatio !== undefined ? defaults.randomizeRatio : false,
+    randomRatioRangePercent:
+      defaults.randomRatioRangePercent !== undefined ? defaults.randomRatioRangePercent : 10,
+    effectiveStopAtRatio:
+      defaults.effectiveStopAtRatio !== undefined
+        ? defaults.effectiveStopAtRatio
+        : defaults.randomizeRatio && defaults.stopAtRatioEnabled
+          ? computeEffectiveRatio(
+              defaults.stopAtRatio ?? 2.0,
+              true,
+              defaults.randomRatioRangePercent ?? 10
+            )
+          : null,
     stopAtUploadedEnabled:
       defaults.stopAtUploadedEnabled !== undefined ? defaults.stopAtUploadedEnabled : false,
     stopAtUploadedGB: defaults.stopAtUploadedGB !== undefined ? defaults.stopAtUploadedGB : 10,
@@ -130,6 +154,9 @@ async function saveSession(instances, activeId) {
         scrape_interval: parseInt(inst.scrapeInterval) || 60,
         stop_at_ratio_enabled: inst.stopAtRatioEnabled,
         stop_at_ratio: parseFloat(inst.stopAtRatio),
+        randomize_ratio: inst.randomizeRatio,
+        random_ratio_range_percent: parseFloat(inst.randomRatioRangePercent),
+        effective_stop_at_ratio: inst.effectiveStopAtRatio,
         stop_at_uploaded_enabled: inst.stopAtUploadedEnabled,
         stop_at_uploaded_gb: parseFloat(inst.stopAtUploadedGB),
         stop_at_downloaded_enabled: inst.stopAtDownloadedEnabled,
@@ -169,6 +196,9 @@ async function saveSession(instances, activeId) {
           scrape_interval: parseInt(inst.scrapeInterval) || 60,
           stop_at_ratio_enabled: inst.stopAtRatioEnabled,
           stop_at_ratio: parseFloat(inst.stopAtRatio),
+          randomize_ratio: inst.randomizeRatio,
+          random_ratio_range_percent: parseFloat(inst.randomRatioRangePercent),
+          effective_stop_at_ratio: inst.effectiveStopAtRatio,
           stop_at_uploaded_enabled: inst.stopAtUploadedEnabled,
           stop_at_uploaded_gb: parseFloat(inst.stopAtUploadedGB),
           stop_at_downloaded_enabled: inst.stopAtDownloadedEnabled,
@@ -235,6 +265,9 @@ function loadSessionFromStorage(config = null) {
         scrapeInterval: inst.scrape_interval ?? 60,
         stopAtRatioEnabled: inst.stop_at_ratio_enabled,
         stopAtRatio: inst.stop_at_ratio,
+        randomizeRatio: inst.randomize_ratio || false,
+        randomRatioRangePercent: inst.random_ratio_range_percent ?? 10,
+        effectiveStopAtRatio: inst.effective_stop_at_ratio ?? null,
         stopAtUploadedEnabled: inst.stop_at_uploaded_enabled,
         stopAtUploadedGB: inst.stop_at_uploaded_gb,
         stopAtDownloadedEnabled: inst.stop_at_downloaded_enabled,
@@ -300,6 +333,9 @@ function buildInstanceDefaultsFromServer(serverInst) {
     randomRangePercent: serverInst.config.random_range_percent,
     stopAtRatioEnabled: serverInst.config.stop_at_ratio !== null,
     stopAtRatio: serverInst.config.stop_at_ratio || 2.0,
+    randomizeRatio: serverInst.config.randomize_ratio || false,
+    randomRatioRangePercent: serverInst.config.random_ratio_range_percent ?? 10,
+    effectiveStopAtRatio: null,
     stopAtUploadedEnabled: serverInst.config.stop_at_uploaded !== null,
     stopAtUploadedGB: (serverInst.config.stop_at_uploaded || 0) / (1024 * 1024 * 1024),
     stopAtDownloadedEnabled: serverInst.config.stop_at_downloaded !== null,

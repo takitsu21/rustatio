@@ -193,7 +193,11 @@ fn handle_tray_menu_event(app: &tauri::AppHandle, id: &str, should_exit: &Atomic
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn handle_tray_icon_event(app: &tauri::AppHandle, event: &tauri::tray::TrayIconEvent) {
-    if let tauri::tray::TrayIconEvent::Click { button: tauri::tray::MouseButton::Left, .. } = event
+    if let tauri::tray::TrayIconEvent::Click {
+        button: tauri::tray::MouseButton::Left,
+        button_state: tauri::tray::MouseButtonState::Up,
+        ..
+    } = event
     {
         toggle_main_window(app);
     }

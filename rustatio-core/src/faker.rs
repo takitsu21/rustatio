@@ -65,9 +65,21 @@ pub struct FakerConfig {
     #[serde(default = "default_random_range")]
     pub random_range_percent: f64,
 
+    /// Enable randomization of the stop ratio target
+    #[serde(default)]
+    pub randomize_ratio: bool,
+
+    /// Randomization range percentage for ratio (e.g., 10 means ±10%)
+    #[serde(default = "default_random_ratio_range")]
+    pub random_ratio_range_percent: f64,
+
     // Stop conditions
     /// Stop when ratio reaches this value (optional)
     pub stop_at_ratio: Option<f64>,
+
+    /// Pre-computed effective ratio from frontend preview (skips re-randomization if provided)
+    #[serde(default)]
+    pub effective_stop_at_ratio: Option<f64>,
 
     /// Stop after uploading this many bytes (optional)
     pub stop_at_uploaded: Option<u64>,
@@ -119,6 +131,8 @@ pub struct PresetSettings {
     pub completion_percent: Option<f64>,
     pub randomize_rates: Option<bool>,
     pub random_range_percent: Option<f64>,
+    pub randomize_ratio: Option<bool>,
+    pub random_ratio_range_percent: Option<f64>,
     // Stop conditions with enabled flags
     pub stop_at_ratio_enabled: Option<bool>,
     pub stop_at_ratio: Option<f64>,
@@ -172,7 +186,10 @@ impl From<PresetSettings> for FakerConfig {
             num_want: 50,
             randomize_rates: p.randomize_rates.unwrap_or(true),
             random_range_percent: p.random_range_percent.unwrap_or(20.0),
+            randomize_ratio: p.randomize_ratio.unwrap_or(false),
+            random_ratio_range_percent: p.random_ratio_range_percent.unwrap_or(10.0),
             stop_at_ratio,
+            effective_stop_at_ratio: None,
             stop_at_uploaded,
             stop_at_downloaded,
             stop_at_seed_time,
@@ -199,6 +216,10 @@ const fn default_random_range() -> f64 {
     20.0
 }
 
+const fn default_random_ratio_range() -> f64 {
+    10.0
+}
+
 const fn default_scrape_interval() -> u64 {
     60 // 60 seconds
 }
@@ -217,7 +238,10 @@ impl Default for FakerConfig {
             num_want: 50,
             randomize_rates: true,
             random_range_percent: 20.0,
+            randomize_ratio: false,
+            random_ratio_range_percent: 10.0,
             stop_at_ratio: None,
+            effective_stop_at_ratio: None,
             stop_at_uploaded: None,
             stop_at_downloaded: None,
             stop_at_seed_time: None,
@@ -277,6 +301,9 @@ pub struct FakerStats {
     pub download_progress: f64,  // 0-100% toward stop_at_downloaded
     pub ratio_progress: f64,     // 0-100% toward stop_at_ratio
     pub seed_time_progress: f64, // 0-100% toward stop_at_seed_time
+
+    // === EFFECTIVE TARGETS (after randomization) ===
+    pub effective_stop_at_ratio: Option<f64>, // Actual ratio target used by backend (after randomization)
 
     // === ETA ===
     pub eta_ratio: Option<Duration>,
@@ -407,6 +434,35 @@ impl RatioFaker {
         let tracker_client = TrackerClient::new(client_config, http_client)
             .map_err(|e| FakerError::ConfigError(e.to_string()))?;
 
+        // Apply ratio randomization if enabled
+        let mut config = config;
+        if config.randomize_ratio {
+            if let Some(base_ratio) = config.stop_at_ratio {
+                // Use pre-computed effective ratio from frontend if provided
+                let effective = if let Some(precomputed) = config.effective_stop_at_ratio {
+                    log_info!(
+                        "Using pre-computed stop ratio: base={:.4}, effective={:.4}",
+                        base_ratio,
+                        precomputed
+                    );
+                    precomputed
+                } else {
+                    let range = config.random_ratio_range_percent.clamp(0.0, 100.0) / 100.0;
+                    let mut rng = rand::rng();
+                    let variation: f64 = rng.random::<f64>().mul_add(2.0, -1.0).mul_add(range, 1.0);
+                    let computed = (base_ratio * variation * 10000.0).round() / 10000.0;
+                    log_info!(
+                        "Randomized stop ratio: base={:.4}, range=±{:.0}%, effective={:.4}",
+                        base_ratio,
+                        config.random_ratio_range_percent,
+                        computed
+                    );
+                    computed
+                };
+                config.stop_at_ratio = Some(effective);
+            }
+        }
+
         // Calculate how much of THIS torrent is already downloaded
         let completion = config.completion_percent.clamp(0.0, 100.0) / 100.0;
         let torrent_downloaded = (torrent.total_size as f64 * completion) as u64;
@@ -454,6 +510,9 @@ impl RatioFaker {
             download_progress: 0.0,
             ratio_progress: 0.0,
             seed_time_progress: 0.0,
+
+            // Effective targets
+            effective_stop_at_ratio: config.stop_at_ratio,
 
             // ETA
             eta_ratio: None,
@@ -945,6 +1004,7 @@ impl RatioFaker {
             download_progress: 0.0,
             ratio_progress: 0.0,
             seed_time_progress: 0.0,
+            effective_stop_at_ratio: config.stop_at_ratio,
             eta_ratio: None,
             eta_uploaded: None,
             eta_seed_time: None,
@@ -1543,6 +1603,8 @@ mod tests {
         assert_eq!(config.completion_percent, 100.0);
         assert!(config.randomize_rates);
         assert_eq!(config.random_range_percent, 20.0);
+        assert!(!config.randomize_ratio);
+        assert_eq!(config.random_ratio_range_percent, 10.0);
         assert!(config.stop_at_ratio.is_none());
         assert!(config.stop_at_uploaded.is_none());
         assert!(!config.progressive_rates);

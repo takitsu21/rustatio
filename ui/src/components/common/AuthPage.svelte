@@ -86,7 +86,7 @@
     <div class="relative theme-selector">
       <button
         onclick={toggleThemeDropdown}
-        class="bg-secondary text-secondary-foreground border-2 border-border rounded-lg p-2 flex items-center gap-2 cursor-pointer transition-all hover:bg-primary hover:border-primary hover:text-primary-foreground active:scale-[0.98] shadow-lg"
+        class="group bg-secondary text-secondary-foreground border-2 border-border rounded-lg p-2 flex items-center gap-2 cursor-pointer transition-all hover:bg-primary hover:border-primary hover:text-primary-foreground hover:[&_svg]:!text-current active:scale-[0.98] shadow-lg"
         title="Theme: {getThemeName(getTheme())}"
         aria-label="Toggle theme menu"
       >
@@ -115,7 +115,7 @@
               <button
                 class="w-full flex items-center gap-3 px-3 py-2 border-none cursor-pointer rounded-lg transition-all {getTheme() ===
                 themeOption.id
-                  ? 'bg-primary text-primary-foreground shadow-sm'
+                  ? 'bg-primary text-primary-foreground shadow-sm [&_svg]:!text-current'
                   : 'bg-transparent text-card-foreground hover:bg-secondary/80'}"
                 onclick={() => selectTheme(themeOption.id)}
               >

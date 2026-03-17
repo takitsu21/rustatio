@@ -2,11 +2,14 @@
   import Checkbox from '$lib/components/ui/checkbox.svelte';
   import Input from '$lib/components/ui/input.svelte';
   import Label from '$lib/components/ui/label.svelte';
-  import { Percent, Upload, Download, Clock, Users, Pause } from '@lucide/svelte';
+  import { Percent, Upload, Download, Clock, Users, Pause, Shuffle } from '@lucide/svelte';
 
   let {
     stopAtRatioEnabled = $bindable(false),
     stopAtRatio = $bindable(2.0),
+    randomizeRatio = $bindable(false),
+    randomRatioRangePercent = $bindable(10),
+    effectiveStopAtRatio = null,
     stopAtUploadedEnabled = $bindable(false),
     stopAtUploadedGB = $bindable(10),
     stopAtDownloadedEnabled = $bindable(false),
@@ -59,6 +62,66 @@
       <span class="text-xs text-muted-foreground">disabled</span>
     {/if}
   </div>
+
+  <!-- Randomize Ratio -->
+  {#if stopAtRatioEnabled}
+    <div class="border-b border-border bg-muted/30">
+      <div class="flex items-center gap-3 px-3 py-2 pl-10">
+        <Checkbox
+          id="randomize-ratio"
+          checked={randomizeRatio}
+          {disabled}
+          onchange={checked => {
+            randomizeRatio = checked;
+            onchange?.({ randomizeRatio: checked });
+          }}
+        />
+        <Shuffle size={14} class={randomizeRatio ? 'text-primary' : 'text-muted-foreground'} />
+        <Label for="randomize-ratio" class="flex-1 cursor-pointer text-xs font-medium">
+          Randomize ratio for realistic behavior
+        </Label>
+      </div>
+      {#if randomizeRatio}
+        <div class="px-10 pb-2 flex items-center gap-3">
+          <span class="text-xs text-muted-foreground whitespace-nowrap">Variance</span>
+          <input
+            type="range"
+            bind:value={randomRatioRangePercent}
+            {disabled}
+            min="1"
+            max="30"
+            step="1"
+            class="flex-1 h-1.5 rounded-lg cursor-pointer accent-primary"
+            style="background: linear-gradient(to right, hsl(var(--primary)) {((randomRatioRangePercent -
+              1) /
+              29) *
+              100}%, hsl(var(--muted)) {((randomRatioRangePercent - 1) / 29) * 100}%);"
+            oninput={() => onchange?.({ randomRatioRangePercent })}
+          />
+          <span class="text-sm font-bold text-primary min-w-[4ch] text-right"
+            >±{randomRatioRangePercent}%</span
+          >
+        </div>
+        <div class="px-10 pb-2">
+          <div class="text-xs text-muted-foreground">
+            Range
+            <span class="font-medium text-primary"
+              >{(stopAtRatio * (1 - randomRatioRangePercent / 100)).toFixed(2)}</span
+            >
+            —
+            <span class="font-medium text-primary"
+              >{(stopAtRatio * (1 + randomRatioRangePercent / 100)).toFixed(2)}</span
+            >
+            {#if effectiveStopAtRatio != null}
+              · Effective: <span class="font-semibold text-primary"
+                >{effectiveStopAtRatio.toFixed(4)}</span
+              >
+            {/if}
+          </div>
+        </div>
+      {/if}
+    </div>
+  {/if}
 
   <!-- Uploaded -->
   <div

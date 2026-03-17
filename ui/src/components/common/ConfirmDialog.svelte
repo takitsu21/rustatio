@@ -21,6 +21,8 @@
     closeOnCancel = true,
     closeOnSecondary = true,
     closeOnConfirm = true,
+    showRememberChoice = false,
+    rememberChoiceChecked = $bindable(false),
     titleId = 'confirm-dialog-title',
     zIndexClass = 'z-[80]',
   } = $props();
@@ -91,6 +93,19 @@
 
       {#if message}
         <p class="text-sm text-muted-foreground whitespace-pre-line">{message}</p>
+      {/if}
+
+      {#if showRememberChoice}
+        <div class="mt-4 flex items-center gap-2">
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              bind:checked={rememberChoiceChecked}
+              class="w-4 h-4 rounded border-border text-primary focus:ring-primary/50"
+            />
+            <span class="text-sm text-foreground">Remember my choice</span>
+          </label>
+        </div>
       {/if}
 
       <div class="flex justify-end gap-2 mt-5">

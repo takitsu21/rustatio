@@ -21,6 +21,7 @@
     activeInstanceId,
     instanceActions,
     saveSession,
+    computeEffectiveRatio,
   } from './lib/instanceStore.js';
 
   // Import components
@@ -70,6 +71,7 @@
   // Authentication state
   let showAuthDialog = $state(false);
   let closePromptVisible = $state(false);
+  let rememberCloseChoice = $state(false);
 
   // Flag to prevent store subscriptions from firing during initialization
   let isInitializing = true;
@@ -315,7 +317,14 @@
       try {
         const { listen } = await import('@tauri-apps/api/event');
         closeRequestedCleanup = await listen('app-close-requested', () => {
-          closePromptVisible = true;
+          const behavior = localStorage.getItem('rustatio-close-behavior');
+          if (behavior === 'tray') {
+            handleCloseToTray();
+          } else if (behavior === 'quit') {
+            handleQuitFromPrompt();
+          } else {
+            closePromptVisible = true;
+          }
         });
       } catch (error) {
         console.error('Failed to subscribe to close prompt events:', error);
@@ -703,6 +712,11 @@
           updates.completionPercent = stats.torrent_completion;
         }
 
+        // Sync backend's effective ratio to frontend
+        if (stats.effective_stop_at_ratio != null) {
+          updates.effectiveStopAtRatio = stats.effective_stop_at_ratio;
+        }
+
         instanceActions.updateInstance(instanceId, updates);
 
         if (shouldAutoStop(stats)) {
@@ -742,6 +756,11 @@
             updates.completionPercent = stats.torrent_completion;
           }
 
+          // Sync backend's effective ratio to frontend
+          if (stats.effective_stop_at_ratio != null) {
+            updates.effectiveStopAtRatio = stats.effective_stop_at_ratio;
+          }
+
           instanceActions.updateInstance(instanceId, updates);
 
           if (shouldAutoStop(stats)) {
@@ -761,6 +780,13 @@
   // Track the current live stats interval (only one at a time — the active instance)
   let activeLiveStatsInstanceId = null;
   let activeLiveStatsIntervalId = null;
+
+  // Function to save the "remember my choice" application setting
+  function saveCloseBehaviorSetting(behavior) {
+    if (rememberCloseChoice) {
+      localStorage.setItem('rustatio-close-behavior', behavior);
+    }
+  }
 
   // Start live stats polling for a specific instance (only call for the active/visible instance)
   function startLiveStatsForInstance(instanceId) {
@@ -925,7 +951,12 @@
 
       // Get initial stats
       const initialStats = await api.getStats($activeInstance.id);
-      instanceActions.updateInstance($activeInstance.id, { stats: initialStats });
+      const initialUpdates = { stats: initialStats };
+      // Sync backend's effective ratio to frontend on start
+      if (initialStats.effective_stop_at_ratio != null) {
+        initialUpdates.effectiveStopAtRatio = initialStats.effective_stop_at_ratio;
+      }
+      instanceActions.updateInstance($activeInstance.id, initialUpdates);
     } catch (error) {
       instanceActions.updateInstance($activeInstance.id, {
         statusMessage: 'Failed to start: ' + error,
@@ -1085,7 +1116,12 @@
       num_want: 50,
       randomize_rates: instance.randomizeRates ?? true,
       random_range_percent: parseFloat(instance.randomRangePercent ?? 20),
+      randomize_ratio: instance.randomizeRatio ?? false,
+      random_ratio_range_percent: parseFloat(instance.randomRatioRangePercent ?? 10),
       stop_at_ratio: instance.stopAtRatioEnabled ? parseFloat(instance.stopAtRatio ?? 2.0) : null,
+      effective_stop_at_ratio: instance.stopAtRatioEnabled
+        ? (instance.effectiveStopAtRatio ?? null)
+        : null,
       stop_at_uploaded: instance.stopAtUploadedEnabled
         ? parseFloat(instance.stopAtUploadedGB ?? 10) * 1024 * 1024 * 1024
         : null,
@@ -1359,6 +1395,7 @@
 
   async function handleCloseToTray() {
     closePromptVisible = false;
+    saveCloseBehaviorSetting('tray');
     try {
       await api.closeToTray();
     } catch (error) {
@@ -1368,6 +1405,7 @@
 
   async function handleQuitFromPrompt() {
     closePromptVisible = false;
+    saveCloseBehaviorSetting('quit');
     try {
       await api.quitApp();
     } catch (error) {
@@ -1377,6 +1415,7 @@
 
   async function handleCancelClosePrompt() {
     closePromptVisible = false;
+    rememberCloseChoice = false;
     try {
       await api.cancelClosePrompt();
     } catch (error) {
@@ -1417,7 +1456,7 @@
         <div class="relative theme-selector">
           <button
             onclick={toggleThemeDropdown}
-            class="bg-secondary text-secondary-foreground border-2 border-border rounded-lg p-2 flex items-center gap-2 cursor-pointer transition-all hover:bg-primary hover:border-primary hover:text-primary-foreground active:scale-[0.98] shadow-lg"
+            class="group bg-secondary text-secondary-foreground border-2 border-border rounded-lg p-2 flex items-center gap-2 cursor-pointer transition-all hover:bg-primary hover:border-primary hover:text-primary-foreground hover:[&_svg]:!text-current active:scale-[0.98] shadow-lg"
             title="Theme: {getThemeName(getTheme())}"
             aria-label="Toggle theme menu"
           >
@@ -1447,7 +1486,7 @@
                   <button
                     class="w-full flex items-center gap-3 px-3 py-2 border-none cursor-pointer rounded-lg transition-all {getTheme() ===
                     themeOption.id
-                      ? 'bg-primary text-primary-foreground shadow-sm'
+                      ? 'bg-primary text-primary-foreground shadow-sm [&_svg]:!text-current'
                       : 'bg-transparent text-card-foreground hover:bg-secondary/80'}"
                     onclick={() => selectTheme(themeOption.id)}
                   >
@@ -1586,6 +1625,9 @@
                 <StopConditions
                   stopAtRatioEnabled={$activeInstance.stopAtRatioEnabled}
                   stopAtRatio={$activeInstance.stopAtRatio}
+                  randomizeRatio={$activeInstance.randomizeRatio}
+                  randomRatioRangePercent={$activeInstance.randomRatioRangePercent}
+                  effectiveStopAtRatio={$activeInstance.effectiveStopAtRatio}
                   stopAtUploadedEnabled={$activeInstance.stopAtUploadedEnabled}
                   stopAtUploadedGB={$activeInstance.stopAtUploadedGB}
                   stopAtDownloadedEnabled={$activeInstance.stopAtDownloadedEnabled}
@@ -1597,6 +1639,26 @@
                   completionPercent={$activeInstance.completionPercent}
                   isRunning={$activeInstance.isRunning || false}
                   onUpdate={updates => {
+                    // Recompute effective ratio preview when ratio-related settings change
+                    // Only recompute on frontend if the instance is NOT running
+                    // (when running, the backend's effective ratio is authoritative)
+                    if (
+                      !($activeInstance.isRunning || false) &&
+                      ('stopAtRatio' in updates ||
+                        'randomizeRatio' in updates ||
+                        'randomRatioRangePercent' in updates ||
+                        'stopAtRatioEnabled' in updates)
+                    ) {
+                      const inst = $activeInstance;
+                      const merged = { ...inst, ...updates };
+                      updates.effectiveStopAtRatio = merged.stopAtRatioEnabled
+                        ? computeEffectiveRatio(
+                            merged.stopAtRatio,
+                            merged.randomizeRatio,
+                            merged.randomRatioRangePercent
+                          )
+                        : null;
+                    }
                     instanceActions.updateInstance($activeInstance.id, updates);
                     // Sync config to server (debounced) so it persists across page refreshes
                     syncConfigToServer($activeInstance.id);
@@ -1609,7 +1671,8 @@
                     completionPercent={$activeInstance.completionPercent ?? 100}
                     torrentSize={$activeInstance.torrent?.total_size ?? 0}
                     stopAtRatioEnabled={$activeInstance.stopAtRatioEnabled}
-                    stopAtRatio={$activeInstance.stopAtRatio}
+                    stopAtRatio={$activeInstance.effectiveStopAtRatio ??
+                      $activeInstance.stopAtRatio}
                     stopAtUploadedEnabled={$activeInstance.stopAtUploadedEnabled}
                     stopAtUploadedGB={$activeInstance.stopAtUploadedGB}
                     stopAtDownloadedEnabled={$activeInstance.stopAtDownloadedEnabled}
@@ -1668,6 +1731,8 @@
   confirmLabel="Quit"
   kind="danger"
   titleId="app-close-prompt-title"
+  showRememberChoice={true}
+  bind:rememberChoiceChecked={rememberCloseChoice}
   onCancel={handleCancelClosePrompt}
   onSecondary={handleCloseToTray}
   onConfirm={handleQuitFromPrompt}

@@ -69,6 +69,8 @@
   let progressiveDurationHours = $state(1);
   let stopAtRatioEnabled = $state(false);
   let stopAtRatio = $state(2.0);
+  let randomizeRatio = $state(false);
+  let randomRatioRangePercent = $state(10);
   let stopAtUploadedEnabled = $state(false);
   let stopAtUploadedGB = $state(10);
   let stopAtDownloadedEnabled = $state(false);
@@ -163,6 +165,8 @@
     if (s.progressiveDurationHours != null) progressiveDurationHours = s.progressiveDurationHours;
     if (s.stopAtRatioEnabled != null) stopAtRatioEnabled = s.stopAtRatioEnabled;
     if (s.stopAtRatio != null) stopAtRatio = s.stopAtRatio;
+    if (s.randomizeRatio != null) randomizeRatio = s.randomizeRatio;
+    if (s.randomRatioRangePercent != null) randomRatioRangePercent = s.randomRatioRangePercent;
     if (s.stopAtUploadedEnabled != null) stopAtUploadedEnabled = s.stopAtUploadedEnabled;
     if (s.stopAtUploadedGB != null) stopAtUploadedGB = s.stopAtUploadedGB;
     if (s.stopAtDownloadedEnabled != null) stopAtDownloadedEnabled = s.stopAtDownloadedEnabled;
@@ -301,6 +305,8 @@
       randomRangePercent: parseFloat(randomRangePercent),
       stopAtRatioEnabled,
       stopAtRatio: stopAtRatioEnabled ? parseFloat(stopAtRatio) : undefined,
+      randomizeRatio,
+      randomRatioRangePercent: parseFloat(randomRatioRangePercent),
       stopAtUploadedEnabled,
       stopAtUploadedGB: stopAtUploadedEnabled ? parseFloat(stopAtUploadedGB) : undefined,
       stopAtDownloadedEnabled,
@@ -389,6 +395,8 @@
     progressiveDurationHours = 1;
     stopAtRatioEnabled = false;
     stopAtRatio = 2.0;
+    randomizeRatio = false;
+    randomRatioRangePercent = 10;
     stopAtUploadedEnabled = false;
     stopAtUploadedGB = 10;
     stopAtDownloadedEnabled = false;
@@ -854,6 +862,8 @@
               <StopConditionSettings
                 bind:stopAtRatioEnabled
                 bind:stopAtRatio
+                bind:randomizeRatio
+                bind:randomRatioRangePercent
                 bind:stopAtUploadedEnabled
                 bind:stopAtUploadedGB
                 bind:stopAtDownloadedEnabled

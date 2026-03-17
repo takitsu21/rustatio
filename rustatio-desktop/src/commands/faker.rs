@@ -26,6 +26,14 @@ pub async fn start_faker(
             .map_err(|e| format!("{e}"))?;
     }
 
+    if config.randomize_ratio {
+        validation::validate_percentage(
+            config.random_ratio_range_percent,
+            "random_ratio_range_percent",
+        )
+        .map_err(|e| format!("{e}"))?;
+    }
+
     log_and_emit!(&app, instance_id, info, "Starting faker for torrent: {}", torrent.name);
     log_and_emit!(
         &app,

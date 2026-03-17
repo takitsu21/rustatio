@@ -386,7 +386,14 @@
             </td>
 
             <!-- Name -->
-            <td class="px-2 py-1 whitespace-nowrap overflow-hidden">
+            <td
+              class="px-2 py-1 whitespace-nowrap overflow-hidden select-none"
+              ondblclick={e => {
+                e.preventDefault();
+                e.stopPropagation();
+                oncontextaction('edit', instance);
+              }}
+            >
               <span class="text-foreground font-medium truncate" title={instance.name}>
                 {instance.name}
               </span>

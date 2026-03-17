@@ -19,13 +19,13 @@
 {:else if theme === 'system'}
   <Monitor size={18} />
 {:else if theme === 'latte'}
-  <Sun size={18} color={flavorColors.latte} />
+  <Sun size={18} style="color: {flavorColors.latte}" />
 {:else if theme === 'frappe'}
-  <Coffee size={18} color={flavorColors.frappe} />
+  <Coffee size={18} style="color: {flavorColors.frappe}" />
 {:else if theme === 'macchiato'}
-  <Droplet size={18} color={flavorColors.macchiato} />
+  <Droplet size={18} style="color: {flavorColors.macchiato}" />
 {:else if theme === 'mocha'}
-  <Moon size={18} color={flavorColors.mocha} />
+  <Moon size={18} style="color: {flavorColors.mocha}" />
 {:else}
   <Palette size={18} />
 {/if}

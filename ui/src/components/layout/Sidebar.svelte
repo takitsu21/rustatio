@@ -45,6 +45,8 @@
   let forceDeleteTarget = $state(null);
   let forceDeleteBusy = $state(false);
   let isGridMode = $derived($viewMode === 'grid');
+  // When opened via mobile overlay (isOpen=true), always treat as expanded
+  let isCompact = $derived(isOpen ? false : isCollapsed);
   let isWatchMode = $derived($viewMode === 'watch');
   let isWatchRuntime = $derived(getRunMode() === 'server' || getRunMode() === 'desktop');
   let watchCount = $state(null);
@@ -394,7 +396,7 @@
     // Mobile: slide in/out
     isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0',
     // Desktop: collapse/expand
-    isCollapsed ? 'w-16' : 'w-64'
+    isCollapsed ? 'w-64 lg:w-16' : 'w-64'
   )}
 >
   <!-- Sidebar Header -->
@@ -422,7 +424,7 @@
     </div>
 
     <!-- View Mode Toggle -->
-    {#if !isCollapsed}
+    {#if !isCompact}
       <div class="space-y-3 mb-4">
         <div class="text-[10px] uppercase tracking-[0.2em] text-muted-foreground px-1">View</div>
         <div class="space-y-1">
@@ -515,7 +517,7 @@
     <!-- Standard Mode Content -->
     {#if !isGridMode && !isWatchMode}
       <!-- Total Stats Summary -->
-      {#if !isCollapsed && (totalStats().uploaded > 0 || totalStats().downloaded > 0)}
+      {#if !isCompact && (totalStats().uploaded > 0 || totalStats().downloaded > 0)}
         <div class="mb-3 p-2 bg-muted/50 rounded-lg text-xs">
           <div class="flex justify-between text-muted-foreground mb-1">
             <span>Total Uploaded</span>
@@ -679,7 +681,7 @@
             </div>
 
             <!-- Ratio Badge (when running or has stats) -->
-            {#if !isCollapsed && instance.stats && instance.stats.ratio > 0}
+            {#if !isCompact && instance.stats && instance.stats.ratio > 0}
               <span
                 class={cn(
                   'flex-shrink-0 text-xs font-bold px-1.5 py-0.5 rounded',
@@ -694,7 +696,7 @@
             {/if}
 
             <!-- Close Button -->
-            {#if !isCollapsed && instance.source !== 'watch_folder'}
+            {#if !isCompact && instance.source !== 'watch_folder'}
               <button
                 class="flex-shrink-0 p-1 rounded hover:bg-destructive/20 group bg-transparent border-0 cursor-pointer"
                 onclick={e => handleRemoveInstance(e, instance.id)}
@@ -707,7 +709,7 @@
                   class="text-muted-foreground group-hover:text-destructive transition-colors"
                 />
               </button>
-            {:else if instance.source === 'watch_folder' && !isCollapsed}
+            {:else if instance.source === 'watch_folder' && !isCompact}
               <!-- Watch folder instance: show folder icon + force delete button -->
               <div class="flex items-center gap-1">
                 <span class="flex-shrink-0 text-muted-foreground" title="From watch folder">
@@ -734,8 +736,8 @@
             {/if}
           </div>
 
-          <!-- Stats Row (when not collapsed and has stats) -->
-          {#if !isCollapsed && instance.stats && instance.isRunning}
+          <!-- Stats Row (when not compact and has stats) -->
+          {#if !isCompact && instance.stats && instance.isRunning}
             <div class="mt-1.5 flex items-center gap-3 text-xs text-muted-foreground pl-5">
               <span class="text-stat-upload" title="Session uploaded">
                 ↑ {formatBytesCompact(instance.stats.session_uploaded)}
@@ -752,7 +754,7 @@
           {/if}
 
           <!-- Progress Bar (when stop condition is active) -->
-          {#if !isCollapsed && stopProgress && instance.isRunning}
+          {#if !isCompact && stopProgress && instance.isRunning}
             <div class="mt-2 pl-5">
               <div class="h-1 bg-muted rounded-full overflow-hidden">
                 <div
@@ -778,7 +780,7 @@
   {:else}
     <!-- Grid Mode Sidebar Content -->
     <div class="flex-1 overflow-y-auto min-h-0">
-      {#if isCollapsed}
+      {#if isCompact}
         <!-- Collapsed: compact aggregate rates -->
         <div class="flex flex-col items-center gap-1 py-3 px-1">
           <span class="text-stat-upload text-[10px] font-bold" title="Total upload rate">
@@ -961,10 +963,10 @@
   <!-- Footer with Network Status and Version -->
   <div class="border-t border-border p-3 space-y-2">
     <!-- Network Status -->
-    <NetworkStatus {isCollapsed} />
+    <NetworkStatus isCollapsed={isCompact} />
 
     <!-- Version + GitHub -->
-    {#if !isCollapsed}
+    {#if !isCompact}
       <a
         href={repository}
         target="_blank"

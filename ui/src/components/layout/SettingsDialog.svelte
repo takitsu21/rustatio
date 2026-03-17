@@ -40,6 +40,25 @@
     api.setLogLevel(level);
   }
 
+  // Window Close Behavior state
+  const CLOSE_BEHAVIOR_KEY = 'rustatio-close-behavior';
+  function getCloseBehavior() {
+    return localStorage.getItem(CLOSE_BEHAVIOR_KEY) || 'prompt';
+  }
+
+  let closeBehavior = $state(getCloseBehavior());
+
+  function saveCloseBehavior(behavior) {
+    closeBehavior = behavior;
+    localStorage.setItem(CLOSE_BEHAVIOR_KEY, behavior);
+  }
+
+  $effect(() => {
+    if (isOpen) {
+      closeBehavior = getCloseBehavior();
+    }
+  });
+
   // Custom presets stored in localStorage
   const CUSTOM_PRESETS_KEY = 'rustatio-custom-presets';
 
@@ -501,6 +520,34 @@
               Note: Log level changes apply to the backend.
             </p>
           </div>
+
+          <!-- Window Behavior Section (Tauri only) -->
+          {#if isTauri}
+            <div class="border border-border rounded-lg p-4">
+              <h3 class="font-semibold text-foreground mb-2">Window Behavior</h3>
+              <p class="text-sm text-muted-foreground mb-4">
+                Choose the action that occurs when you click the window close button.
+              </p>
+              <div class="flex items-center gap-4">
+                <label for="closeBehavior" class="text-sm font-medium min-w-[60px]">On Close</label>
+                <select
+                  id="closeBehavior"
+                  value={closeBehavior}
+                  onchange={e => saveCloseBehavior(e.target.value)}
+                  class="px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-primary/50 w-56"
+                >
+                  <option value="prompt">Ask every time</option>
+                  <option value="tray">Minimize to tray</option>
+                  <option value="quit">Quit application</option>
+                </select>
+              </div>
+              <div class="mt-3 text-xs text-muted-foreground space-y-1">
+                <p><strong>Ask every time:</strong> Show a prompt to choose action</p>
+                <p><strong>Minimize to tray:</strong> Keep app running in background</p>
+                <p><strong>Quit application:</strong> Completely close the application</p>
+              </div>
+            </div>
+          {/if}
 
           <!-- Theme Section -->
           <div class="border border-border rounded-lg p-4">

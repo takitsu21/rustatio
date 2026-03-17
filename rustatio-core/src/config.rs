@@ -53,9 +53,15 @@ pub struct InstanceConfig {
     pub cumulative_downloaded: u64,
     pub randomize_rates: bool,
     pub random_range_percent: f64,
+    #[serde(default)]
+    pub randomize_ratio: bool,
+    #[serde(default = "default_random_ratio_range_percent")]
+    pub random_ratio_range_percent: f64,
     pub update_interval_seconds: u64,
     pub stop_at_ratio_enabled: bool,
     pub stop_at_ratio: f64,
+    #[serde(default)]
+    pub effective_stop_at_ratio: Option<f64>,
     pub stop_at_uploaded_enabled: bool,
     pub stop_at_uploaded_gb: f64,
     pub stop_at_downloaded_enabled: bool,
@@ -145,6 +151,10 @@ const fn default_upload_rate() -> f64 {
 
 const fn default_download_rate() -> f64 {
     100.0
+}
+
+const fn default_random_ratio_range_percent() -> f64 {
+    10.0
 }
 
 const fn default_announce_interval() -> u64 {
