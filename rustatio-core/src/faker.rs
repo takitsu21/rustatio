@@ -757,15 +757,15 @@ impl RatioFaker {
             Self::apply_idling_rules(&inputs, upload_rate, download_rate);
 
         // Preserve idling state if stop condition was met with post_stop_action=Idle
-        let (is_idling, idling_reason) =
-            if self.stats.stop_condition_met && self.config.post_stop_action == PostStopAction::Idle
-            {
-                upload_rate = 0.0;
-                download_rate = 0.0;
-                (true, Some("stop_condition_met".to_string()))
-            } else {
-                (is_idling, idling_reason)
-            };
+        let (is_idling, idling_reason) = if self.stats.stop_condition_met
+            && self.config.post_stop_action == PostStopAction::Idle
+        {
+            upload_rate = 0.0;
+            download_rate = 0.0;
+            (true, Some("stop_condition_met".to_string()))
+        } else {
+            (is_idling, idling_reason)
+        };
 
         self.stats.is_idling = is_idling;
         self.stats.idling_reason = idling_reason;
