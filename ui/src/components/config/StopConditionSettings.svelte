@@ -2,7 +2,16 @@
   import Checkbox from '$lib/components/ui/checkbox.svelte';
   import Input from '$lib/components/ui/input.svelte';
   import Label from '$lib/components/ui/label.svelte';
-  import { Percent, Upload, Download, Clock, Users, Pause, Shuffle } from '@lucide/svelte';
+  import {
+    Percent,
+    Upload,
+    Download,
+    Clock,
+    Users,
+    Pause,
+    Settings,
+    Shuffle,
+  } from '@lucide/svelte';
 
   let {
     stopAtRatioEnabled = $bindable(false),
@@ -18,12 +27,16 @@
     stopAtSeedTimeHours = $bindable(24),
     idleWhenNoLeechers = $bindable(false),
     idleWhenNoSeeders = $bindable(false),
+    postStopAction = $bindable('idle'),
     completionPercent = 100,
     disabled = false,
     onchange,
   } = $props();
 
   let isLeecherMode = $derived(completionPercent < 100);
+  let hasThresholdCondition = $derived(
+    stopAtRatioEnabled || stopAtUploadedEnabled || stopAtDownloadedEnabled || stopAtSeedTimeEnabled
+  );
 </script>
 
 <div class="bg-muted/50 rounded-lg border border-border overflow-hidden">
@@ -292,4 +305,25 @@
       <span class="text-xs text-muted-foreground">disabled</span>
     {/if}
   </div>
+
+  <!-- Post-Stop Action -->
+  {#if hasThresholdCondition}
+    <div class="flex items-center gap-3 p-3 border-t border-border bg-muted/30">
+      <Settings size={16} class="text-muted-foreground" />
+      <Label for="post-stop-action" class="flex-1 text-sm font-medium"
+        >When conditions are met</Label
+      >
+      <select
+        id="post-stop-action"
+        bind:value={postStopAction}
+        {disabled}
+        class="h-8 rounded-md border border-input bg-background px-2 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-ring"
+        onchange={() => onchange?.({ postStopAction })}
+      >
+        <option value="idle">Continue (idle)</option>
+        <option value="stop_seeding">Stop</option>
+        <option value="delete_instance">Delete instance</option>
+      </select>
+    </div>
+  {/if}
 </div>

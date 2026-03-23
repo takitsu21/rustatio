@@ -91,6 +91,9 @@ function createDefaultInstance(id, defaults = {}) {
     idleWhenNoSeeders:
       defaults.idleWhenNoSeeders !== undefined ? defaults.idleWhenNoSeeders : false,
 
+    // Post stop action
+    postStopAction: defaults.postStopAction !== undefined ? defaults.postStopAction : 'idle',
+
     // Scrape interval
     scrapeInterval: defaults.scrapeInterval !== undefined ? defaults.scrapeInterval : 60,
 
@@ -186,6 +189,7 @@ async function saveSession(instances, activeId) {
         stop_at_seed_time_hours: parseFloat(inst.stopAtSeedTimeHours),
         idle_when_no_leechers: inst.idleWhenNoLeechers,
         idle_when_no_seeders: inst.idleWhenNoSeeders,
+        post_stop_action: inst.postStopAction,
         progressive_rates_enabled: inst.progressiveRatesEnabled,
         target_upload_rate: parseFloat(inst.targetUploadRate),
         target_download_rate: parseFloat(inst.targetDownloadRate),
@@ -229,6 +233,7 @@ async function saveSession(instances, activeId) {
           stop_at_seed_time_hours: parseFloat(inst.stopAtSeedTimeHours),
           idle_when_no_leechers: inst.idleWhenNoLeechers,
           idle_when_no_seeders: inst.idleWhenNoSeeders,
+          post_stop_action: inst.postStopAction,
           progressive_rates_enabled: inst.progressiveRatesEnabled,
           target_upload_rate: parseFloat(inst.targetUploadRate),
           target_download_rate: parseFloat(inst.targetDownloadRate),
@@ -299,6 +304,7 @@ function loadSessionFromStorage(config = null) {
         stopAtSeedTimeHours: inst.stop_at_seed_time_hours,
         idleWhenNoLeechers: inst.idle_when_no_leechers || false,
         idleWhenNoSeeders: inst.idle_when_no_seeders || false,
+        postStopAction: inst.post_stop_action || 'idle',
         progressiveRatesEnabled: inst.progressive_rates_enabled,
         targetUploadRate: inst.target_upload_rate,
         targetDownloadRate: inst.target_download_rate,
@@ -369,6 +375,7 @@ function buildInstanceDefaultsFromServer(serverInst) {
     stopAtSeedTimeHours: (config.stop_at_seed_time || 0) / 3600,
     idleWhenNoLeechers: config.idle_when_no_leechers || false,
     idleWhenNoSeeders: config.idle_when_no_seeders || false,
+    postStopAction: config.post_stop_action || 'idle',
     progressiveRatesEnabled: config.progressive_rates || false,
     targetUploadRate: config.target_upload_rate || 100,
     targetDownloadRate: config.target_download_rate || 200,
@@ -972,6 +979,7 @@ export const instanceActions = {
               stopAtSeedTimeHours: serverDefaults.stopAtSeedTimeHours,
               idleWhenNoLeechers: serverDefaults.idleWhenNoLeechers,
               idleWhenNoSeeders: serverDefaults.idleWhenNoSeeders,
+              postStopAction: serverDefaults.postStopAction,
               scrapeInterval: serverDefaults.scrapeInterval,
             });
             if (

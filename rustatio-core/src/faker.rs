@@ -120,6 +120,10 @@ pub struct FakerConfig {
     /// Time in seconds to reach target rates
     #[serde(default = "default_progressive_duration")]
     pub progressive_duration: u64,
+
+    /// What to do when stop conditions are met
+    #[serde(default)]
+    pub post_stop_action: PostStopAction,
 }
 
 /// UI-friendly preset settings format (matches frontend)
@@ -149,6 +153,7 @@ pub struct PresetSettings {
     pub stop_at_seed_time_hours: Option<f64>,
     pub idle_when_no_leechers: Option<bool>,
     pub idle_when_no_seeders: Option<bool>,
+    pub post_stop_action: Option<String>,
     // Progressive rates
     pub progressive_rates_enabled: Option<bool>,
     pub target_upload_rate: Option<f64>,
@@ -202,6 +207,11 @@ impl From<PresetSettings> for FakerConfig {
             idle_when_no_leechers: p.idle_when_no_leechers.unwrap_or(false),
             idle_when_no_seeders: p.idle_when_no_seeders.unwrap_or(false),
             scrape_interval: 60,
+            post_stop_action: match p.post_stop_action.as_deref() {
+                Some("stop_seeding") => PostStopAction::StopSeeding,
+                Some("delete_instance") => PostStopAction::DeleteInstance,
+                _ => PostStopAction::Idle,
+            },
             progressive_rates: p.progressive_rates_enabled.unwrap_or(false),
             target_upload_rate: p.target_upload_rate,
             target_download_rate: p.target_download_rate,
@@ -259,8 +269,18 @@ impl Default for FakerConfig {
             target_upload_rate: None,
             target_download_rate: None,
             progressive_duration: 3600,
+            post_stop_action: PostStopAction::Idle,
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PostStopAction {
+    #[default]
+    Idle,
+    StopSeeding,
+    DeleteInstance,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -323,6 +343,12 @@ pub struct FakerStats {
     pub download_rate_history: Vec<f64>,
     pub ratio_history: Vec<f64>,
     pub history_timestamps: Vec<u64>, // Unix timestamps in milliseconds
+
+    // === STOP CONDITION STATE ===
+    #[serde(default)]
+    pub stop_condition_met: bool,
+    #[serde(default)]
+    pub post_stop_action: PostStopAction,
 
     // === INTERNAL ===
     #[serde(skip)]
@@ -539,6 +565,9 @@ impl RatioFaker {
             last_announce: None,
             next_announce: None,
             announce_count: 0,
+
+            stop_condition_met: false,
+            post_stop_action: config.post_stop_action,
         };
 
         Ok(Self {
@@ -656,6 +685,24 @@ impl RatioFaker {
         self.stats.idling_reason = None;
     }
 
+    async fn apply_post_stop_action(&mut self) -> Result<()> {
+        self.stats.stop_condition_met = true;
+        match self.config.post_stop_action {
+            PostStopAction::Idle => {
+                log_info!("Stop condition met, idling (post_stop_action=idle)");
+                self.stats.is_idling = true;
+                self.stats.idling_reason = Some("stop_condition_met".to_string());
+                self.stats.current_upload_rate = 0.0;
+                self.stats.current_download_rate = 0.0;
+            }
+            PostStopAction::StopSeeding | PostStopAction::DeleteInstance => {
+                log_info!("Stop condition met, stopping faker");
+                self.stop().await?;
+            }
+        }
+        Ok(())
+    }
+
     /// Update the fake stats (call this periodically)
     pub async fn update(&mut self) -> Result<()> {
         let now = Instant::now();
@@ -692,8 +739,7 @@ impl RatioFaker {
         }
 
         if outcome.stop {
-            log_info!("Stop condition met, stopping faker");
-            self.stop().await?;
+            self.apply_post_stop_action().await?;
         }
 
         Ok(())
@@ -707,8 +753,19 @@ impl RatioFaker {
         let (base_upload_rate, base_download_rate) = self.calc_base_rates(&inputs);
         let (upload_rate, download_rate) =
             self.apply_randomized_rates(base_upload_rate, base_download_rate, inputs.left);
-        let (upload_rate, download_rate, is_idling, idling_reason) =
+        let (mut upload_rate, mut download_rate, is_idling, idling_reason) =
             Self::apply_idling_rules(&inputs, upload_rate, download_rate);
+
+        // Preserve idling state if stop condition was met with post_stop_action=Idle
+        let (is_idling, idling_reason) = if self.stats.stop_condition_met
+            && self.config.post_stop_action == PostStopAction::Idle
+        {
+            upload_rate = 0.0;
+            download_rate = 0.0;
+            (true, Some("stop_condition_met".to_string()))
+        } else {
+            (is_idling, idling_reason)
+        };
 
         self.stats.is_idling = is_idling;
         self.stats.idling_reason = idling_reason;
@@ -972,8 +1029,7 @@ impl RatioFaker {
         }
 
         if outcome.stop {
-            log_info!("Stop condition met, stopping faker");
-            self.stop().await?;
+            self.apply_post_stop_action().await?;
         }
 
         Ok(())
@@ -1025,6 +1081,8 @@ impl RatioFaker {
             last_announce: None,
             next_announce: None,
             announce_count: 0,
+            stop_condition_met: false,
+            post_stop_action: config.post_stop_action,
         }
     }
 
@@ -1201,7 +1259,7 @@ impl RatioFaker {
         stats.ratio = current_ratio;
         Self::add_to_history(&mut stats.ratio_history, current_ratio, 60);
 
-        // Session ratio (for stop conditions) = session_uploaded / torrent_size
+        // Session ratio = session_uploaded / torrent_size
         stats.session_ratio = if torrent_size > 0 {
             stats.session_uploaded as f64 / torrent_size as f64
         } else {
@@ -1256,36 +1314,41 @@ impl RatioFaker {
     }
 
     fn check_stop_conditions(&self, stats: &FakerStats) -> bool {
-        // Check ratio target (use session ratio, not cumulative)
+        // Don't re-trigger if already met
+        if stats.stop_condition_met {
+            return false;
+        }
+
+        // Check ratio target (cumulative across all sessions)
         if let Some(target_ratio) = self.config.stop_at_ratio {
-            if stats.session_ratio >= target_ratio - 0.001 {
+            if stats.ratio >= target_ratio - 0.001 {
                 log_info!(
-                    "Target ratio reached: {:.3} >= {:.3} (session)",
-                    stats.session_ratio,
+                    "Target ratio reached: {:.3} >= {:.3} (cumulative)",
+                    stats.ratio,
                     target_ratio
                 );
                 return true;
             }
         }
 
-        // Check uploaded target (session uploaded, not total)
+        // Check uploaded target (cumulative across all sessions)
         if let Some(target_uploaded) = self.config.stop_at_uploaded {
-            if stats.session_uploaded >= target_uploaded {
+            if stats.uploaded >= target_uploaded {
                 log_info!(
-                    "Target uploaded reached: {} >= {} bytes (session)",
-                    stats.session_uploaded,
+                    "Target uploaded reached: {} >= {} bytes (cumulative)",
+                    stats.uploaded,
                     target_uploaded
                 );
                 return true;
             }
         }
 
-        // Check downloaded target (session downloaded, not total)
+        // Check downloaded target (cumulative across all sessions)
         if let Some(target_downloaded) = self.config.stop_at_downloaded {
-            if stats.session_downloaded >= target_downloaded {
+            if stats.downloaded >= target_downloaded {
                 log_info!(
-                    "Target downloaded reached: {} >= {} bytes (session)",
-                    stats.session_downloaded,
+                    "Target downloaded reached: {} >= {} bytes (cumulative)",
+                    stats.downloaded,
                     target_downloaded
                 );
                 return true;
@@ -1456,6 +1519,38 @@ impl RatioFakerHandle {
         result
     }
 
+    async fn apply_post_stop_action(&self) -> Result<()> {
+        let post_stop_action = {
+            let guard = self.inner.lock().await;
+            guard.config.post_stop_action
+        };
+        match post_stop_action {
+            PostStopAction::Idle => {
+                log_info!("Stop condition met, idling (post_stop_action=idle)");
+                let mut guard = self.inner.lock().await;
+                guard.stats.stop_condition_met = true;
+                guard.stats.is_idling = true;
+                guard.stats.idling_reason = Some("stop_condition_met".to_string());
+                guard.stats.current_upload_rate = 0.0;
+                guard.stats.current_download_rate = 0.0;
+            }
+            PostStopAction::StopSeeding | PostStopAction::DeleteInstance => {
+                log_info!("Stop condition met, stopping faker");
+                let plan = {
+                    let mut guard = self.inner.lock().await;
+                    guard.stats.stop_condition_met = true;
+                    guard.begin_stop()
+                };
+                if let Some(plan) = plan {
+                    let result = plan.execute().await;
+                    let mut guard = self.inner.lock().await;
+                    guard.apply_stop_result(result);
+                }
+            }
+        }
+        Ok(())
+    }
+
     pub async fn update(&self) -> Result<()> {
         let now = Instant::now();
         let outcome = {
@@ -1501,15 +1596,7 @@ impl RatioFakerHandle {
         }
 
         if outcome.stop {
-            let plan = {
-                let mut guard = self.inner.lock().await;
-                guard.begin_stop()
-            };
-            if let Some(plan) = plan {
-                let result = plan.execute().await;
-                let mut guard = self.inner.lock().await;
-                guard.apply_stop_result(result);
-            }
+            self.apply_post_stop_action().await?;
         }
 
         let guard = self.inner.lock().await;
@@ -1552,15 +1639,7 @@ impl RatioFakerHandle {
         }
 
         if outcome.stop {
-            let plan = {
-                let mut guard = self.inner.lock().await;
-                guard.begin_stop()
-            };
-            if let Some(plan) = plan {
-                let result = plan.execute().await;
-                let mut guard = self.inner.lock().await;
-                guard.apply_stop_result(result);
-            }
+            self.apply_post_stop_action().await?;
         }
 
         let guard = self.inner.lock().await;

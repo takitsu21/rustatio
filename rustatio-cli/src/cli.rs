@@ -100,6 +100,10 @@ pub enum Commands {
         #[arg(long, default_value = "10.0", value_name = "PERCENT")]
         random_ratio_range: f64,
 
+        /// Action to take when stop conditions are met
+        #[arg(long, value_enum, default_value = "idle")]
+        post_stop_action: PostStopActionArg,
+
         /// Enable progressive rate adjustment
         #[arg(long)]
         progressive: bool,
@@ -257,6 +261,26 @@ impl From<ClientArg> for rustatio_core::ClientType {
             ClientArg::Transmission => Self::Transmission,
             ClientArg::Deluge => Self::Deluge,
             ClientArg::Bittorrent => Self::BitTorrent,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum PostStopActionArg {
+    /// Stay connected but stop uploading/downloading (default)
+    Idle,
+    /// Send a stop event to the tracker
+    StopSeeding,
+    /// Delete the instance entirely
+    DeleteInstance,
+}
+
+impl From<PostStopActionArg> for rustatio_core::PostStopAction {
+    fn from(action: PostStopActionArg) -> Self {
+        match action {
+            PostStopActionArg::Idle => Self::Idle,
+            PostStopActionArg::StopSeeding => Self::StopSeeding,
+            PostStopActionArg::DeleteInstance => Self::DeleteInstance,
         }
     }
 }

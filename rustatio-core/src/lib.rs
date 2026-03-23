@@ -10,7 +10,9 @@ pub mod validation;
 pub use config::{AppConfig, ClientSettings, ConfigError, FakerSettings, UiSettings};
 #[cfg(not(target_arch = "wasm32"))]
 pub use faker::RatioFakerHandle;
-pub use faker::{FakerConfig, FakerError, FakerState, FakerStats, PresetSettings, RatioFaker};
+pub use faker::{
+    FakerConfig, FakerError, FakerState, FakerStats, PostStopAction, PresetSettings, RatioFaker,
+};
 pub use grid::{GridImportSettings, GridMode, InstanceSummary};
 pub use torrent::{
     ClientConfig, ClientInfo, ClientType, HttpVersion, TorrentError, TorrentFile, TorrentInfo,
