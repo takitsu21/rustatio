@@ -16,6 +16,9 @@ pub struct NetworkStatus {
     pub organization: Option<String>,
     pub is_vpn: bool,
     pub forwarded_port: Option<u16>,
+    pub peer_listener_port: Option<u16>,
+    pub peer_listener_active: bool,
+    pub peer_listener_error: Option<String>,
     pub vpn_port_sync_enabled: bool,
 }
 
@@ -50,22 +53,28 @@ struct GluetunForwardedPort {
     )
 )]
 pub async fn get_network_status(State(state): State<ServerState>) -> Response {
-    try_gluetun_detection(state.app.current_forwarded_port(), state.app.vpn_port_sync_enabled())
-        .await
-        .map_or_else(
-            || {
-                ApiError::response(
+    let listener_status = state.app.peer_listener_status().await;
+    try_gluetun_detection(
+        state.app.current_forwarded_port(),
+        state.app.vpn_port_sync_enabled(),
+        listener_status,
+    )
+    .await
+    .map_or_else(
+        || {
+            ApiError::response(
                 StatusCode::SERVICE_UNAVAILABLE,
                 "Gluetun not available. Network status requires Docker with gluetun VPN container.",
             )
-            },
-            ApiSuccess::response,
-        )
+        },
+        ApiSuccess::response,
+    )
 }
 
 async fn try_gluetun_detection(
     current_forwarded_port: Option<u16>,
     vpn_port_sync_enabled: bool,
+    listener_status: rustatio_core::PeerListenerStatus,
 ) -> Option<NetworkStatus> {
     let client =
         reqwest::Client::builder().timeout(std::time::Duration::from_millis(1000)).build().ok()?;
@@ -108,6 +117,9 @@ async fn try_gluetun_detection(
         organization: public_ip.organization,
         is_vpn,
         forwarded_port,
+        peer_listener_port: listener_status.bound_port,
+        peer_listener_active: listener_status.bound_port.is_some(),
+        peer_listener_error: listener_status.last_error,
         vpn_port_sync_enabled,
     })
 }

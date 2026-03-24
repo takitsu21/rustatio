@@ -18,10 +18,11 @@ use utoipa_swagger_ui::SwaggerUi;
 
 use crate::api::{ApiDoc, ServerState};
 use crate::services::{
-    AppState, Scheduler, VpnPortSync, VpnPortSyncConfig, WatchConfig, WatchDisabledReason,
-    WatchService,
+    AppState, Scheduler, ServerPeerLookup, VpnPortSync, VpnPortSyncConfig, WatchConfig,
+    WatchDisabledReason, WatchService,
 };
 use crate::util::BroadcastLayer;
+use rustatio_core::PeerListenerService;
 
 #[tokio::main]
 async fn main() {
@@ -55,6 +56,26 @@ async fn main() {
     let mut scheduler = Scheduler::new();
     scheduler.start(state.clone(), Arc::clone(&state.instances));
     let scheduler = Arc::new(tokio::sync::Mutex::new(scheduler));
+
+    let mut peer_listener = PeerListenerService::new();
+    peer_listener.start(Arc::new(ServerPeerLookup { instances: Arc::clone(&state.instances) }));
+    let peer_listener = Arc::new(tokio::sync::Mutex::new(peer_listener));
+    let peer_listener_status = {
+        let guard = peer_listener.lock().await;
+        guard.subscribe()
+    };
+    let state_for_listener = state.clone();
+    tokio::spawn(async move {
+        let mut rx = peer_listener_status;
+        loop {
+            if rx.changed().await.is_err() {
+                break;
+            }
+            let status = rx.borrow().clone();
+            state_for_listener.set_peer_listener_status(status).await;
+        }
+    });
+    state.attach_peer_listener(Arc::clone(&peer_listener)).await;
 
     let mut vpn_port_sync = VpnPortSync::new();
     let vpn_port_sync_config = VpnPortSyncConfig::from_env();
@@ -128,6 +149,7 @@ async fn main() {
     let watch_for_shutdown = Arc::clone(&watch_service);
     let scheduler_for_shutdown = Arc::clone(&scheduler);
     let vpn_port_sync_for_shutdown = Arc::clone(&vpn_port_sync);
+    let peer_listener_for_shutdown = Arc::clone(&peer_listener);
 
     tokio::spawn(async move {
         shutdown_signal().await;
@@ -137,6 +159,9 @@ async fn main() {
 
         tracing::info!("Stopping VPN port sync...");
         vpn_port_sync_for_shutdown.lock().await.shutdown().await;
+
+        tracing::info!("Stopping peer listener...");
+        peer_listener_for_shutdown.lock().await.shutdown().await;
 
         tracing::info!("Stopping watch folder service...");
         watch_for_shutdown.write().await.stop().await;

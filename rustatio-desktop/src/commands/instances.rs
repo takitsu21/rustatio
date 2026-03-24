@@ -42,6 +42,9 @@ pub async fn update_instance_config(
         .await
         .map_err(|e| format!("Failed to update faker config: {e}"))?;
 
+    drop(fakers);
+    state.refresh_peer_listener_port().await;
+
     Ok(())
 }
 
@@ -85,6 +88,8 @@ pub async fn delete_instance(
     } else {
         log::info!("Deleted instance {instance_id} (was not started)");
     }
+
+    state.refresh_peer_listener_port().await;
 
     Ok(())
 }

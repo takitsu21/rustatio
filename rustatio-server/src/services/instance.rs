@@ -1,5 +1,8 @@
 use super::persistence::InstanceSource;
-use rustatio_core::{FakerConfig, FakerStats, RatioFakerHandle, TorrentInfo, TorrentSummary};
+use async_trait::async_trait;
+use rustatio_core::{
+    FakerConfig, FakerStats, PeerCatalog, PeerLookup, RatioFakerHandle, TorrentInfo, TorrentSummary,
+};
 use serde::Serialize;
 use std::sync::Arc;
 use utoipa::ToSchema;
@@ -15,6 +18,27 @@ pub struct FakerInstance {
     pub created_at: u64,
     pub source: InstanceSource,
     pub tags: Vec<String>,
+}
+
+#[derive(Clone)]
+pub struct ServerPeerLookup {
+    pub instances: Arc<tokio::sync::RwLock<std::collections::HashMap<String, FakerInstance>>>,
+}
+
+#[async_trait]
+impl PeerLookup for ServerPeerLookup {
+    async fn snapshot(&self) -> PeerCatalog {
+        let guard = self.instances.read().await;
+        let mut out = PeerCatalog::new();
+        for instance in guard.values() {
+            out.entry(instance.torrent_info_hash)
+                .and_modify(|entry| {
+                    *entry = Err("duplicate active instances for info_hash".to_string());
+                })
+                .or_insert_with(|| Ok(Arc::clone(&instance.faker)));
+        }
+        out
+    }
 }
 
 #[derive(Debug, Clone, Serialize, ToSchema)]

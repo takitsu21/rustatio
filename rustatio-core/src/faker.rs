@@ -3,6 +3,8 @@ use crate::protocol::{
 };
 use crate::torrent::{ClientConfig, ClientType, TorrentInfo};
 use crate::{log_debug, log_info, log_trace, log_warn};
+#[cfg(not(target_arch = "wasm32"))]
+use crate::{peer_listener::handle_is_connectable, protocol::peer_id_to_array};
 use instant::Instant;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
@@ -283,7 +285,7 @@ pub enum PostStopAction {
     DeleteInstance,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum FakerState {
     Idle,
     Starting,
@@ -1169,6 +1171,18 @@ impl RatioFaker {
         self.stats.clone()
     }
 
+    pub fn peer_id(&self) -> &str {
+        &self.peer_id
+    }
+
+    pub fn info_hash(&self) -> [u8; 20] {
+        self.torrent.info_hash
+    }
+
+    pub const fn port(&self) -> u16 {
+        self.config.port
+    }
+
     /// Get torrent info
     pub const fn get_torrent(&self) -> &Arc<TorrentInfo> {
         &self.torrent
@@ -1770,6 +1784,39 @@ impl RatioFakerHandle {
         let result = guard.update_config(config, http_client);
         let _ = self.stats_tx.send(guard.stats_snapshot());
         result
+    }
+
+    pub async fn peer_id(&self) -> String {
+        let guard = self.inner.lock().await;
+        guard.peer_id().to_string()
+    }
+
+    pub async fn peer_id_bytes(
+        &self,
+    ) -> std::result::Result<[u8; 20], crate::protocol::PeerProtocolError> {
+        let peer_id = self.peer_id().await;
+        peer_id_to_array(&peer_id)
+    }
+
+    pub async fn info_hash(&self) -> [u8; 20] {
+        let guard = self.inner.lock().await;
+        guard.info_hash()
+    }
+
+    pub async fn effective_port(&self) -> u16 {
+        let guard = self.inner.lock().await;
+        guard.port()
+    }
+
+    pub async fn set_runtime_port(&self, port: u16) {
+        let mut guard = self.inner.lock().await;
+        guard.config.port = port;
+        let _ = self.stats_tx.send(guard.stats_snapshot());
+    }
+
+    pub async fn is_peer_connectable(&self) -> bool {
+        let guard = self.inner.lock().await;
+        handle_is_connectable(guard.stats.state)
     }
 }
 

@@ -39,6 +39,8 @@ impl InstanceLifecycle for AppState {
             tracing::warn!("Failed to save state after starting instance: {}", e);
         }
 
+        self.refresh_peer_listener_port().await;
+
         Ok(())
     }
 
@@ -67,6 +69,8 @@ impl InstanceLifecycle for AppState {
             tracing::warn!("Failed to save state after stopping instance: {}", e);
         }
 
+        self.refresh_peer_listener_port().await;
+
         Ok(stats)
     }
 
@@ -84,6 +88,8 @@ impl InstanceLifecycle for AppState {
             tracing::warn!("Failed to save state after pausing instance: {}", e);
         }
 
+        self.refresh_peer_listener_port().await;
+
         Ok(())
     }
 
@@ -100,6 +106,8 @@ impl InstanceLifecycle for AppState {
         if let Err(e) = self.save_state().await {
             tracing::warn!("Failed to save state after resuming instance: {}", e);
         }
+
+        self.refresh_peer_listener_port().await;
 
         Ok(())
     }
