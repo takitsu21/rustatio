@@ -64,7 +64,13 @@ async fn scheduler_loop(
                 break;
             }
             () = tokio::time::sleep(update_interval) => {
-                update_all_running_instances(&instances).await;
+                let dirty = update_all_running_instances(&instances).await;
+
+                if dirty {
+                    if let Err(e) = state.save_state().await {
+                        tracing::warn!("Scheduler: failed to save state after runtime change: {}", e);
+                    }
+                }
 
                 if last_save.elapsed() >= save_interval {
                     if let Err(e) = state.save_state().await {
@@ -79,22 +85,46 @@ async fn scheduler_loop(
     tracing::info!("Scheduler loop stopped");
 }
 
-async fn update_all_running_instances(instances: &Arc<RwLock<HashMap<String, FakerInstance>>>) {
+async fn update_all_running_instances(
+    instances: &Arc<RwLock<HashMap<String, FakerInstance>>>,
+) -> bool {
     // Collect running instance IDs and their faker handles
     let running: Vec<(String, Arc<RatioFakerHandle>)> = {
         let guard = instances.read().await;
         guard.iter().map(|(id, inst)| (id.clone(), Arc::clone(&inst.faker))).collect()
     };
 
+    let mut dirty = false;
+
     for (id, faker) in running {
-        let stats = faker.stats_snapshot();
-        if !matches!(stats.state, FakerState::Running) {
+        let before = faker.stats_snapshot();
+        if !matches!(before.state, FakerState::Running) {
             continue;
         }
 
         set_instance_context_str(Some(&id));
         if let Err(e) = faker.update().await {
             tracing::warn!("Scheduler: update failed for instance {}: {}", id, e);
+            continue;
+        }
+
+        let after = faker.stats_snapshot();
+        {
+            let mut guard = instances.write().await;
+            if let Some(instance) = guard.get_mut(&id) {
+                instance.cumulative_uploaded = after.uploaded;
+                instance.cumulative_downloaded = after.downloaded;
+                instance.config.completion_percent = after.torrent_completion;
+            }
+        }
+
+        if std::mem::discriminant(&after.state) != std::mem::discriminant(&before.state)
+            || after.stop_condition_met != before.stop_condition_met
+            || after.is_idling != before.is_idling
+        {
+            dirty = true;
         }
     }
+
+    dirty
 }

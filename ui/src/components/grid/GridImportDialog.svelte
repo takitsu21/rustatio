@@ -11,7 +11,7 @@
   import { api, getRunMode } from '$lib/api.js';
   import FolderBrowser from './FolderBrowser.svelte';
   import { builtInPresets } from '$lib/presets/index.js';
-  import { getDefaultPreset } from '$lib/defaultPreset.js';
+  import { getDefaultPreset, refreshDefaultPreset } from '$lib/defaultPreset.js';
   import { Upload, FolderOpen, X, FileText, ChevronDown, Settings } from '@lucide/svelte';
   import PresetIcon from '../config/PresetIcon.svelte';
   import ClientIcon from '../config/ClientIcon.svelte';
@@ -94,18 +94,17 @@
   let importing = $state(false);
   let importResult = $state(null);
 
-  // Custom presets from localStorage
-  const CUSTOM_PRESETS_KEY = 'rustatio-custom-presets';
-  function loadCustomPresets() {
+  let customPresets = $state([]);
+  let allPresets = $derived([...builtInPresets, ...customPresets]);
+
+  async function loadPresetState() {
     try {
-      const stored = localStorage.getItem(CUSTOM_PRESETS_KEY);
-      return stored ? JSON.parse(stored) : [];
-    } catch {
-      return [];
+      customPresets = (await api.listCustomPresets()) || [];
+      await refreshDefaultPreset();
+    } catch (e) {
+      console.warn('Failed to load presets:', e);
     }
   }
-
-  let allPresets = $derived([...builtInPresets, ...loadCustomPresets()]);
 
   let completionPercent = $derived(
     mode === 'seed' ? 100 : mode === 'leech' ? 0 : parseFloat(customPercent) || 50
@@ -140,11 +139,13 @@
         .catch(() => {});
     }
     if (isOpen) {
-      const defaultPreset = getDefaultPreset();
-      if (defaultPreset && !selectedPresetId) {
-        applyPreset(defaultPreset);
-        selectedPresetId = defaultPreset.id;
-      }
+      loadPresetState().then(() => {
+        const defaultPreset = getDefaultPreset();
+        if (defaultPreset && !selectedPresetId) {
+          applyPreset(defaultPreset);
+          selectedPresetId = defaultPreset.id;
+        }
+      });
     }
   });
 

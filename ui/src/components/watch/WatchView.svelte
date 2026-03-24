@@ -2,7 +2,11 @@
   import { onDestroy, onMount } from 'svelte';
   import { api, getRunMode } from '$lib/api.js';
   import { instanceActions } from '$lib/instanceStore.js';
-  import { DEFAULT_PRESET_CHANGED_EVENT, getDefaultPreset } from '$lib/defaultPreset.js';
+  import {
+    DEFAULT_PRESET_CHANGED_EVENT,
+    getDefaultPreset,
+    refreshDefaultPreset,
+  } from '$lib/defaultPreset.js';
   import { watchFocusQuery } from '$lib/watchViewState.js';
   import {
     buildWatchTree,
@@ -200,6 +204,7 @@
         watch_dir: String(config?.watch_dir || status?.watch_dir || ''),
       };
 
+      await refreshDefaultPreset();
       watchDefaultPresetName = getDefaultPreset()?.name || 'Rustatio defaults';
 
       const nextKey = buildWatchKey(watchFiles);
@@ -734,7 +739,8 @@
   });
 
   onMount(() => {
-    const syncDefaultPresetName = () => {
+    const syncDefaultPresetName = async () => {
+      await refreshDefaultPreset();
       watchDefaultPresetName = getDefaultPreset()?.name || 'Rustatio defaults';
     };
 

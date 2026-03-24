@@ -17,6 +17,51 @@ let logListeners = [];
 // =============================================================================
 
 const AUTH_TOKEN_KEY = 'rustatio-auth-token';
+const DEFAULT_PRESET_KEY = 'rustatio-default-preset';
+const CUSTOM_PRESETS_KEY = 'rustatio-custom-presets';
+
+function readJsonStorage(key, fallback) {
+  try {
+    const stored = localStorage.getItem(key);
+    return stored ? JSON.parse(stored) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeJsonStorage(key, value) {
+  localStorage.setItem(key, JSON.stringify(value));
+}
+
+async function getLocalDefaultPreset() {
+  return readJsonStorage(DEFAULT_PRESET_KEY, null);
+}
+
+async function setLocalDefaultPreset(preset) {
+  writeJsonStorage(DEFAULT_PRESET_KEY, preset);
+}
+
+async function clearLocalDefaultPreset() {
+  localStorage.removeItem(DEFAULT_PRESET_KEY);
+}
+
+async function listLocalCustomPresets() {
+  return readJsonStorage(CUSTOM_PRESETS_KEY, []);
+}
+
+async function upsertLocalCustomPreset(preset) {
+  const presets = readJsonStorage(CUSTOM_PRESETS_KEY, []);
+  const next = [...presets.filter(item => item.id !== preset.id), preset];
+  writeJsonStorage(CUSTOM_PRESETS_KEY, next);
+}
+
+async function deleteLocalCustomPreset(id) {
+  const presets = readJsonStorage(CUSTOM_PRESETS_KEY, []);
+  writeJsonStorage(
+    CUSTOM_PRESETS_KEY,
+    presets.filter(item => item.id !== id)
+  );
+}
 
 /**
  * Get the stored authentication token
@@ -534,6 +579,30 @@ const serverApi = {
   clearDefaultConfig: async () => {
     await serverFetch('/config/default', { method: 'DELETE' });
   },
+  getDefaultPreset: async () => {
+    return serverFetch('/config/default-preset', { method: 'GET' });
+  },
+  setDefaultPreset: async preset => {
+    await serverFetch('/config/default-preset', {
+      method: 'PUT',
+      body: JSON.stringify(preset),
+    });
+  },
+  clearDefaultPreset: async () => {
+    await serverFetch('/config/default-preset', { method: 'DELETE' });
+  },
+  listCustomPresets: async () => {
+    return serverFetch('/presets/custom', { method: 'GET' });
+  },
+  upsertCustomPreset: async preset => {
+    await serverFetch(`/presets/custom/${encodeURIComponent(preset.id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(preset),
+    });
+  },
+  deleteCustomPreset: async id => {
+    await serverFetch(`/presets/custom/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
   // Update instance config (without starting the faker)
   // Used to persist form changes before the user clicks Start
   updateInstanceConfig: async (id, config) => {
@@ -909,6 +978,12 @@ const tauriApi = {
     const { invoke } = await import('@tauri-apps/api/core');
     return invoke('clear_default_config');
   },
+  getDefaultPreset: getLocalDefaultPreset,
+  setDefaultPreset: setLocalDefaultPreset,
+  clearDefaultPreset: clearLocalDefaultPreset,
+  listCustomPresets: listLocalCustomPresets,
+  upsertCustomPreset: upsertLocalCustomPreset,
+  deleteCustomPreset: deleteLocalCustomPreset,
   updateInstanceConfig: async (id, config) => {
     const { invoke } = await import('@tauri-apps/api/core');
     await invoke('update_instance_config', { instanceId: Number(id), config });
@@ -1093,6 +1168,12 @@ const wasmApi = {
   clearDefaultConfig: async () => {
     // No-op for WASM - localStorage is managed by defaultPreset.js
   },
+  getDefaultPreset: getLocalDefaultPreset,
+  setDefaultPreset: setLocalDefaultPreset,
+  clearDefaultPreset: clearLocalDefaultPreset,
+  listCustomPresets: listLocalCustomPresets,
+  upsertCustomPreset: upsertLocalCustomPreset,
+  deleteCustomPreset: deleteLocalCustomPreset,
   updateInstanceConfig: async (id, config) => {
     wasm.update_instance_config(Number(id), config);
   },

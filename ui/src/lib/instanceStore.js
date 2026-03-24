@@ -126,7 +126,8 @@ async function getServerEffectiveDefaults() {
 }
 
 async function buildNewInstanceDefaults(defaults = {}) {
-  const presetDefaults = getDefaultPreset()?.settings || {};
+  const presetDefaults =
+    (await api.getDefaultPreset())?.settings || getDefaultPreset()?.settings || {};
   const serverMode = isServerMode();
   const serverDefaults = serverMode ? await getServerEffectiveDefaults() : {};
   const vpnPortSync = serverMode
@@ -198,7 +199,7 @@ async function saveSession(instances, activeId) {
         progressive_duration_hours: parseFloat(inst.progressiveDurationHours),
       }));
 
-      config.active_instance_id = instances.findIndex(inst => inst.id === activeId);
+      config.active_instance_id = activeId;
       await api.updateConfig(config);
     } else {
       // Web: Save to localStorage
@@ -241,7 +242,7 @@ async function saveSession(instances, activeId) {
           target_download_rate: parseFloat(inst.targetDownloadRate),
           progressive_duration_hours: parseFloat(inst.progressiveDurationHours),
         })),
-        active_instance_id: instances.findIndex(inst => inst.id === activeId),
+        active_instance_id: activeId,
       };
 
       // Save to localStorage
@@ -312,7 +313,8 @@ function loadSessionFromStorage(config = null) {
         targetDownloadRate: inst.target_download_rate,
         progressiveDurationHours: inst.progressive_duration_hours,
       })),
-      activeInstanceIndex: sessionData.active_instance_id,
+      activeInstanceId: sessionData.active_instance_id,
+      activeInstanceIndex: sessionData.active_instance_index,
     };
   } catch (error) {
     console.error('Failed to load session from storage:', error);
@@ -499,7 +501,9 @@ export const instanceActions = {
                 }
               }
 
-              const defaults = savedConfig || (getDefaultPreset()?.settings ?? {});
+              const defaultPreset = await api.getDefaultPreset();
+              const defaults =
+                savedConfig || (defaultPreset?.settings ?? getDefaultPreset()?.settings ?? {});
 
               const instance = createDefaultInstance(instanceId, {
                 ...defaults,
@@ -549,14 +553,16 @@ export const instanceActions = {
             if (restoredInstances.length > 0) {
               instances.set(restoredInstances);
 
-              const savedActiveIndex = savedSession?.activeInstanceIndex;
-              if (
-                savedActiveIndex !== null &&
-                savedActiveIndex !== undefined &&
-                savedActiveIndex >= 0 &&
-                savedActiveIndex < restoredInstances.length
+              const savedActiveId = savedSession?.activeInstanceId;
+              if (savedActiveId && restoredInstances.some(inst => inst.id === savedActiveId)) {
+                activeInstanceId.set(savedActiveId);
+              } else if (
+                savedSession?.activeInstanceIndex !== null &&
+                savedSession?.activeInstanceIndex !== undefined &&
+                savedSession.activeInstanceIndex >= 0 &&
+                savedSession.activeInstanceIndex < restoredInstances.length
               ) {
-                activeInstanceId.set(restoredInstances[savedActiveIndex].id);
+                activeInstanceId.set(restoredInstances[savedSession.activeInstanceIndex].id);
               } else {
                 activeInstanceId.set(restoredInstances[0].id);
               }
@@ -621,6 +627,11 @@ export const instanceActions = {
 
         // Set active instance based on saved index
         if (
+          savedSession.activeInstanceId &&
+          restoredInstances.some(inst => inst.id === savedSession.activeInstanceId)
+        ) {
+          activeInstanceId.set(savedSession.activeInstanceId);
+        } else if (
           savedSession.activeInstanceIndex !== null &&
           savedSession.activeInstanceIndex >= 0 &&
           savedSession.activeInstanceIndex < restoredInstances.length
