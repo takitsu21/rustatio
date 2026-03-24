@@ -19,3 +19,7 @@ export function getGridTagFilterOptions(tags = []) {
 
   return [{ value: '', label: 'All Tags' }, ...values.map(tag => ({ value: tag, label: tag }))];
 }
+
+export function getGridStateMeta(value) {
+  return getGridStateFilterOption(value);
+}

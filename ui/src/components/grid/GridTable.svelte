@@ -319,12 +319,12 @@
   onscroll={onScroll}
 >
   <table class="w-full text-xs table-fixed">
-    <thead class="bg-muted/50 sticky top-0 z-10">
-      <tr>
+    <thead class="sticky top-0 z-20">
+      <tr class="border-b border-border bg-card">
         {#each columns as col (col.id)}
           <th
             class={cn(
-              'px-2 py-1 text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap',
+              'bg-card px-2 py-1 text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap',
               col.sortable && 'cursor-pointer select-none hover:text-foreground'
             )}
             style="width: {col.width}px"

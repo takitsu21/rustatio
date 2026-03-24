@@ -58,10 +58,16 @@
 <svelte:window onclick={handleClickOutside} />
 
 <div class="relative" bind:this={popoverEl}>
-  <Button onclick={toggle} size="sm" variant="secondary" class="gap-1">
+  <Button
+    onclick={toggle}
+    size="icon"
+    variant="secondary"
+    class="h-9 w-9"
+    title="Manage tags"
+    aria-label="Manage tags"
+  >
     {#snippet children()}
-      <Tag size={12} />
-      Tags
+      <Tag size={14} />
     {/snippet}
   </Button>
 
