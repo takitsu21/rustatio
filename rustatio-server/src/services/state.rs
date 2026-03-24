@@ -2,7 +2,8 @@ use super::events::{EventBroadcaster, InstanceEvent, LogEvent};
 use super::instance::{FakerInstance, InstanceInfo};
 use super::lifecycle::InstanceLifecycle;
 use super::persistence::{
-    now_timestamp, InstanceSource, PersistedInstance, PersistedState, Persistence, WatchSettings,
+    now_timestamp, CustomPreset, DefaultPreset, InstanceSource, PersistedInstance,
+    PersistedRuntime, PersistedState, Persistence, WatchSettings,
 };
 use rustatio_core::logger::set_instance_context_str;
 use rustatio_core::{
@@ -12,6 +13,7 @@ use rustatio_core::{
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::{broadcast, RwLock};
 
 #[derive(Clone)]
@@ -21,7 +23,9 @@ pub struct AppState {
     pub instance_sender: broadcast::Sender<InstanceEvent>,
     persistence: Arc<Persistence>,
     default_config: Arc<RwLock<Option<FakerConfig>>>,
+    default_preset: Arc<RwLock<Option<DefaultPreset>>>,
     watch_settings: Arc<RwLock<Option<WatchSettings>>>,
+    custom_presets: Arc<RwLock<Vec<CustomPreset>>>,
     http_client: reqwest::Client,
     forwarded_port: Arc<AtomicU16>,
     server_vpn_port_sync: bool,
@@ -66,7 +70,9 @@ impl AppState {
             instance_sender,
             persistence: Arc::new(Persistence::new(data_dir)),
             default_config: Arc::new(RwLock::new(None)),
+            default_preset: Arc::new(RwLock::new(None)),
             watch_settings: Arc::new(RwLock::new(None)),
+            custom_presets: Arc::new(RwLock::new(Vec::new())),
             http_client: reqwest::Client::new(),
             forwarded_port: Arc::new(AtomicU16::new(0)),
             server_vpn_port_sync: std::env::var("VPN_PORT_SYNC")
@@ -107,6 +113,10 @@ impl AppState {
         self.default_config.read().await.clone()
     }
 
+    pub async fn get_default_preset(&self) -> Option<DefaultPreset> {
+        self.default_preset.read().await.clone()
+    }
+
     pub async fn get_effective_default_config(&self) -> FakerConfig {
         let mut config = self.get_default_config().await.unwrap_or_else(|| FakerConfig {
             vpn_port_sync: self.server_vpn_port_sync,
@@ -118,26 +128,54 @@ impl AppState {
 
     pub async fn set_default_config(&self, config: Option<FakerConfig>) -> Result<(), String> {
         *self.default_config.write().await = config.clone();
+        *self.default_preset.write().await = None;
+        self.save_state().await
+    }
 
-        let existing = self.persistence.load().await;
-        let mut updated = existing;
-        updated.default_config = config;
-
-        self.persistence.save(&updated).await
+    pub async fn set_default_preset(&self, preset: Option<DefaultPreset>) -> Result<(), String> {
+        *self.default_preset.write().await = preset.clone();
+        *self.default_config.write().await = preset.clone().map(|value| value.settings.into());
+        self.save_state().await
     }
 
     pub async fn get_watch_settings_optional(&self) -> Option<WatchSettings> {
         self.watch_settings.read().await.clone()
     }
 
+    pub async fn list_custom_presets(&self) -> Vec<CustomPreset> {
+        self.custom_presets.read().await.clone()
+    }
+
+    pub async fn upsert_custom_preset(&self, preset: CustomPreset) -> Result<(), String> {
+        let mut presets = self.custom_presets.write().await;
+
+        if let Some(existing) = presets.iter_mut().find(|item| item.id == preset.id) {
+            *existing = preset;
+        } else {
+            presets.push(preset);
+        }
+
+        drop(presets);
+        self.save_state().await
+    }
+
+    pub async fn delete_custom_preset(&self, id: &str) -> Result<(), String> {
+        let mut presets = self.custom_presets.write().await;
+        let original_len = presets.len();
+        presets.retain(|preset| preset.id != id);
+        let changed = presets.len() != original_len;
+        drop(presets);
+
+        if changed {
+            self.save_state().await?;
+        }
+
+        Ok(())
+    }
+
     pub async fn set_watch_settings(&self, settings: WatchSettings) -> Result<(), String> {
         *self.watch_settings.write().await = Some(settings.clone());
-
-        let existing = self.persistence.load().await;
-        let mut updated = existing;
-        updated.watch_settings = Some(settings);
-
-        self.persistence.save(&updated).await
+        self.save_state().await
     }
 
     pub async fn load_saved_state(&self) -> Result<usize, String> {
@@ -148,9 +186,21 @@ impl AppState {
             tracing::info!("Restored default config from saved state");
         }
 
+        if let Some(preset) = saved.default_preset.clone() {
+            *self.default_preset.write().await = Some(preset);
+        }
+
         if let Some(settings) = saved.watch_settings.clone() {
             *self.watch_settings.write().await = Some(settings);
             tracing::info!("Restored watch settings from saved state");
+        }
+
+        if !saved.custom_presets.is_empty() {
+            *self.custom_presets.write().await = saved.custom_presets.clone();
+            tracing::info!(
+                "Restored {} custom preset(s) from saved state",
+                saved.custom_presets.len()
+            );
         }
 
         let mut restored_count = 0;
@@ -166,8 +216,11 @@ impl AppState {
             );
 
             let mut faker_config = persisted.config.clone();
-            faker_config.initial_uploaded = persisted.cumulative_uploaded;
-            faker_config.initial_downloaded = persisted.cumulative_downloaded;
+            let runtime = persisted.runtime.as_ref();
+            faker_config.initial_uploaded =
+                runtime.map_or(persisted.cumulative_uploaded, |rt| rt.uploaded);
+            faker_config.initial_downloaded =
+                runtime.map_or(persisted.cumulative_downloaded, |rt| rt.downloaded);
 
             let summary = Arc::new(persisted.torrent.clone());
             let torrent = Arc::new(persisted.torrent.to_info());
@@ -178,6 +231,17 @@ impl AppState {
                 Some(self.http_client.clone()),
             ) {
                 Ok(faker) => {
+                    let restored_stats = runtime.map_or_else(
+                        || Self::default_runtime_stats(&persisted.config),
+                        |value| {
+                            Self::stats_from_runtime(
+                                value,
+                                persisted.state.clone(),
+                                persisted.config.post_stop_action,
+                            )
+                        },
+                    );
+
                     let instance = FakerInstance {
                         faker: Arc::new(RatioFakerHandle::new(faker)),
                         torrent,
@@ -190,6 +254,8 @@ impl AppState {
                         source: persisted.source,
                         tags: persisted.tags.clone(),
                     };
+
+                    instance.faker.restore_snapshot(restored_stats).await;
 
                     self.instances.write().await.insert(id.clone(), instance);
 
@@ -233,12 +299,16 @@ impl AppState {
         let instances = self.instances.read().await;
 
         let default_config = self.default_config.read().await.clone();
+        let default_preset = self.default_preset.read().await.clone();
         let watch_settings = self.watch_settings.read().await.clone();
+        let custom_presets = self.custom_presets.read().await.clone();
 
         let mut persisted = PersistedState {
             instances: HashMap::new(),
             default_config,
+            default_preset,
             watch_settings,
+            custom_presets,
             version: 1,
         };
 
@@ -255,11 +325,12 @@ impl AppState {
                     config,
                     cumulative_uploaded: stats.uploaded,
                     cumulative_downloaded: stats.downloaded,
-                    state: stats.state,
+                    state: stats.state.clone(),
                     created_at: instance.created_at,
                     updated_at: now_timestamp(),
                     source: instance.source,
                     tags: instance.tags.clone(),
+                    runtime: Some(Self::runtime_from_stats(&stats)),
                 },
             );
         }
@@ -318,7 +389,6 @@ impl AppState {
             .update_config(config, Some(self.http_client.clone()))
             .await
             .map_err(|e| format!("Failed to update faker config: {e}"))?;
-
         drop(instances);
 
         if let Err(e) = self.save_state().await {
@@ -834,6 +904,92 @@ impl AppState {
     }
 }
 
+impl AppState {
+    fn default_runtime_stats(config: &FakerConfig) -> FakerStats {
+        rustatio_core::RatioFaker::stats_from_config(config)
+    }
+
+    fn runtime_from_stats(stats: &FakerStats) -> PersistedRuntime {
+        PersistedRuntime {
+            uploaded: stats.uploaded,
+            downloaded: stats.downloaded,
+            ratio: stats.ratio,
+            left: stats.left,
+            torrent_completion: stats.torrent_completion,
+            seeders: stats.seeders,
+            leechers: stats.leechers,
+            session_uploaded: stats.session_uploaded,
+            session_downloaded: stats.session_downloaded,
+            session_ratio: stats.session_ratio,
+            elapsed_secs: stats.elapsed_time.as_secs(),
+            current_upload_rate: stats.current_upload_rate,
+            current_download_rate: stats.current_download_rate,
+            average_upload_rate: stats.average_upload_rate,
+            average_download_rate: stats.average_download_rate,
+            upload_progress: stats.upload_progress,
+            download_progress: stats.download_progress,
+            ratio_progress: stats.ratio_progress,
+            seed_time_progress: stats.seed_time_progress,
+            effective_stop_at_ratio: stats.effective_stop_at_ratio,
+            eta_ratio_secs: stats.eta_ratio.map(|value| value.as_secs()),
+            eta_uploaded_secs: stats.eta_uploaded.map(|value| value.as_secs()),
+            eta_seed_time_secs: stats.eta_seed_time.map(|value| value.as_secs()),
+            eta_download_completion_secs: stats
+                .eta_download_completion
+                .map(|value| value.as_secs()),
+            stop_condition_met: stats.stop_condition_met,
+            is_idling: stats.is_idling,
+            idling_reason: stats.idling_reason.clone(),
+            announce_count: stats.announce_count,
+        }
+    }
+
+    fn stats_from_runtime(
+        runtime: &PersistedRuntime,
+        state: FakerState,
+        post_stop_action: rustatio_core::PostStopAction,
+    ) -> FakerStats {
+        FakerStats {
+            uploaded: runtime.uploaded,
+            downloaded: runtime.downloaded,
+            ratio: runtime.ratio,
+            left: runtime.left,
+            torrent_completion: runtime.torrent_completion,
+            seeders: runtime.seeders,
+            leechers: runtime.leechers,
+            state,
+            is_idling: runtime.is_idling,
+            idling_reason: runtime.idling_reason.clone(),
+            session_uploaded: runtime.session_uploaded,
+            session_downloaded: runtime.session_downloaded,
+            session_ratio: runtime.session_ratio,
+            elapsed_time: Duration::from_secs(runtime.elapsed_secs),
+            current_upload_rate: runtime.current_upload_rate,
+            current_download_rate: runtime.current_download_rate,
+            average_upload_rate: runtime.average_upload_rate,
+            average_download_rate: runtime.average_download_rate,
+            upload_progress: runtime.upload_progress,
+            download_progress: runtime.download_progress,
+            ratio_progress: runtime.ratio_progress,
+            seed_time_progress: runtime.seed_time_progress,
+            effective_stop_at_ratio: runtime.effective_stop_at_ratio,
+            eta_ratio: runtime.eta_ratio_secs.map(Duration::from_secs),
+            eta_uploaded: runtime.eta_uploaded_secs.map(Duration::from_secs),
+            eta_seed_time: runtime.eta_seed_time_secs.map(Duration::from_secs),
+            eta_download_completion: runtime.eta_download_completion_secs.map(Duration::from_secs),
+            upload_rate_history: Vec::new(),
+            download_rate_history: Vec::new(),
+            ratio_history: Vec::new(),
+            history_timestamps: Vec::new(),
+            last_announce: None,
+            next_announce: None,
+            announce_count: runtime.announce_count,
+            stop_condition_met: runtime.stop_condition_met,
+            post_stop_action,
+        }
+    }
+}
+
 impl EventBroadcaster for AppState {
     fn subscribe_logs(&self) -> broadcast::Receiver<LogEvent> {
         self.log_sender.subscribe()
@@ -851,7 +1007,7 @@ impl EventBroadcaster for AppState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rustatio_core::{FakerConfig, TorrentInfo};
+    use rustatio_core::{FakerConfig, FakerState, PostStopAction, PresetSettings, TorrentInfo};
 
     fn torrent() -> TorrentInfo {
         TorrentInfo {
@@ -1001,5 +1157,107 @@ mod tests {
         let synced_inst = instances.iter().find(|inst| inst.id == "synced");
         assert!(synced_inst.is_some());
         assert_eq!(synced_inst.map(|inst| inst.config.port), Some(40000));
+    }
+
+    #[tokio::test]
+    async fn save_and_load_restores_paused_runtime_state() {
+        let temp = tempfile::tempdir();
+        assert!(temp.is_ok());
+        let temp = match temp {
+            Ok(value) => value,
+            Err(e) => panic!("failed to create tempdir: {e}"),
+        };
+        let path = temp.path().to_string_lossy().to_string();
+        let state = AppState::new(&path);
+
+        let created = state.create_instance("paused", torrent(), FakerConfig::default()).await;
+        assert!(created.is_ok());
+
+        {
+            let instances = state.instances.read().await;
+            let instance = instances.get("paused");
+            assert!(instance.is_some());
+            if let Some(instance) = instance {
+                let mut stats = instance.faker.stats_snapshot();
+                stats.state = FakerState::Paused;
+                stats.uploaded = 7_000;
+                stats.downloaded = 3_000;
+                stats.ratio = 6.8359;
+                stats.session_uploaded = 2_000;
+                stats.session_downloaded = 500;
+                stats.session_ratio = 1.9531;
+                stats.elapsed_time = Duration::from_secs(7200);
+                stats.seed_time_progress = 50.0;
+                stats.stop_condition_met = false;
+                stats.post_stop_action = PostStopAction::Idle;
+                instance.faker.restore_snapshot(stats).await;
+            }
+        }
+
+        let saved = state.save_state().await;
+        assert!(saved.is_ok());
+
+        let restored = AppState::new(&path);
+        let loaded = restored.load_saved_state().await;
+        assert!(loaded.is_ok());
+        let restored_count = loaded.unwrap_or(0);
+        assert_eq!(restored_count, 1);
+
+        let instances = restored.list_instances().await;
+        assert_eq!(instances.len(), 1);
+        let stats = &instances[0].stats;
+        assert!(matches!(stats.state, FakerState::Paused));
+        assert_eq!(stats.uploaded, 7_000);
+        assert_eq!(stats.downloaded, 3_000);
+        assert_eq!(stats.session_uploaded, 2_000);
+        assert_eq!(stats.session_downloaded, 500);
+        assert_eq!(stats.elapsed_time.as_secs(), 7200);
+        assert_eq!(stats.seed_time_progress, 50.0);
+    }
+
+    #[tokio::test]
+    async fn custom_and_default_presets_persist_to_state_file() {
+        let temp = tempfile::tempdir();
+        assert!(temp.is_ok());
+        let temp = match temp {
+            Ok(value) => value,
+            Err(e) => panic!("failed to create tempdir: {e}"),
+        };
+        let state = AppState::new(&temp.path().to_string_lossy());
+
+        let preset = CustomPreset {
+            id: "custom-one".to_string(),
+            name: "Custom One".to_string(),
+            description: "Saved on server".to_string(),
+            icon: "star".to_string(),
+            custom: true,
+            created_at: "2026-03-24T00:00:00Z".to_string(),
+            settings: PresetSettings { upload_rate: Some(123.0), ..PresetSettings::default() },
+        };
+
+        let saved_preset = state.upsert_custom_preset(preset.clone()).await;
+        assert!(saved_preset.is_ok());
+
+        let default_saved = state
+            .set_default_preset(Some(DefaultPreset {
+                id: preset.id.clone(),
+                name: preset.name.clone(),
+                settings: preset.settings.clone(),
+            }))
+            .await;
+        assert!(default_saved.is_ok());
+
+        let persisted = state.persistence.load().await;
+        assert_eq!(persisted.custom_presets.len(), 1);
+        assert_eq!(persisted.custom_presets[0].id, "custom-one");
+        assert_eq!(
+            persisted.default_preset.as_ref().map(|item| item.id.as_str()),
+            Some("custom-one")
+        );
+        assert_eq!(
+            persisted.default_preset.as_ref().map(|item| item.name.as_str()),
+            Some("Custom One")
+        );
+        assert_eq!(persisted.default_config.as_ref().map(|cfg| cfg.upload_rate), Some(123.0));
     }
 }

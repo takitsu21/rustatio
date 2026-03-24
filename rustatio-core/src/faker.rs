@@ -645,6 +645,43 @@ impl RatioFaker {
         self.stats.state = FakerState::Starting;
     }
 
+    fn rebase_timers_from_elapsed(&mut self, now: Instant) {
+        self.start_time = now.checked_sub(self.stats.elapsed_time).unwrap_or(now);
+        self.last_update = now;
+    }
+
+    pub fn restore_runtime(&mut self, mut stats: FakerStats) {
+        let now = Instant::now();
+
+        stats.post_stop_action = self.config.post_stop_action;
+        stats.last_announce = None;
+        stats.next_announce = None;
+
+        if matches!(stats.state, FakerState::Starting) {
+            stats.state = FakerState::Running;
+        }
+
+        self.stats = stats;
+        self.rebase_timers_from_elapsed(now);
+        self.tracker_id = None;
+        self.announce_interval = Duration::from_secs(1800);
+        self.last_scrape = now;
+        self.scrape_supported = true;
+    }
+
+    fn begin_restore_running(&mut self) -> AnnouncePlan {
+        log_info!("Restoring active ratio faker for torrent: {}", self.torrent.name);
+
+        self.rebase_timers_from_elapsed(Instant::now());
+        self.stats.state = FakerState::Running;
+
+        AnnouncePlan {
+            tracker_client: Arc::clone(&self.tracker_client),
+            tracker_url: self.torrent.get_tracker_url().to_string(),
+            request: self.build_announce_request(TrackerEvent::Started),
+        }
+    }
+
     fn apply_start_result(&mut self, result: Result<AnnounceResponse>) {
         match result {
             Ok(response) => {
@@ -778,6 +815,17 @@ impl RatioFaker {
     fn tick(&mut self, now: Instant) -> UpdateOutcome {
         let elapsed = now.duration_since(self.last_update);
         self.last_update = now;
+
+        if self.check_stop_conditions(&self.stats) {
+            self.stats.current_upload_rate = 0.0;
+            self.stats.current_download_rate = 0.0;
+            return UpdateOutcome {
+                completed: false,
+                stop: true,
+                scrape_due: false,
+                announce_due: false,
+            };
+        }
 
         let inputs = self.build_tick_inputs(elapsed);
         let (base_upload_rate, base_download_rate) = self.calc_base_rates(&inputs);
@@ -1223,8 +1271,12 @@ impl RatioFaker {
     /// Resume the faker
     pub fn resume(&mut self) -> Result<()> {
         log_info!("Resuming ratio faker");
+        let now = Instant::now();
         self.stats.state = FakerState::Running;
-        self.last_update = Instant::now(); // Reset to avoid large delta
+        self.rebase_timers_from_elapsed(now);
+        if self.stats.next_announce.is_none() {
+            self.stats.next_announce = Some(now);
+        }
         Ok(())
     }
 
@@ -1547,6 +1599,25 @@ impl RatioFakerHandle {
         let result = guard.resume();
         let _ = self.stats_tx.send(guard.stats_snapshot());
         result
+    }
+
+    pub async fn restore_running(&self) -> Result<()> {
+        let plan = {
+            let mut guard = self.inner.lock().await;
+            guard.begin_restore_running()
+        };
+
+        let result = plan.execute().await;
+        let mut guard = self.inner.lock().await;
+        guard.apply_start_result(result);
+        let _ = self.stats_tx.send(guard.stats_snapshot());
+        Ok(())
+    }
+
+    pub async fn restore_snapshot(&self, stats: FakerStats) {
+        let mut guard = self.inner.lock().await;
+        guard.restore_runtime(stats);
+        let _ = self.stats_tx.send(guard.stats_snapshot());
     }
 
     async fn apply_post_stop_action(&self) -> Result<()> {
@@ -1919,5 +1990,53 @@ mod tests {
         assert_eq!(faker.stats.announce_count, 0);
         assert!(faker.stats.ratio > 0.0);
         assert!(!faker.check_stop_conditions(&faker.stats));
+    }
+
+    #[test]
+    fn tick_stops_without_extra_transfer_when_condition_already_met() {
+        let torrent = Arc::new(TorrentInfo {
+            info_hash: [11u8; 20],
+            announce: "https://tracker.test/announce".to_string(),
+            announce_list: None,
+            name: "sample".to_string(),
+            total_size: 1024,
+            piece_length: 256,
+            num_pieces: 4,
+            creation_date: None,
+            comment: None,
+            created_by: None,
+            is_single_file: true,
+            file_count: 1,
+            files: Vec::new(),
+        });
+
+        let faker = RatioFaker::new(
+            torrent,
+            FakerConfig {
+                stop_at_ratio: Some(1.0),
+                initial_uploaded: 2048,
+                completion_percent: 100.0,
+                ..FakerConfig::default()
+            },
+            None,
+        );
+        assert!(faker.is_ok());
+        let mut faker = faker.unwrap_or_else(|_| panic!("failed to create faker"));
+
+        faker.stats.state = FakerState::Running;
+        faker.stats.ratio = 2.0;
+        faker.last_update =
+            faker.last_update.checked_sub(Duration::from_secs(5)).unwrap_or_else(Instant::now);
+
+        let uploaded_before = faker.stats.uploaded;
+        let downloaded_before = faker.stats.downloaded;
+
+        let outcome = faker.tick(Instant::now());
+
+        assert!(outcome.stop);
+        assert_eq!(faker.stats.uploaded, uploaded_before);
+        assert_eq!(faker.stats.downloaded, downloaded_before);
+        assert_eq!(faker.stats.current_upload_rate, 0.0);
+        assert_eq!(faker.stats.current_download_rate, 0.0);
     }
 }

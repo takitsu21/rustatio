@@ -9,5 +9,6 @@ pub mod faker;
 pub mod grid;
 pub mod instances;
 pub mod network;
+pub mod presets;
 pub mod torrents;
 pub mod watch;

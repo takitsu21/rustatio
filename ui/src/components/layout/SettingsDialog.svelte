@@ -10,6 +10,7 @@
     getDefaultPresetId,
     setDefaultPreset,
     clearDefaultPreset,
+    refreshDefaultPreset,
   } from '$lib/defaultPreset.js';
   import { THEMES, THEME_CATEGORIES, getTheme, selectTheme } from '$lib/themeStore.svelte.js';
   import { Settings, X, Check, Trash2, Download, Upload } from '@lucide/svelte';
@@ -59,53 +60,40 @@
     }
   });
 
-  // Custom presets stored in localStorage
-  const CUSTOM_PRESETS_KEY = 'rustatio-custom-presets';
-
-  function loadCustomPresets() {
-    try {
-      const stored = localStorage.getItem(CUSTOM_PRESETS_KEY);
-      return stored ? JSON.parse(stored) : [];
-    } catch {
-      return [];
-    }
-  }
-
-  function saveCustomPresets(presets) {
-    localStorage.setItem(CUSTOM_PRESETS_KEY, JSON.stringify(presets));
-  }
-
-  let customPresets = $state(loadCustomPresets());
+  let customPresets = $state([]);
 
   // Default preset state
   let defaultPresetId = $state(getDefaultPresetId());
   let defaultPresetName = $state(getDefaultPreset()?.name || 'Rustatio defaults');
 
+  async function loadPresetState() {
+    try {
+      customPresets = (await api.listCustomPresets()) || [];
+      const preset = await refreshDefaultPreset();
+      defaultPresetId = preset?.id || null;
+      defaultPresetName = preset?.name || 'Rustatio defaults';
+    } catch (e) {
+      console.warn('Failed to load preset state:', e);
+    }
+  }
+
   async function setAsDefault(preset) {
-    setDefaultPreset(preset);
+    await setDefaultPreset(preset);
     defaultPresetId = preset.id;
     defaultPresetName = preset.name || 'Unnamed preset';
-
-    // Sync to backend for watch folder support
-    try {
-      await api.setDefaultConfig(preset.settings);
-    } catch (e) {
-      console.warn('Failed to sync default config:', e);
-    }
   }
 
   async function clearDefault() {
-    clearDefaultPreset();
+    await clearDefaultPreset();
     defaultPresetId = null;
     defaultPresetName = 'Rustatio defaults';
-
-    // Clear on backend
-    try {
-      await api.clearDefaultConfig();
-    } catch (e) {
-      console.warn('Failed to clear default config:', e);
-    }
   }
+
+  $effect(() => {
+    if (isOpen) {
+      loadPresetState();
+    }
+  });
 
   // Detection avoidance tips
   const detectionTips = [
@@ -375,13 +363,13 @@
         description: data.description || 'Imported custom preset',
         icon: data.icon || 'folder',
         custom: true,
-        createdAt: data.createdAt || new Date().toISOString(),
+        created_at: data.created_at || data.createdAt || new Date().toISOString(),
         settings: data.settings,
       };
 
       // Add to custom presets
-      customPresets = [...customPresets, newPreset];
-      saveCustomPresets(customPresets);
+      await api.upsertCustomPreset(newPreset);
+      customPresets = [...customPresets.filter(p => p.id !== newPreset.id), newPreset];
 
       importSuccess = `Preset "${newPreset.name}" imported successfully`;
     } catch (err) {
@@ -392,9 +380,12 @@
     if (fileInput) fileInput.value = '';
   }
 
-  function deleteCustomPreset(presetId) {
+  async function deleteCustomPreset(presetId) {
+    await api.deleteCustomPreset(presetId);
     customPresets = customPresets.filter(p => p.id !== presetId);
-    saveCustomPresets(customPresets);
+    if (defaultPresetId === presetId) {
+      await clearDefault();
+    }
   }
 
   function getImportanceColor(importance) {

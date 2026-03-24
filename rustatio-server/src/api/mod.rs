@@ -58,7 +58,7 @@ impl Modify for SecurityAddon {
         (name = "clients", description = "BitTorrent client emulation"),
         (name = "network", description = "Network and VPN status"),
         (name = "watch", description = "Watch folder management"),
-        (name = "config", description = "Default configuration"),
+        (name = "config", description = "Default configuration and presets"),
         (name = "events", description = "Server-Sent Events streams")
     ),
     paths(
@@ -100,6 +100,12 @@ impl Modify for SecurityAddon {
         routes::config::get_default_config,
         routes::config::set_default_config,
         routes::config::clear_default_config,
+        routes::config::get_default_preset,
+        routes::config::set_default_preset,
+        routes::config::clear_default_preset,
+        routes::presets::list_custom_presets,
+        routes::presets::upsert_custom_preset,
+        routes::presets::delete_custom_preset,
         // Events
         routes::events::logs_sse,
         routes::events::instances_sse,
@@ -121,6 +127,8 @@ impl Modify for SecurityAddon {
             crate::services::LogEvent,
             crate::services::InstanceEvent,
             crate::services::persistence::InstanceSource,
+            crate::services::persistence::CustomPreset,
+            crate::services::persistence::DefaultPreset,
             crate::services::watch::WatchStatus,
             crate::services::watch::WatchedFile,
             crate::services::watch::WatchedFileStatus,
@@ -146,6 +154,7 @@ pub fn router() -> Router<ServerState> {
         .merge(routes::network::router())
         .merge(routes::watch::router())
         .merge(routes::config::router())
+        .merge(routes::presets::router())
         .merge(routes::events::router())
         .merge(routes::grid::router())
         .merge(routes::browse::router())
