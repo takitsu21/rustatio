@@ -7,7 +7,7 @@
 
 A modern, cross-platform BitTorrent ratio management tool that emulates popular torrent clients. Built with Rust for blazingly fast performance and Tauri for a native desktop/mobile experience.
 
-Accurately simulate seeding behavior by emulating **uTorrent**, **qBittorrent**, **Transmission**, or **Deluge** with customizable upload/download rates and tracker interactions.
+Accurately simulate seeding behavior by emulating **uTorrent**, **qBittorrent**, **Transmission**, **Deluge**, or **BitTorrent** with customizable upload/download rates and tracker interactions.
 
 > [!IMPORTANT]
 > This tool is for **educational purposes only**. Manipulating upload/download statistics on BitTorrent trackers may violate the terms of service of private trackers and could result in account suspension or ban. Use at your own risk.
@@ -41,19 +41,19 @@ Accurately simulate seeding behavior by emulating **uTorrent**, **qBittorrent**,
   </tr>
 </table>
 
-## ✨ Features
+## Features
 
 - **Modern GUI**: Beautiful, intuitive interface built with Tauri and Svelte
 - **Cross-platform**: Works on Linux, Windows, and macOS
 - **Multi-Instance Support**: Manage multiple torrents simultaneously with tabbed interface
-- **Popular Client Emulation**: Spoofs uTorrent, qBittorrent, Transmission, and Deluge
+- **Popular Client Emulation**: Spoofs uTorrent, qBittorrent, Transmission, Deluge, and BitTorrent
 - **Automatic Tracker Detection**: Reads tracker URL directly from torrent file
 - **Real-time Statistics**: Live updates of upload/download stats and ratio
 - **Performance Analytics**: Interactive charts for upload/download rates and peer distribution
 - **TOML Configuration**: Easy-to-edit configuration file
 - **Console Logging**: Detailed logging for debugging
 
-## 🚀 Getting Started
+## Getting Started
 
 Rustatio is available in **three versions**:
 
@@ -268,7 +268,6 @@ volumes:
 If `VPN sync` is enabled in the UI but no forwarded port is available yet, Rustatio will warn you and keep waiting until Gluetun reports one.
 
 **Docker Features**:
-- ✅ No CORS limitations (server handles tracker requests)
 - ✅ Runs on any Docker-enabled system (Linux, Windows, macOS, NAS)
 - ✅ Multi-architecture support (amd64, arm64)
 - ✅ PUID/PGID support for correct volume permissions
@@ -291,7 +290,7 @@ The web version runs entirely in your browser using WebAssembly.
 - ✅ Session persistence via localStorage
 - ⚠️ Requires CORS proxy for most trackers
 
-## 📖 Usage (Desktop & Web)
+## Usage (Desktop & Web)
 
 1. **Select Torrent**: Click "Select Torrent File" and choose your .torrent file
 2. **Configure Settings**:
@@ -303,7 +302,7 @@ The web version runs entirely in your browser using WebAssembly.
 4. **Monitor Stats**: Watch real-time statistics update every seconds
 5. **Stop**: Click "Stop" when done
 
-## ⚙️ Configuration
+## Configuration
 
 Configuration is automatically saved when using the UI. Settings are stored in:
 
@@ -330,12 +329,13 @@ window_height = 800
 dark_mode = true
 ```
 
-## 🎯 Supported Clients
+## Supported Clients
 
 - **uTorrent** (default: 3.5.5)
 - **qBittorrent** (default: 5.1.4)
 - **Transmission** (default: 4.0.5)
 - **Deluge** (default: 2.1.1)
+- **BitTorrent** (default: 7.10.5)
 
 Each client is accurately emulated with proper:
 
@@ -344,7 +344,7 @@ Each client is accurately emulated with proper:
 - HTTP protocol version
 - Query parameter ordering
 
-## 🔧 How It Works
+## How It Works
 
 1. **Torrent Parsing**: Reads .torrent file and extracts info_hash and tracker URL
 2. **Client Spoofing**: Generates authentic-looking peer ID and key for selected client
@@ -355,15 +355,15 @@ Each client is accurately emulated with proper:
 **For Users:**
 - 📖 [**WEB_VERSION.md**](WEB_VERSION.md) - How to use the web version and set up CORS proxy (5 minute guide)
 
-## 🤝 Contributing
+## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
-## 📜 License
+## License
 
 MIT License - see LICENSE file for details
 
-## 🙏 Credits
+## Credits
 
 - Inspired by [RatioMaster.NET](https://github.com/NikolayIT/RatioMaster.NET)
 - Built with [Tauri](https://tauri.app/), [Svelte 5](https://svelte.dev/), [Tailwind CSS](https://tailwindcss.com/), and [shadcn-svelte](https://www.shadcn-svelte.com/)
