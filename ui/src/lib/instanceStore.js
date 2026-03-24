@@ -2,6 +2,7 @@ import { writable, get } from 'svelte/store';
 import { api } from '$lib/api';
 import { getDefaultPreset } from '$lib/defaultPreset.js';
 import { getRunMode } from '$lib/api.js';
+import { getIdlingStatus, getStatusFromStats } from '$lib/status.js';
 
 // Check if running in Tauri
 const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
@@ -430,7 +431,7 @@ export const instanceActions = {
                 instance.statusType = 'running';
               } else if (instance.isPaused) {
                 instance.statusMessage = 'Paused - restored from server';
-                instance.statusType = 'idle';
+                instance.statusType = 'paused';
               } else {
                 instance.statusMessage = 'Ready to start faking';
                 instance.statusType = 'idle';
@@ -535,12 +536,10 @@ export const instanceActions = {
 
               if (instance.isPaused) {
                 instance.statusMessage = 'Paused';
-                instance.statusType = 'idle';
+                instance.statusType = 'paused';
                 instance.statusIcon = 'pause';
               } else if (state === 'idle') {
-                instance.statusMessage = 'Idling - No peers available';
-                instance.statusType = 'idling';
-                instance.statusIcon = 'moon';
+                Object.assign(instance, getIdlingStatus());
               } else if (instance.isRunning) {
                 instance.statusMessage = 'Actively faking ratio...';
                 instance.statusType = 'running';
@@ -836,7 +835,7 @@ export const instanceActions = {
       instance.statusType = 'running';
     } else if (instance.isPaused) {
       instance.statusMessage = 'Paused - added from watch folder';
-      instance.statusType = 'idle';
+      instance.statusType = 'paused';
     } else {
       instance.statusMessage = 'Ready to start - added from watch folder';
       instance.statusType = 'idle';
@@ -1054,12 +1053,11 @@ export const instanceActions = {
 
       if (instance.isPaused) {
         instance.statusMessage = 'Paused';
-        instance.statusType = 'idle';
+        instance.statusType = 'paused';
         instance.statusIcon = 'pause';
       } else if (summaryState === 'idle') {
-        instance.statusMessage = 'Idling - No peers available';
-        instance.statusType = 'idling';
-        instance.statusIcon = 'moon';
+        const status = gridSummary?.isIdling ? getStatusFromStats(gridSummary) : getIdlingStatus();
+        Object.assign(instance, status);
       } else if (instance.isRunning) {
         instance.statusMessage = 'Actively faking ratio...';
         instance.statusType = 'running';
@@ -1129,7 +1127,7 @@ export const instanceActions = {
 
     if (isPaused) {
       updates.statusMessage = 'Paused';
-      updates.statusType = 'idle';
+      updates.statusType = 'paused';
       updates.statusIcon = 'pause';
     } else if (isRunning) {
       updates.statusMessage = 'Actively faking ratio...';
@@ -1172,12 +1170,13 @@ export const instanceActions = {
 
         if (isPaused) {
           updates.statusMessage = 'Paused';
-          updates.statusType = 'idle';
+          updates.statusType = 'paused';
           updates.statusIcon = 'pause';
         } else if (state === 'idle') {
-          updates.statusMessage = 'Idling - No peers available';
-          updates.statusType = 'idling';
-          updates.statusIcon = 'moon';
+          const status = inst.stats?.is_idling ? getStatusFromStats(inst.stats) : getIdlingStatus();
+          updates.statusMessage = status.statusMessage;
+          updates.statusType = status.statusType;
+          updates.statusIcon = status.statusIcon;
         } else if (isRunning) {
           updates.statusMessage = 'Actively faking ratio...';
           updates.statusType = 'running';
