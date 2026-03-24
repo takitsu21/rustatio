@@ -602,7 +602,7 @@ impl RatioFaker {
 
         log_info!("Starting ratio faker for torrent: {}", self.torrent.name);
 
-        self.stats.state = FakerState::Starting;
+        self.reset_session_state_for_start();
         self.start_time = Instant::now();
         self.last_update = Instant::now();
 
@@ -613,6 +613,36 @@ impl RatioFaker {
             tracker_url: self.torrent.get_tracker_url().to_string(),
             request,
         })
+    }
+
+    fn reset_session_state_for_start(&mut self) {
+        self.stats.session_uploaded = 0;
+        self.stats.session_downloaded = 0;
+        self.stats.session_ratio = 0.0;
+        self.stats.elapsed_time = Duration::from_secs(0);
+        self.stats.current_upload_rate = 0.0;
+        self.stats.current_download_rate = 0.0;
+        self.stats.average_upload_rate = 0.0;
+        self.stats.average_download_rate = 0.0;
+        self.stats.upload_progress = 0.0;
+        self.stats.download_progress = 0.0;
+        self.stats.ratio_progress = 0.0;
+        self.stats.seed_time_progress = 0.0;
+        self.stats.eta_ratio = None;
+        self.stats.eta_uploaded = None;
+        self.stats.eta_seed_time = None;
+        self.stats.eta_download_completion = None;
+        self.stats.upload_rate_history.clear();
+        self.stats.download_rate_history.clear();
+        self.stats.ratio_history.clear();
+        self.stats.history_timestamps.clear();
+        self.stats.last_announce = None;
+        self.stats.next_announce = None;
+        self.stats.announce_count = 0;
+        self.stats.stop_condition_met = false;
+        self.stats.is_idling = false;
+        self.stats.idling_reason = None;
+        self.stats.state = FakerState::Starting;
     }
 
     fn apply_start_result(&mut self, result: Result<AnnounceResponse>) {
@@ -1417,14 +1447,14 @@ impl RatioFaker {
             stats.download_progress = 0.0;
         }
 
-        // Ratio progress (use session ratio for progress tracking)
+        // Ratio progress (use cumulative ratio for progress tracking)
         if let Some(target_ratio) = config.stop_at_ratio {
-            stats.ratio_progress = ((stats.session_ratio / target_ratio) * 100.0).min(100.0);
+            stats.ratio_progress = ((stats.ratio / target_ratio) * 100.0).min(100.0);
 
-            // Calculate ETA for ratio (based on session stats)
+            // Calculate ETA for ratio (based on cumulative stats)
             if stats.average_upload_rate > 0.0 && torrent_size > 0 {
-                let target_session_uploaded = (target_ratio * torrent_size as f64) as u64;
-                let remaining = target_session_uploaded.saturating_sub(stats.session_uploaded);
+                let target_total_uploaded = (target_ratio * torrent_size as f64) as u64;
+                let remaining = target_total_uploaded.saturating_sub(stats.uploaded);
                 let eta_secs = (remaining as f64 / 1024.0) / stats.average_upload_rate;
                 stats.eta_ratio = Some(Duration::from_secs_f64(eta_secs));
             }
@@ -1841,5 +1871,53 @@ mod tests {
 
         assert_eq!(faker.config.stop_at_ratio, Some(1.8689));
         assert_eq!(faker.stats.effective_stop_at_ratio, Some(1.8689));
+    }
+
+    #[test]
+    fn start_resets_session_stats_but_keeps_cumulative_ratio_progress() {
+        let torrent = Arc::new(TorrentInfo {
+            info_hash: [9u8; 20],
+            announce: "https://tracker.test/announce".to_string(),
+            announce_list: None,
+            name: "sample".to_string(),
+            total_size: 1024,
+            piece_length: 256,
+            num_pieces: 4,
+            creation_date: None,
+            comment: None,
+            created_by: None,
+            is_single_file: true,
+            file_count: 1,
+            files: Vec::new(),
+        });
+
+        let faker = RatioFaker::new(
+            torrent,
+            FakerConfig {
+                initial_uploaded: 10 * 1024,
+                initial_downloaded: 5 * 1024,
+                stop_at_ratio: Some(20.0),
+                ..FakerConfig::default()
+            },
+            None,
+        );
+        assert!(faker.is_ok());
+        let mut faker = faker.unwrap_or_else(|_| panic!("failed to create faker"));
+
+        faker.stats.session_uploaded = 1234;
+        faker.stats.session_downloaded = 567;
+        faker.stats.session_ratio = 1.5;
+        faker.stats.ratio_progress = 42.0;
+        faker.stats.announce_count = 9;
+
+        let plan = faker.begin_start();
+        assert!(plan.is_some());
+        assert_eq!(faker.stats.session_uploaded, 0);
+        assert_eq!(faker.stats.session_downloaded, 0);
+        assert_eq!(faker.stats.session_ratio, 0.0);
+        assert_eq!(faker.stats.ratio_progress, 0.0);
+        assert_eq!(faker.stats.announce_count, 0);
+        assert!(faker.stats.ratio > 0.0);
+        assert!(!faker.check_stop_conditions(&faker.stats));
     }
 }

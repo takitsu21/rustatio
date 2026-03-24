@@ -245,7 +245,7 @@
 
     // Check ratio progress
     if (instance.stopAtRatioEnabled && instance.stopAtRatio > 0) {
-      const progress = Math.min(100, (stats.session_ratio / instance.stopAtRatio) * 100);
+      const progress = Math.min(100, (stats.ratio / instance.stopAtRatio) * 100);
       if (progress > maxProgress) {
         maxProgress = progress;
         activeCondition = 'ratio';

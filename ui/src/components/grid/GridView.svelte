@@ -98,6 +98,7 @@
 
 <GridImportDialog
   bind:isOpen={importDialogOpen}
+  vpnPortSyncVisible={true}
   currentForwardedPort={networkStatus?.forwarded_port ?? networkStatus?.forwardedPort ?? null}
   vpnPortSyncEnabled={networkStatus?.vpn_port_sync_enabled ?? true}
   {networkStatusError}
