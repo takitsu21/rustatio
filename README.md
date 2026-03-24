@@ -191,7 +191,7 @@ sudo chown -R $(id -u):$(id -g) ./torrents
 
 **Custom Port Configuration**
 
-To change the web UI port:
+To change only the host-side port, keep `PORT=8080` and change the published port mapping:
 
 ```bash
 # Using docker run
@@ -201,6 +201,21 @@ docker run -d -p 3000:8080 --name rustatio ghcr.io/takitsu21/rustatio:latest
 ports:
   - "3000:8080"
 ```
+
+If you also change Rustatio's internal server port with `PORT`, update the published target port to match:
+
+```bash
+# Using docker run
+docker run -d -e PORT=9080 -p 3000:9080 --name rustatio ghcr.io/takitsu21/rustatio:latest
+
+# Using docker compose
+ports:
+  - "3000:9080"
+environment:
+  - PORT=9080
+```
+
+The built-in container healthcheck follows `PORT` automatically.
 
 **Running Behind a VPN (Recommended)**
 
@@ -256,6 +271,8 @@ volumes:
 ```
 
 > **Note**: The `ports` are defined on the `gluetun` container since Rustatio uses its network stack. See the [gluetun wiki](https://github.com/qdm12/gluetun-wiki) for VPN provider-specific configuration.
+
+> If you change `PORT` from `8080`, update the published port on the `gluetun` service to the same internal port.
 
 > **Dynamic forwarded port sync**: When `VPN_PORT_SYNC=on`, new server instances can enable `VPN sync` in the UI so Rustatio follows Gluetun's current forwarded port automatically. Existing instances stay on their saved manual port unless you enable the toggle for that instance.
 

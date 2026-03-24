@@ -257,6 +257,7 @@
         uploadRate: instance.uploadRate,
         downloadRate: instance.downloadRate,
         port: instance.port,
+        vpnPortSync: instance.vpnPortSync ?? false,
         completionPercent: instance.completionPercent,
         randomizeRates: instance.randomizeRates,
         randomRangePercent: instance.randomRangePercent,
@@ -266,9 +267,10 @@
         targetUploadRate: instance.targetUploadRate,
         targetDownloadRate: instance.targetDownloadRate,
         progressiveDurationHours: instance.progressiveDurationHours,
-        // Stop conditions
         stopAtRatioEnabled: instance.stopAtRatioEnabled,
         stopAtRatio: instance.stopAtRatio,
+        randomizeRatio: instance.randomizeRatio,
+        randomRatioRangePercent: instance.randomRatioRangePercent,
         stopAtUploadedEnabled: instance.stopAtUploadedEnabled,
         stopAtUploadedGB: instance.stopAtUploadedGB,
         stopAtDownloadedEnabled: instance.stopAtDownloadedEnabled,
@@ -277,6 +279,7 @@
         stopAtSeedTimeHours: instance.stopAtSeedTimeHours,
         idleWhenNoLeechers: instance.idleWhenNoLeechers,
         idleWhenNoSeeders: instance.idleWhenNoSeeders,
+        postStopAction: instance.postStopAction,
       },
     };
 
