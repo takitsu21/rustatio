@@ -130,7 +130,7 @@ async function buildNewInstanceDefaults(defaults = {}) {
   const serverMode = isServerMode();
   const serverDefaults = serverMode ? await getServerEffectiveDefaults() : {};
   const vpnPortSync = serverMode
-    ? defaults.vpnPortSync ?? presetDefaults.vpnPortSync ?? serverDefaults.vpnPortSync ?? false
+    ? (defaults.vpnPortSync ?? presetDefaults.vpnPortSync ?? serverDefaults.vpnPortSync ?? false)
     : false;
 
   return {

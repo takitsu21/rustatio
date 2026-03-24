@@ -294,17 +294,17 @@
             disabled={isRunning || (localVpnPortSync && vpnPortSyncEnabled)}
             min="1024"
             max="65535"
-              class={cn(
-                'h-9 transition-colors',
-                vpnPortSyncVisible &&
-                  localVpnPortSync &&
-                  vpnPortSyncEnabled &&
-                  'border-stat-upload/50 bg-stat-upload/10 text-stat-upload placeholder:text-stat-upload/60',
-                vpnPortSyncVisible &&
-                  localVpnPortSync &&
-                  vpnPortSyncEnabled &&
-                  currentForwardedPort &&
-                  'ring-1 ring-stat-upload/30 focus-visible:ring-stat-upload'
+            class={cn(
+              'h-9 transition-colors',
+              vpnPortSyncVisible &&
+                localVpnPortSync &&
+                vpnPortSyncEnabled &&
+                'border-stat-upload/50 bg-stat-upload/10 text-stat-upload placeholder:text-stat-upload/60',
+              vpnPortSyncVisible &&
+                localVpnPortSync &&
+                vpnPortSyncEnabled &&
+                currentForwardedPort &&
+                'ring-1 ring-stat-upload/30 focus-visible:ring-stat-upload'
             )}
             onfocus={handleFocus}
             onblur={handlePortBlur}

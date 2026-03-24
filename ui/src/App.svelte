@@ -942,15 +942,6 @@
       // Create initial stats object to show cumulative values immediately
       const calculatedLeft = torrentSize - calculatedDownloaded;
 
-      // Calculate initial progress values to avoid jumps
-      // Use uploaded/downloaded if downloaded > 0, otherwise use uploaded/torrent_size
-      const initialRatio =
-        displayDownloaded > 0
-          ? displayUploaded / displayDownloaded
-          : torrentSize > 0
-            ? displayUploaded / torrentSize
-            : 0;
-
       // Ratio progress is based on session ratio (starts at 0), not cumulative ratio
       // So initial ratio progress should always be 0 when starting a new session
 
@@ -959,7 +950,7 @@
             // Cumulative (from previous sessions)
             uploaded: displayUploaded,
             downloaded: displayDownloaded,
-            ratio: initialRatio,
+            ratio: 0,
 
             // Torrent state
             left: calculatedLeft,
@@ -1659,7 +1650,9 @@
                   port={$activeInstance.port}
                   currentForwardedPort={getForwardedPort(networkStatus)}
                   vpnPortSyncVisible={isServerMode}
-                  vpnPortSyncEnabled={isServerMode ? (networkStatus?.vpn_port_sync_enabled ?? true) : false}
+                  vpnPortSyncEnabled={isServerMode
+                    ? (networkStatus?.vpn_port_sync_enabled ?? true)
+                    : false}
                   {networkStatusError}
                   vpnPortSync={$activeInstance.vpnPortSync}
                   uploadRate={$activeInstance.uploadRate}
