@@ -2,6 +2,8 @@ import { writable, derived, get } from 'svelte/store';
 import { api, getRunMode } from '$lib/api';
 import { normalizeViewMode } from '$lib/viewMode.js';
 import { instanceActions } from '$lib/instanceStore.js';
+import { applyBaseGridFilters } from '$lib/gridFilters.js';
+import { buildTrackerFilterEntries, getPrimaryTrackerHost } from '$lib/trackerUtils.js';
 
 const VIEW_MODE_KEY = 'rustatio-view-mode';
 
@@ -34,7 +36,17 @@ export const gridFilters = writable({
   search: '',
   stateFilter: 'all',
   tagFilter: '',
+  trackerFilter: [],
+  trackerSearch: '',
 });
+
+export const trackerFilterEntries = derived(
+  [gridInstances, gridFilters],
+  ([$instances, $filters]) => {
+    const base = applyBaseGridFilters($instances, $filters);
+    return buildTrackerFilterEntries(base, $filters);
+  }
+);
 
 // Sorting state
 export const gridSort = writable({
@@ -46,27 +58,11 @@ export const gridSort = writable({
 export const filteredGridInstances = derived(
   [gridInstances, gridFilters, gridSort],
   ([$instances, $filters, $sort]) => {
-    let result = $instances;
+    let result = applyBaseGridFilters($instances, $filters);
 
-    // Search filter
-    if ($filters.search) {
-      const search = $filters.search.toLowerCase();
-      result = result.filter(
-        inst =>
-          inst.name.toLowerCase().includes(search) ||
-          inst.infoHash?.toLowerCase().includes(search) ||
-          inst.tags?.some(t => t.toLowerCase().includes(search))
-      );
-    }
-
-    // State filter
-    if ($filters.stateFilter !== 'all') {
-      result = result.filter(inst => inst.state.toLowerCase() === $filters.stateFilter);
-    }
-
-    // Tag filter
-    if ($filters.tagFilter) {
-      result = result.filter(inst => inst.tags?.includes($filters.tagFilter));
+    if ($filters.trackerFilter.length > 0) {
+      const selectedTrackers = new Set($filters.trackerFilter);
+      result = result.filter(inst => selectedTrackers.has(getPrimaryTrackerHost(inst)));
     }
 
     // Sort

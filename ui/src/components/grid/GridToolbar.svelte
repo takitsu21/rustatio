@@ -125,6 +125,10 @@
     gridFilters.update(f => ({ ...f, tagFilter: value }));
   }
 
+  function clearTrackerFilter() {
+    gridFilters.update(f => ({ ...f, trackerFilter: [], trackerSearch: '' }));
+  }
+
   function handleSelectMenuClick(e) {
     e.stopPropagation();
     selectMenuOpen = !selectMenuOpen;
@@ -328,6 +332,14 @@
         onChange={handleTagFilter}
         class="w-36"
       />
+    {/if}
+
+    {#if $gridFilters.trackerFilter.length > 0}
+      <Button onclick={clearTrackerFilter} size="sm" variant="outline" class="h-8 text-xs">
+        {#snippet children()}
+          Trackers: {$gridFilters.trackerFilter.length}
+        {/snippet}
+      </Button>
     {/if}
   </div>
 </div>

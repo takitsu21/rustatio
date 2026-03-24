@@ -186,19 +186,25 @@
   function getStateColor(state) {
     switch (state?.toLowerCase()) {
       case 'starting':
+        return 'text-primary';
       case 'stopping':
-        return 'text-stat-ratio';
+        return 'text-stat-danger';
       case 'running':
         return 'text-stat-upload';
       case 'paused':
         return 'text-stat-ratio';
       case 'idle':
-        return 'text-muted-foreground';
+        return 'text-violet-500';
       case 'stopped':
         return 'text-muted-foreground';
       default:
         return 'text-muted-foreground';
     }
+  }
+
+  function isAnimatedState(state) {
+    const value = state?.toLowerCase();
+    return value === 'starting' || value === 'stopping';
   }
 
   const columns = [
@@ -428,11 +434,15 @@
             <!-- State -->
             <td class="px-2 py-1 whitespace-nowrap">
               <span class={cn('flex items-center gap-1', getStateColor(instance.state))}>
-                {#if instance.state?.toLowerCase() === 'starting' || instance.state?.toLowerCase() === 'stopping'}
-                  <StateIcon size={11} class="animate-spin" />
-                {:else}
-                  <StateIcon size={11} fill="currentColor" />
-                {/if}
+                <span class={cn('inline-flex', isAnimatedState(instance.state) && 'animate-spin')}>
+                  <StateIcon
+                    size={11}
+                    fill={instance.state?.toLowerCase() === 'running' ||
+                    instance.state?.toLowerCase() === 'idle'
+                      ? 'currentColor'
+                      : 'none'}
+                  />
+                </span>
                 <span class="capitalize">{instance.state}</span>
               </span>
             </td>
