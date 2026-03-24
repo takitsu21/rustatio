@@ -64,6 +64,7 @@
 
   // Check if running in Tauri
   const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+  let isServerMode = $derived(getRunMode() === 'server');
 
   // Loading state to prevent UI flash during initialization
   let isInitialized = $state(false);
@@ -1177,7 +1178,7 @@
       upload_rate: parseFloat(instance.uploadRate ?? 50),
       download_rate: parseFloat(instance.downloadRate ?? 100),
       port: parseInt(instance.port ?? 6881),
-      vpn_port_sync: instance.vpnPortSync ?? false,
+      vpn_port_sync: isServerMode ? (instance.vpnPortSync ?? false) : false,
       client_type: instance.selectedClient || 'qbittorrent',
       client_version:
         instance.selectedClientVersion ||
@@ -1657,7 +1658,8 @@
                   selectedClientVersion={$activeInstance.selectedClientVersion}
                   port={$activeInstance.port}
                   currentForwardedPort={getForwardedPort(networkStatus)}
-                  vpnPortSyncEnabled={networkStatus?.vpn_port_sync_enabled ?? true}
+                  vpnPortSyncVisible={isServerMode}
+                  vpnPortSyncEnabled={isServerMode ? (networkStatus?.vpn_port_sync_enabled ?? true) : false}
                   {networkStatusError}
                   vpnPortSync={$activeInstance.vpnPortSync}
                   uploadRate={$activeInstance.uploadRate}

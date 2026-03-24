@@ -23,6 +23,7 @@
 
   let {
     isOpen = $bindable(false),
+    vpnPortSyncVisible = false,
     currentForwardedPort = null,
     vpnPortSyncEnabled = true,
     networkStatusError = null,
@@ -274,6 +275,10 @@
   }
 
   function handleVpnPortSyncChange(checked) {
+    if (!vpnPortSyncVisible) {
+      return;
+    }
+
     if (checked && (!vpnPortSyncEnabled || networkStatusError === 'unavailable')) {
       return;
     }
@@ -286,6 +291,7 @@
 
   $effect(() => {
     if (
+      vpnPortSyncVisible &&
       vpnPortSync &&
       vpnPortSyncEnabled &&
       currentForwardedPort &&
@@ -808,17 +814,19 @@
             <ClientIcon clientId={selectedClient} size={16} />
             <Label>Client</Label>
           </div>
-          <div class="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-            <Checkbox
-              checked={vpnPortSync}
-              disabled={(!vpnPortSyncEnabled && !vpnPortSync) ||
-                (networkStatusError === 'unavailable' && !vpnPortSync)}
-              id="grid-vpn-port-sync"
-              onchange={handleVpnPortSyncChange}
-            />
-            <Label for="grid-vpn-port-sync" class="cursor-pointer">VPN sync</Label>
-            <InlineHelp text="Imported instances will sync their announce port from Gluetun." />
-          </div>
+          {#if vpnPortSyncVisible}
+            <div class="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+              <Checkbox
+                checked={vpnPortSync}
+                disabled={(!vpnPortSyncEnabled && !vpnPortSync) ||
+                  (networkStatusError === 'unavailable' && !vpnPortSync)}
+                id="grid-vpn-port-sync"
+                onchange={handleVpnPortSyncChange}
+              />
+              <Label for="grid-vpn-port-sync" class="cursor-pointer">VPN sync</Label>
+              <InlineHelp text="Imported instances will sync their announce port from Gluetun." />
+            </div>
+          {/if}
         </div>
         <div class="grid grid-cols-3 gap-3">
           <ClientSelect clients={clientTypes} bind:value={selectedClient} />
@@ -829,25 +837,25 @@
             <Input
               type="number"
               bind:value={port}
-              disabled={vpnPortSync && vpnPortSyncEnabled}
+              disabled={vpnPortSyncVisible && vpnPortSync && vpnPortSyncEnabled}
               min="1024"
               max="65535"
               placeholder="Port"
               class="h-9"
             />
-            {#if !vpnPortSyncEnabled && vpnPortSync}
+            {#if vpnPortSyncVisible && !vpnPortSyncEnabled && vpnPortSync}
               <p class="mt-1 text-[11px] text-amber-400">
                 VPN sync is disabled on the server. Uncheck it or enable
                 <span class="font-mono">VPN_PORT_SYNC=on</span> and restart Rustatio.
               </p>
-            {:else if !vpnPortSyncEnabled}
+            {:else if vpnPortSyncVisible && !vpnPortSyncEnabled}
               <p class="mt-1 text-[11px] text-amber-400">
                 VPN sync is disabled on the server. Set <span class="font-mono"
                   >VPN_PORT_SYNC=on</span
                 >
                 and restart Rustatio.
               </p>
-            {:else if networkStatusError === 'unavailable'}
+            {:else if vpnPortSyncVisible && networkStatusError === 'unavailable'}
               <div class="mt-1 flex items-center gap-2 text-[11px] text-amber-400">
                 <span>Gluetun status is unavailable.</span>
                 <button
@@ -858,14 +866,14 @@
                   Retry
                 </button>
               </div>
-            {:else if vpnPortSync && vpnPortSyncEnabled && !currentForwardedPort}
+            {:else if vpnPortSyncVisible && vpnPortSync && vpnPortSyncEnabled && !currentForwardedPort}
               <p class="mt-1 text-[11px] text-amber-400">
                 Waiting for a forwarded port from Gluetun. Make sure <span class="font-mono"
                   >VPN_PORT_FORWARDING=on</span
                 >
                 is enabled and the VPN provider supports it.
               </p>
-            {:else if vpnPortSync && vpnPortSyncEnabled && currentForwardedPort}
+            {:else if vpnPortSyncVisible && vpnPortSync && vpnPortSyncEnabled && currentForwardedPort}
               <p class="mt-1 text-[11px] text-foreground/80">
                 Current forwarded port: <span class="font-mono">{currentForwardedPort}</span>
               </p>

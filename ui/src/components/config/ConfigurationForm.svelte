@@ -18,6 +18,7 @@
     selectedClient,
     selectedClientVersion,
     port,
+    vpnPortSyncVisible = false,
     currentForwardedPort = null,
     vpnPortSyncEnabled = true,
     networkStatusError = null,
@@ -64,9 +65,9 @@
     if (!isEditing) {
       localSelectedClient = selectedClient;
       localSelectedClientVersion = selectedClientVersion;
-      localVpnPortSync = vpnPortSync ?? false;
+      localVpnPortSync = vpnPortSyncVisible ? (vpnPortSync ?? false) : false;
       localPort =
-        localVpnPortSync && vpnPortSyncEnabled && currentForwardedPort
+        vpnPortSyncVisible && localVpnPortSync && vpnPortSyncEnabled && currentForwardedPort
           ? currentForwardedPort
           : port;
       localUploadRate = uploadRate;
@@ -86,6 +87,7 @@
 
   $effect(() => {
     if (
+      vpnPortSyncVisible &&
       localVpnPortSync &&
       vpnPortSyncEnabled &&
       currentForwardedPort &&
@@ -268,20 +270,22 @@
         <div>
           <div class="mb-1.5 flex items-center justify-between gap-2">
             <Label for="port" class="text-xs text-muted-foreground">Port</Label>
-            <div class="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-              <Checkbox
-                id="vpn-port-sync"
-                bind:checked={localVpnPortSync}
-                disabled={isRunning ||
-                  (!vpnPortSyncEnabled && !localVpnPortSync) ||
-                  (networkStatusError === 'unavailable' && !localVpnPortSync)}
-                onchange={handleVpnPortSyncChange}
-              />
-              <Label for="vpn-port-sync" class="cursor-pointer flex items-center gap-1">
-                <Lock size={11} /> VPN sync
-              </Label>
-              <InlineHelp text="Use Gluetun's current forwarded port when available." />
-            </div>
+            {#if vpnPortSyncVisible}
+              <div class="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                <Checkbox
+                  id="vpn-port-sync"
+                  bind:checked={localVpnPortSync}
+                  disabled={isRunning ||
+                    (!vpnPortSyncEnabled && !localVpnPortSync) ||
+                    (networkStatusError === 'unavailable' && !localVpnPortSync)}
+                  onchange={handleVpnPortSyncChange}
+                />
+                <Label for="vpn-port-sync" class="cursor-pointer flex items-center gap-1">
+                  <Lock size={11} /> VPN sync
+                </Label>
+                <InlineHelp text="Use Gluetun's current forwarded port when available." />
+              </div>
+            {/if}
           </div>
           <Input
             id="port"
@@ -290,41 +294,43 @@
             disabled={isRunning || (localVpnPortSync && vpnPortSyncEnabled)}
             min="1024"
             max="65535"
-            class={cn(
-              'h-9 transition-colors',
-              localVpnPortSync &&
-                vpnPortSyncEnabled &&
-                'border-stat-upload/50 bg-stat-upload/10 text-stat-upload placeholder:text-stat-upload/60',
-              localVpnPortSync &&
-                vpnPortSyncEnabled &&
-                currentForwardedPort &&
-                'ring-1 ring-stat-upload/30 focus-visible:ring-stat-upload'
+              class={cn(
+                'h-9 transition-colors',
+                vpnPortSyncVisible &&
+                  localVpnPortSync &&
+                  vpnPortSyncEnabled &&
+                  'border-stat-upload/50 bg-stat-upload/10 text-stat-upload placeholder:text-stat-upload/60',
+                vpnPortSyncVisible &&
+                  localVpnPortSync &&
+                  vpnPortSyncEnabled &&
+                  currentForwardedPort &&
+                  'ring-1 ring-stat-upload/30 focus-visible:ring-stat-upload'
             )}
             onfocus={handleFocus}
             onblur={handlePortBlur}
             oninput={handlePortInput}
           />
-          {#if localVpnPortSync && vpnPortSyncEnabled && currentForwardedPort}
+          {#if vpnPortSyncVisible && localVpnPortSync && vpnPortSyncEnabled && currentForwardedPort}
             <p class="mt-1 text-[11px] text-foreground/80">
               Current forwarded port: <span class="font-mono">{currentForwardedPort}</span>
             </p>
-          {:else if !vpnPortSyncEnabled && localVpnPortSync}
+          {:else if vpnPortSyncVisible && !vpnPortSyncEnabled && localVpnPortSync}
             <p class="mt-1 text-[11px] text-amber-400">
               VPN sync is disabled on the server. Uncheck it for this instance or set
               <span class="font-mono">VPN_PORT_SYNC=on</span> and restart Rustatio.
             </p>
-          {:else if !vpnPortSyncEnabled}
+          {:else if vpnPortSyncVisible && !vpnPortSyncEnabled}
             <p class="mt-1 text-[11px] text-amber-400">
               VPN sync is disabled on the server. Set <span class="font-mono">VPN_PORT_SYNC=on</span
               >
               and restart Rustatio to enable it.
             </p>
-          {:else if networkStatusError === 'unavailable'}
+          {:else if vpnPortSyncVisible && networkStatusError === 'unavailable'}
             <p class="mt-1 text-[11px] text-amber-400">
               Gluetun status is unavailable. Check that Gluetun is running with port forwarding
               enabled.
             </p>
-          {:else if localVpnPortSync && vpnPortSyncEnabled && !currentForwardedPort}
+          {:else if vpnPortSyncVisible && localVpnPortSync && vpnPortSyncEnabled && !currentForwardedPort}
             <p class="mt-1 text-[11px] text-amber-400">
               Waiting for a forwarded port from Gluetun. Make sure <span class="font-mono"
                 >VPN_PORT_FORWARDING=on</span

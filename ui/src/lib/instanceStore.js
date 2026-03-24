@@ -1,9 +1,14 @@
 import { writable, get } from 'svelte/store';
 import { api } from '$lib/api';
 import { getDefaultPreset } from '$lib/defaultPreset.js';
+import { getRunMode } from '$lib/api.js';
 
 // Check if running in Tauri
 const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+
+function isServerMode() {
+  return getRunMode() === 'server';
+}
 
 // Helper to convert bytes to MB (rounded to integer)
 const bytesToMB = bytes => Math.round((bytes || 0) / (1024 * 1024));
@@ -122,20 +127,17 @@ async function getServerEffectiveDefaults() {
 
 async function buildNewInstanceDefaults(defaults = {}) {
   const presetDefaults = getDefaultPreset()?.settings || {};
-  const serverDefaults = !isTauri ? await getServerEffectiveDefaults() : {};
+  const serverMode = isServerMode();
+  const serverDefaults = serverMode ? await getServerEffectiveDefaults() : {};
+  const vpnPortSync = serverMode
+    ? defaults.vpnPortSync ?? presetDefaults.vpnPortSync ?? serverDefaults.vpnPortSync ?? false
+    : false;
 
   return {
     ...serverDefaults,
     ...presetDefaults,
     ...defaults,
-    vpnPortSync:
-      defaults.vpnPortSync !== undefined
-        ? defaults.vpnPortSync
-        : presetDefaults.vpnPortSync !== undefined
-          ? presetDefaults.vpnPortSync
-          : serverDefaults.vpnPortSync !== undefined
-            ? serverDefaults.vpnPortSync
-            : false,
+    vpnPortSync,
   };
 }
 
