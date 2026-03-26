@@ -170,14 +170,14 @@ impl From<&FakerStats> for StatsEvent {
             eta_ratio_secs: stats.eta_ratio.map(|d| d.as_secs()),
             eta_uploaded_secs: stats.eta_uploaded.map(|d| d.as_secs()),
             eta_seed_time_secs: stats.eta_seed_time.map(|d| d.as_secs()),
-            state: format_state(&stats.state),
+            state: format_state(stats.state),
             elapsed_secs: stats.elapsed_time.as_secs(),
             timestamp: Utc::now(),
         }
     }
 }
 
-fn format_state(state: &FakerState) -> String {
+fn format_state(state: FakerState) -> String {
     match state {
         FakerState::Idle => "idle".to_string(),
         FakerState::Starting => "starting".to_string(),

@@ -1,5 +1,6 @@
+use serde::Serialize;
 use std::sync::atomic::Ordering;
-use tauri::Manager;
+use tauri::{Manager, State};
 
 const RPM_LIKE: [&str; 9] =
     ["fedora", "rhel", "centos", "rocky", "almalinux", "suse", "opensuse", "sles", "mageia"];
@@ -73,4 +74,26 @@ pub fn quit_app(app: tauri::AppHandle) {
 pub fn cancel_close_prompt(app: tauri::AppHandle) {
     let state = app.state::<crate::state::AppState>();
     state.close_prompt_open.store(false, Ordering::Relaxed);
+}
+
+#[derive(Serialize)]
+pub struct DesktopNetworkStatus {
+    #[serde(rename = "peer_listener_port")]
+    port: Option<u16>,
+    #[serde(rename = "peer_listener_active")]
+    active: bool,
+    #[serde(rename = "peer_listener_error")]
+    error: Option<String>,
+}
+
+#[tauri::command]
+pub async fn get_network_status(
+    state: State<'_, crate::state::AppState>,
+) -> Result<DesktopNetworkStatus, String> {
+    let status = state.peer_listener_status().await;
+    Ok(DesktopNetworkStatus {
+        port: status.bound_port,
+        active: status.bound_port.is_some(),
+        error: status.last_error,
+    })
 }

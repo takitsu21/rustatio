@@ -8,7 +8,11 @@ mod watch;
 #[cfg(test)]
 mod watch_tests;
 
-use rustatio_core::{AppConfig, FakerState, RatioFaker, RatioFakerHandle};
+use async_trait::async_trait;
+use rustatio_core::{
+    AppConfig, FakerState, PeerCatalog, PeerListenerService, PeerListenerStatus, PeerLookup,
+    RatioFaker, RatioFakerHandle,
+};
 use rustatio_watch::InstanceSource;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -18,6 +22,27 @@ use tokio::sync::RwLock;
 
 use logging::log_and_emit;
 use state::{AppState, FakerInstance};
+
+#[derive(Clone)]
+struct DesktopPeerLookup {
+    fakers: Arc<RwLock<HashMap<u32, FakerInstance>>>,
+}
+
+#[async_trait]
+impl PeerLookup for DesktopPeerLookup {
+    async fn snapshot(&self) -> PeerCatalog {
+        let guard = self.fakers.read().await;
+        let mut out = PeerCatalog::new();
+        for instance in guard.values() {
+            out.entry(instance.torrent.info_hash)
+                .and_modify(|entry| {
+                    *entry = Err("duplicate active instances for info_hash".to_string());
+                })
+                .or_insert_with(|| Ok(Arc::clone(&instance.faker)));
+        }
+        out
+    }
+}
 
 /// Synchronous save for the exit handler (tokio runtime may be winding down)
 fn save_state_sync(state: &AppState) {
@@ -137,6 +162,8 @@ async fn restore_saved_instances(
             }
         };
     }
+
+    state.refresh_peer_listener_port().await;
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -233,6 +260,8 @@ fn main() {
         watch_settings: Arc::new(RwLock::new(saved_watch_settings)),
         should_exit: Arc::clone(&should_exit),
         close_prompt_open: Arc::clone(&close_prompt_open),
+        peer_listener: Arc::new(RwLock::new(None)),
+        peer_listener_status: Arc::new(RwLock::new(PeerListenerStatus::default())),
     };
 
     let should_exit_for_tray = Arc::clone(&should_exit);
@@ -265,6 +294,7 @@ fn main() {
             commands::resume_faker,
             commands::get_client_types,
             commands::get_client_infos,
+            commands::get_network_status,
             commands::write_file,
             commands::set_log_level,
             commands::detect_linux_package_type,
@@ -331,6 +361,26 @@ fn main() {
             let app_handle = app.handle().clone();
             let state: tauri::State<'_, AppState> = app.state();
             let state_inner = state.inner().clone();
+            let peer_lookup = DesktopPeerLookup { fakers: Arc::clone(&state_inner.fakers) };
+            let peer_listener_store = Arc::clone(&state_inner.peer_listener_status);
+            let peer_listener_rx = {
+                let state_ref = &state_inner;
+                tauri::async_runtime::block_on(async {
+                    let mut peer_listener = PeerListenerService::new();
+                    peer_listener.start(Arc::new(peer_lookup));
+                    let status_rx = peer_listener.subscribe();
+                    let peer_listener = Arc::new(tokio::sync::Mutex::new(peer_listener));
+                    state_ref.attach_peer_listener(Arc::clone(&peer_listener)).await;
+                    status_rx
+                })
+            };
+            tauri::async_runtime::spawn(async move {
+                let mut rx = peer_listener_rx;
+                while rx.changed().await.is_ok() {
+                    let status = rx.borrow().clone();
+                    *peer_listener_store.write().await = status;
+                }
+            });
 
             let saved_instances = saved_instances_map;
             let watch_settings =

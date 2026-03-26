@@ -124,6 +124,8 @@ pub async fn start_faker(
     );
     drop(fakers);
 
+    state.refresh_peer_listener_port().await;
+
     log_and_emit!(&app, instance_id, info, "Faker started successfully");
     Ok(())
 }
@@ -162,6 +164,8 @@ pub async fn stop_faker(
             instance.config.completion_percent = final_stats.torrent_completion;
         }
     }
+
+    state.refresh_peer_listener_port().await;
 
     log_and_emit!(
         &app,
@@ -261,6 +265,8 @@ pub async fn pause_faker(
 
     faker.pause().await.map_err(|e| format!("Failed to pause faker: {e}"))?;
 
+    state.refresh_peer_listener_port().await;
+
     log_and_emit!(&app, instance_id, info, "Faker paused successfully");
     Ok(())
 }
@@ -282,6 +288,8 @@ pub async fn resume_faker(
     };
 
     faker.resume().await.map_err(|e| format!("Failed to resume faker: {e}"))?;
+
+    state.refresh_peer_listener_port().await;
 
     log_and_emit!(&app, instance_id, info, "Faker resumed successfully");
     Ok(())

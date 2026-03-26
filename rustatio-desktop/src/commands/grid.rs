@@ -521,6 +521,7 @@ pub async fn grid_update_config(
     }
 
     drop(fakers);
+    state.refresh_peer_listener_port().await;
     Ok(GridActionResponse { succeeded, failed })
 }
 
@@ -571,6 +572,7 @@ pub async fn bulk_update_configs(
     }
 
     drop(fakers);
+    state.refresh_peer_listener_port().await;
     Ok(GridActionResponse { succeeded, failed })
 }
 

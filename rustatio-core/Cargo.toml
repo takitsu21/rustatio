@@ -28,7 +28,7 @@ dirs = "6"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "gzip"], optional = true }
 
 # Async runtime
-tokio = { version = "1.48", default-features = false, features = ["sync", "time", "macros", "rt"], optional = true }
+tokio = { version = "1.48", default-features = false, features = ["sync", "time", "macros", "rt", "net", "io-util"], optional = true }
 
 # Native-only dependencies
 tauri = { version = "2.10", optional = true }

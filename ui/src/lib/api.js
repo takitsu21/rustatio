@@ -914,11 +914,13 @@ const tauriApi = {
     return invoke('get_client_infos');
   },
   getNetworkStatus: async () => {
-    // Use fallback function for desktop
+    const { invoke } = await import('@tauri-apps/api/core');
+    const local = await invoke('get_network_status');
     try {
-      return await fetchNetworkStatusWithFallbacks();
-    } catch (error) {
-      throw new Error(`Failed to get network status: ${error.message}`);
+      const remote = await fetchNetworkStatusWithFallbacks();
+      return { ...remote, ...local };
+    } catch {
+      return local;
     }
   },
   getConfig: async () => {

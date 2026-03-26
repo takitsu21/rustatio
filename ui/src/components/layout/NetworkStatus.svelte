@@ -14,6 +14,14 @@
     return status?.forwarded_port ?? status?.forwardedPort ?? null;
   }
 
+  function getPeerListenerPort(status) {
+    return status?.peer_listener_port ?? status?.peerListenerPort ?? null;
+  }
+
+  function getPeerListenerError(status) {
+    return status?.peer_listener_error ?? status?.peerListenerError ?? null;
+  }
+
   // Mask IP address for privacy (show first and last octets)
   function maskIp(ip) {
     if (!ip) return '---';
@@ -106,6 +114,18 @@
               <PlugZap size={10} class="text-stat-upload" />
               <span>Forwarded port</span>
               <span class="font-mono text-foreground">{getForwardedPort(networkStatus)}</span>
+            </div>
+          {/if}
+          {#if getPeerListenerPort(networkStatus)}
+            <div class="mt-1 flex items-center gap-1.5">
+              <PlugZap size={10} class="text-foreground" />
+              <span>Listening</span>
+              <span class="font-mono text-foreground">{getPeerListenerPort(networkStatus)}</span>
+            </div>
+          {/if}
+          {#if getPeerListenerError(networkStatus)}
+            <div class="mt-1 text-[10px] text-destructive">
+              {getPeerListenerError(networkStatus)}
             </div>
           {/if}
         </div>

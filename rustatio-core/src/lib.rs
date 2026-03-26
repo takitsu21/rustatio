@@ -2,6 +2,8 @@ pub mod config;
 pub mod faker;
 pub mod grid;
 pub mod logger;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod peer_listener;
 pub mod protocol;
 pub mod torrent;
 pub mod validation;
@@ -14,6 +16,8 @@ pub use faker::{
     FakerConfig, FakerError, FakerState, FakerStats, PostStopAction, PresetSettings, RatioFaker,
 };
 pub use grid::{GridImportSettings, GridMode, InstanceSummary};
+#[cfg(not(target_arch = "wasm32"))]
+pub use peer_listener::{PeerCatalog, PeerListenerService, PeerListenerStatus, PeerLookup};
 pub use torrent::{
     ClientConfig, ClientInfo, ClientType, HttpVersion, TorrentError, TorrentFile, TorrentInfo,
     TorrentSummary,
