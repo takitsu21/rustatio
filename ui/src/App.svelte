@@ -23,11 +23,11 @@
     saveSession,
     computeEffectiveRatio,
   } from './lib/instanceStore.js';
+  import { getPausedStatus, getRunningStatus, getStatusFromStats } from './lib/status.js';
 
   // Import components
   import Header from './components/layout/Header.svelte';
   import Sidebar from './components/layout/Sidebar.svelte';
-  import StatusBar from './components/layout/StatusBar.svelte';
   import TorrentSelector from './components/common/TorrentSelector.svelte';
   import ConfigurationForm from './components/config/ConfigurationForm.svelte';
   import StopConditions from './components/config/StopConditions.svelte';
@@ -717,30 +717,6 @@
     return stats.state === 'Stopped';
   }
 
-  // Derive status message/type/icon from stats (for idling state)
-  function getStatusFromStats(stats) {
-    if (stats.is_idling) {
-      let reason;
-      if (stats.idling_reason === 'stop_condition_met') {
-        reason = 'Stop condition met';
-      } else if (stats.idling_reason === 'no_leechers') {
-        reason = 'No leechers available';
-      } else {
-        reason = 'No seeders available';
-      }
-      return {
-        statusMessage: `Idling - ${reason}`,
-        statusType: 'idling',
-        statusIcon: 'moon',
-      };
-    }
-    return {
-      statusMessage: 'Actively faking ratio...',
-      statusType: 'running',
-      statusIcon: 'rocket',
-    };
-  }
-
   // =============================================================================
   // Polling Intervals
   // =============================================================================
@@ -1114,9 +1090,7 @@
       await api.pauseFaker($activeInstance.id);
       instanceActions.updateInstance($activeInstance.id, {
         isPaused: true,
-        statusMessage: 'Paused',
-        statusType: 'idle',
-        statusIcon: 'pause',
+        ...getPausedStatus(),
       });
     } catch (error) {
       devLog('error', 'Pause error:', error);
@@ -1299,9 +1273,7 @@
         await api.pauseFaker(instance.id);
         instanceActions.updateInstance(instance.id, {
           isPaused: true,
-          statusMessage: 'Paused',
-          statusType: 'idle',
-          statusIcon: 'pause',
+          ...getPausedStatus(),
         });
       })
     );
@@ -1359,9 +1331,7 @@
       // Restore the correct status message based on paused state or idling
       let statusMessage, statusType, statusIcon;
       if (isPausedBeforeUpdate) {
-        statusMessage = 'Paused';
-        statusType = 'idle';
-        statusIcon = 'pause';
+        ({ statusMessage, statusType, statusIcon } = getPausedStatus());
       } else {
         const statusFromStats = getStatusFromStats(stats);
         statusMessage = statusFromStats.statusMessage;
@@ -1389,18 +1359,14 @@
         if (instance && instance.isRunning) {
           let statusMessage, statusType, statusIcon;
           if (instance.isPaused) {
-            statusMessage = 'Paused';
-            statusType = 'idle';
-            statusIcon = 'pause';
+            ({ statusMessage, statusType, statusIcon } = getPausedStatus());
           } else if (instance.stats?.is_idling) {
             const statusFromStats = getStatusFromStats(instance.stats);
             statusMessage = statusFromStats.statusMessage;
             statusType = statusFromStats.statusType;
             statusIcon = statusFromStats.statusIcon;
           } else {
-            statusMessage = 'Actively faking ratio...';
-            statusType = 'running';
-            statusIcon = 'rocket';
+            ({ statusMessage, statusType, statusIcon } = getRunningStatus());
           }
           instanceActions.updateInstance(instanceId, {
             statusMessage,
@@ -1577,26 +1543,20 @@
       </div>
 
       <!-- Header -->
-      <Header onToggleSidebar={() => (sidebarOpen = !sidebarOpen)} />
-
-      <!-- Full-width border separator -->
-      <div class="border-b-2 border-primary/20"></div>
-
-      <!-- Status Bar (standard mode only) -->
-      {#if $viewMode === 'standard'}
-        <StatusBar
-          statusMessage={$activeInstance?.statusMessage || 'Select a torrent file to begin'}
-          statusType={$activeInstance?.statusType || 'warning'}
-          statusIcon={$activeInstance?.statusIcon || null}
-          isRunning={$activeInstance?.isRunning || false}
-          isPaused={$activeInstance?.isPaused || false}
-          {startFaking}
-          {stopFaking}
-          {pauseFaking}
-          {resumeFaking}
-          {manualUpdate}
-        />
-      {/if}
+      <Header
+        onToggleSidebar={() => (sidebarOpen = !sidebarOpen)}
+        showStatus={$viewMode === 'standard'}
+        statusMessage={$activeInstance?.statusMessage || 'Select a torrent file to begin'}
+        statusType={$activeInstance?.statusType || 'warning'}
+        statusIcon={$activeInstance?.statusIcon || null}
+        isRunning={$activeInstance?.isRunning || false}
+        isPaused={$activeInstance?.isPaused || false}
+        {startFaking}
+        {stopFaking}
+        {pauseFaking}
+        {resumeFaking}
+        {manualUpdate}
+      />
 
       <!-- Scrollable Content Area -->
       {#if $viewMode === 'grid'}
