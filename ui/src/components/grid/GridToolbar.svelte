@@ -2,8 +2,9 @@
   import Button from '$lib/components/ui/button.svelte';
   import ConfirmDialog from '../common/ConfirmDialog.svelte';
   import Input from '$lib/components/ui/input.svelte';
-  import Select from '$lib/components/ui/select.svelte';
   import GridTagPopover from './GridTagPopover.svelte';
+  import GridFilterSelect from './GridFilterSelect.svelte';
+  import { GRID_STATE_FILTER_OPTIONS, getGridTagFilterOptions } from '$lib/gridFilterOptions.js';
   import {
     selectedIds,
     gridFilters,
@@ -114,12 +115,14 @@
     gridFilters.update(f => ({ ...f, search: e.target.value }));
   }
 
-  function handleStateFilter(e) {
-    gridFilters.update(f => ({ ...f, stateFilter: e.target.value }));
+  let tagFilterOptions = $derived(getGridTagFilterOptions($allTags));
+
+  function handleStateFilter(value) {
+    gridFilters.update(f => ({ ...f, stateFilter: value }));
   }
 
-  function handleTagFilter(e) {
-    gridFilters.update(f => ({ ...f, tagFilter: e.target.value }));
+  function handleTagFilter(value) {
+    gridFilters.update(f => ({ ...f, tagFilter: value }));
   }
 
   function handleSelectMenuClick(e) {
@@ -309,35 +312,22 @@
       />
     </div>
 
-    <Select
+    <GridFilterSelect
+      kind="state"
+      options={GRID_STATE_FILTER_OPTIONS}
       value={$gridFilters.stateFilter}
-      onchange={handleStateFilter}
-      class="h-8 w-32 text-xs py-1"
-    >
-      {#snippet children()}
-        <option value="all">All States</option>
-        <option value="starting">Starting</option>
-        <option value="running">Running</option>
-        <option value="stopping">Stopping</option>
-        <option value="paused">Paused</option>
-        <option value="idle">Idle</option>
-        <option value="stopped">Stopped</option>
-      {/snippet}
-    </Select>
+      onChange={handleStateFilter}
+      class="w-36"
+    />
 
     {#if $allTags.length > 0}
-      <Select
+      <GridFilterSelect
+        kind="tag"
+        options={tagFilterOptions}
         value={$gridFilters.tagFilter}
-        onchange={handleTagFilter}
-        class="h-8 w-32 text-xs py-1"
-      >
-        {#snippet children()}
-          <option value="">All Tags</option>
-          {#each $allTags as tag (tag)}
-            <option value={tag}>{tag}</option>
-          {/each}
-        {/snippet}
-      </Select>
+        onChange={handleTagFilter}
+        class="w-36"
+      />
     {/if}
   </div>
 </div>
