@@ -11,7 +11,9 @@
     ChevronDown,
     ChevronRight,
     Upload,
+    X,
   } from '@lucide/svelte';
+  import { instanceActions } from '$lib/instanceStore.js';
 
   let { torrent, selectTorrent, formatBytes } = $props();
 
@@ -94,7 +96,8 @@
 
 <Card class="p-3">
   <h2 class="mb-3 text-primary text-lg font-semibold flex items-center gap-2">
-    <FileText size={20} /> Torrent File
+    <FileText size={20} />
+    {torrent?.isBulk ? 'Torrent Files' : 'Torrent File'}
   </h2>
 
   <input
@@ -119,52 +122,58 @@
           <div class="font-medium text-sm truncate" title={torrent.name}>
             {torrent.name}
           </div>
-          <div class="text-xs text-muted-foreground flex items-center gap-2 mt-0.5">
-            <span>{formatBytes(torrent.total_size)}</span>
-            <span class="text-border">•</span>
-            <span>
-              {torrent.file_count || torrent.files?.length || 1} file{(torrent.file_count ||
-                torrent.files?.length ||
-                1) > 1
-                ? 's'
-                : ''}
-            </span>
-            <span class="text-border">•</span>
-            <span>{trackers.length} tracker{trackers.length !== 1 ? 's' : ''}</span>
-          </div>
+          {#if !torrent.isBulk}
+            <div class="text-xs text-muted-foreground flex items-center gap-2 mt-0.5">
+              <span>{formatBytes(torrent.total_size)}</span>
+              <span class="text-border">•</span>
+              <span>
+                {torrent.file_count || torrent.files?.length || 1} file{(torrent.file_count ||
+                  torrent.files?.length ||
+                  1) > 1
+                  ? 's'
+                  : ''}
+              </span>
+              <span class="text-border">•</span>
+              <span>{trackers.length} tracker{trackers.length !== 1 ? 's' : ''}</span>
+            </div>
+          {/if}
         </div>
-        <Button onclick={handleFileSelect} variant="outline" class="h-8 px-3 text-xs">
-          {#snippet children()}
-            <span class="flex items-center gap-1.5">
-              <FolderOpen size={14} /> Change
-            </span>
-          {/snippet}
-        </Button>
+        {#if !torrent.isBulk}
+          <Button onclick={handleFileSelect} variant="outline" class="h-8 px-3 text-xs">
+            {#snippet children()}
+              <span class="flex items-center gap-1.5">
+                <FolderOpen size={14} /> Change
+              </span>
+            {/snippet}
+          </Button>
+        {/if}
       </div>
 
-      <!-- Quick stats -->
-      <div class="grid grid-cols-4 border-t border-border">
-        <div class="p-2 text-center border-r border-border">
-          <div class="text-xs text-muted-foreground mb-0.5">Size</div>
-          <div class="text-sm font-medium">{formatBytes(torrent.total_size)}</div>
-        </div>
-        <div class="p-2 text-center border-r border-border">
-          <div class="text-xs text-muted-foreground mb-0.5">Pieces</div>
-          <div class="text-sm font-medium">{torrent.num_pieces?.toLocaleString() || 'N/A'}</div>
-        </div>
-        <div class="p-2 text-center border-r border-border">
-          <div class="text-xs text-muted-foreground mb-0.5">Piece Size</div>
-          <div class="text-sm font-medium">
-            {torrent.piece_length ? formatBytes(torrent.piece_length) : 'N/A'}
+      {#if !torrent.isBulk}
+        <!-- Quick stats -->
+        <div class="grid grid-cols-4 border-t border-border">
+          <div class="p-2 text-center border-r border-border">
+            <div class="text-xs text-muted-foreground mb-0.5">Size</div>
+            <div class="text-sm font-medium">{formatBytes(torrent.total_size)}</div>
+          </div>
+          <div class="p-2 text-center border-r border-border">
+            <div class="text-xs text-muted-foreground mb-0.5">Pieces</div>
+            <div class="text-sm font-medium">{torrent.num_pieces?.toLocaleString() || 'N/A'}</div>
+          </div>
+          <div class="p-2 text-center border-r border-border">
+            <div class="text-xs text-muted-foreground mb-0.5">Piece Size</div>
+            <div class="text-sm font-medium">
+              {torrent.piece_length ? formatBytes(torrent.piece_length) : 'N/A'}
+            </div>
+          </div>
+          <div class="p-2 text-center">
+            <div class="text-xs text-muted-foreground mb-0.5">Files</div>
+            <div class="text-sm font-medium">
+              {torrent.file_count || torrent.files?.length || 1}
+            </div>
           </div>
         </div>
-        <div class="p-2 text-center">
-          <div class="text-xs text-muted-foreground mb-0.5">Files</div>
-          <div class="text-sm font-medium">
-            {torrent.file_count || torrent.files?.length || 1}
-          </div>
-        </div>
-      </div>
+      {/if}
 
       <!-- Details toggle -->
       <button
@@ -182,79 +191,113 @@
       <!-- Expanded details -->
       {#if showDetails}
         <div class="border-t border-border p-3 flex flex-col gap-3 bg-background/50">
-          <!-- Info Hash -->
-          <div>
-            <div class="text-xs text-muted-foreground mb-1.5 flex items-center gap-1.5">
-              <Key size={12} /> Info Hash
-            </div>
-            <code
-              class="bg-muted text-primary px-2 py-1.5 rounded text-xs break-all font-mono block"
-            >
-              {torrent.info_hash
-                ? Array.from(torrent.info_hash)
-                    .map(b => b.toString(16).padStart(2, '0'))
-                    .join('')
-                : 'N/A'}
-            </code>
-          </div>
-
-          <!-- Trackers -->
-          {#if trackers.length > 0}
+          {#if torrent.isBulk}
+            <!-- Bulk Files List -->
             <div>
               <div class="text-xs text-muted-foreground mb-1.5 flex items-center gap-1.5">
-                <Globe size={12} /> Trackers ({trackers.length})
+                <Files size={12} /> Selected Instances ({torrent.bulkNames?.length || 0})
               </div>
-              <div class="flex flex-col gap-1 max-h-[100px] overflow-y-auto">
-                {#each trackers as tracker, index (tracker)}
-                  <div class="flex items-center gap-2 text-xs">
-                    {#if index === 0}
-                      <span
-                        class="px-1.5 py-0.5 rounded text-[0.6rem] font-medium uppercase bg-primary text-primary-foreground flex-shrink-0"
-                      >
-                        Primary
-                      </span>
-                    {:else}
-                      <span class="text-muted-foreground w-12 flex-shrink-0 text-right"
-                        >#{index + 1}</span
-                      >
-                    {/if}
-                    <code class="text-stat-upload break-all font-mono flex-1 min-w-0">
-                      {tracker}
-                    </code>
+              <div class="flex flex-col gap-1 max-h-[150px] overflow-y-auto">
+                {#each torrent.bulkIds || [] as id, index (id)}
+                  {@const name = torrent.bulkNames?.[index] || 'Unknown Torrent'}
+                  <div
+                    class="flex items-center justify-between gap-2 p-1.5 bg-muted rounded text-xs group"
+                  >
+                    <span class="font-mono truncate flex-1 min-w-0" title={name}>
+                      {name}
+                    </span>
+                    <button
+                      class="flex-shrink-0 p-1 rounded hover:bg-destructive/20 group-hover/btn bg-transparent border-0 cursor-pointer opacity-0 group-hover:opacity-100 transition-all"
+                      onclick={() => instanceActions.removeTargetInstance(id)}
+                      title="Remove from selection"
+                    >
+                      <X
+                        size={12}
+                        strokeWidth={2.5}
+                        class="text-muted-foreground hover:text-destructive transition-colors"
+                      />
+                    </button>
                   </div>
                 {/each}
               </div>
             </div>
-          {/if}
-
-          <!-- File List -->
-          {#if torrent.files && torrent.files.length > 0}
+          {:else}
+            <!-- Single Torrent Details -->
+            <!-- Info Hash -->
             <div>
               <div class="text-xs text-muted-foreground mb-1.5 flex items-center gap-1.5">
-                <Files size={12} /> Files ({torrent.files.length})
+                <Key size={12} /> Info Hash
               </div>
-              {#if torrent.files.length <= 10}
-                <div class="flex flex-col gap-1 max-h-[150px] overflow-y-auto">
-                  {#each torrent.files as file (file.path)}
-                    <div
-                      class="flex items-center justify-between gap-2 p-1.5 bg-muted rounded text-xs"
-                    >
-                      <span class="font-mono truncate flex-1 min-w-0">
-                        {file.path?.join('/') || 'Unknown'}
-                      </span>
-                      <span class="text-muted-foreground flex-shrink-0">
-                        {formatBytes(file.length)}
-                      </span>
+              <code
+                class="bg-muted text-primary px-2 py-1.5 rounded text-xs break-all font-mono block"
+              >
+                {torrent.info_hash
+                  ? Array.from(torrent.info_hash)
+                      .map(b => b.toString(16).padStart(2, '0'))
+                      .join('')
+                  : 'N/A'}
+              </code>
+            </div>
+
+            <!-- Trackers -->
+            {#if trackers.length > 0}
+              <div>
+                <div class="text-xs text-muted-foreground mb-1.5 flex items-center gap-1.5">
+                  <Globe size={12} /> Trackers ({trackers.length})
+                </div>
+                <div class="flex flex-col gap-1 max-h-[100px] overflow-y-auto">
+                  {#each trackers as tracker, index (tracker)}
+                    <div class="flex items-center gap-2 text-xs">
+                      {#if index === 0}
+                        <span
+                          class="px-1.5 py-0.5 rounded text-[0.6rem] font-medium uppercase bg-primary text-primary-foreground flex-shrink-0"
+                        >
+                          Primary
+                        </span>
+                      {:else}
+                        <span class="text-muted-foreground w-12 flex-shrink-0 text-right"
+                          >#{index + 1}</span
+                        >
+                      {/if}
+                      <code class="text-stat-upload break-all font-mono flex-1 min-w-0">
+                        {tracker}
+                      </code>
                     </div>
                   {/each}
                 </div>
-              {:else}
-                <div class="text-xs text-muted-foreground italic">
-                  {torrent.files.length} files (too many to display)
+              </div>
+            {/if}
+
+            <!-- File List -->
+            {#if torrent.files && torrent.files.length > 0}
+              <div>
+                <div class="text-xs text-muted-foreground mb-1.5 flex items-center gap-1.5">
+                  <Files size={12} /> Files ({torrent.files.length})
                 </div>
-              {/if}
-            </div>
+                {#if torrent.files.length <= 10}
+                  <div class="flex flex-col gap-1 max-h-[150px] overflow-y-auto">
+                    {#each torrent.files as file (file.path)}
+                      <div
+                        class="flex items-center justify-between gap-2 p-1.5 bg-muted rounded text-xs"
+                      >
+                        <span class="font-mono truncate flex-1 min-w-0">
+                          {file.path?.join('/') || 'Unknown'}
+                        </span>
+                        <span class="text-muted-foreground flex-shrink-0">
+                          {formatBytes(file.length)}
+                        </span>
+                      </div>
+                    {/each}
+                  </div>
+                {:else}
+                  <div class="text-xs text-muted-foreground italic">
+                    {torrent.files.length} files (too many to display)
+                  </div>
+                {/if}
+              </div>
+            {/if}
           {/if}
+          <!-- End isBulk check -->
         </div>
       {/if}
     </div>

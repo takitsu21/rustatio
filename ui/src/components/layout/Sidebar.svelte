@@ -58,13 +58,15 @@
 
   // Derived state
   let hasMultipleInstancesWithTorrents = $derived(
-    $instances.filter(inst => inst.torrent).length > 1
+    $instances.filter(inst => inst.id !== 'bulk-edit' && inst.torrent).length > 1
   );
 
-  let hasRunningInstances = $derived($instances.some(inst => inst.isRunning));
+  let hasRunningInstances = $derived(
+    $instances.some(inst => inst.id !== 'bulk-edit' && inst.isRunning)
+  );
 
   let hasStoppedInstancesWithTorrents = $derived(
-    $instances.some(inst => inst.torrent && !inst.isRunning)
+    $instances.some(inst => inst.id !== 'bulk-edit' && inst.torrent && !inst.isRunning)
   );
 
   let hasPausedInstances = $derived($instances.some(inst => inst.isRunning && inst.isPaused));

@@ -55,6 +55,12 @@
           await gridActions.resumeInstance(instance.id);
           break;
         case 'edit': {
+          const selected = gridActions.getSelectedIds();
+          if (selected.length > 1 && selected.includes(instance.id)) {
+            instanceActions.createBulkInstance(selected);
+            viewMode.set('standard');
+            break;
+          }
           const ensuredId = await instanceActions.ensureInstance(instance.id, instance);
           if (ensuredId) {
             instanceActions.selectInstance(ensuredId);

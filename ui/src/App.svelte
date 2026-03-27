@@ -283,7 +283,10 @@
             return;
           }
 
-          saveSession(insts, activeInst.id);
+          saveSession(
+            insts.filter(i => i.id !== 'bulk-edit'),
+            activeInst.id
+          );
         }, 500);
       }
     });
@@ -1214,7 +1217,9 @@
   // Start all instances with torrents loaded (bulk)
   async function startAllInstances() {
     const currentInstances = get(instances);
-    const instancesToStart = currentInstances.filter(inst => inst.torrent && !inst.isRunning);
+    const instancesToStart = currentInstances.filter(
+      inst => inst.id !== 'bulk-edit' && inst.torrent && !inst.isRunning
+    );
 
     if (instancesToStart.length === 0) return;
 
@@ -1590,11 +1595,11 @@
           statusIcon={$activeInstance?.statusIcon || null}
           isRunning={$activeInstance?.isRunning || false}
           isPaused={$activeInstance?.isPaused || false}
-          {startFaking}
-          {stopFaking}
-          {pauseFaking}
-          {resumeFaking}
-          {manualUpdate}
+          startFaking={$activeInstance?.torrent?.isBulk ? null : startFaking}
+          stopFaking={$activeInstance?.torrent?.isBulk ? null : stopFaking}
+          pauseFaking={$activeInstance?.torrent?.isBulk ? null : pauseFaking}
+          resumeFaking={$activeInstance?.torrent?.isBulk ? null : resumeFaking}
+          manualUpdate={$activeInstance?.torrent?.isBulk ? null : manualUpdate}
         />
       {/if}
 
