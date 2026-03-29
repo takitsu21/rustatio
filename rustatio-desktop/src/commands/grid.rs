@@ -1,6 +1,6 @@
 use rustatio_core::{
-    FakerConfig, FakerState, FakerStats, GridImportSettings, InstanceSummary, PresetSettings,
-    RatioFaker, RatioFakerHandle, TorrentInfo,
+    primary_tracker_host, FakerConfig, FakerState, FakerStats, GridImportSettings, InstanceSummary,
+    PresetSettings, RatioFaker, RatioFakerHandle, TorrentInfo,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -636,6 +636,7 @@ pub async fn list_summaries(state: State<'_, AppState>) -> Result<Vec<InstanceSu
                     Arc::clone(&instance.faker),
                     instance.summary.name.clone(),
                     hex_info_hash(&instance.summary.info_hash),
+                    instance.summary.announce.clone(),
                     instance.tags.clone(),
                     instance.summary.total_size,
                     instance.created_at,
@@ -646,7 +647,9 @@ pub async fn list_summaries(state: State<'_, AppState>) -> Result<Vec<InstanceSu
     };
 
     let mut summaries = Vec::new();
-    for (id, faker, name, info_hash, tags, total_size, created_at, source) in instance_data {
+    for (id, faker, name, info_hash, announce, tags, total_size, created_at, source) in
+        instance_data
+    {
         let stats = faker.stats_snapshot();
         let state_str = match stats.state {
             FakerState::Paused => "paused",
@@ -662,6 +665,7 @@ pub async fn list_summaries(state: State<'_, AppState>) -> Result<Vec<InstanceSu
             id: id.to_string(),
             name,
             info_hash,
+            primary_tracker_host: primary_tracker_host(&announce),
             state: state_str.to_string(),
             tags,
             total_size,

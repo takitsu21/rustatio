@@ -88,6 +88,9 @@
             <SelectedIcon
               size={13}
               class={cn('flex-shrink-0', selected.tone, selected.spin && 'animate-spin')}
+              fill={selected.value === 'running' || selected.value === 'idle'
+                ? 'currentColor'
+                : 'none'}
             />
           {/if}
           <span class="truncate">{selected.label}</span>
@@ -128,6 +131,9 @@
               <Icon
                 size={13}
                 class={cn('flex-shrink-0', option.tone, option.spin && 'animate-spin')}
+                fill={option.value === 'running' || option.value === 'idle'
+                  ? 'currentColor'
+                  : 'none'}
               />
             {/if}
             <span>{option.label}</span>

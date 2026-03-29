@@ -22,7 +22,7 @@ services:
     restart: unless-stopped
 
   rustatio:
-    image: rustatio:local
+    image: ghcr.io/takitsu21/rustatio:latest
     container_name: rustatio
     environment:
       - PORT=8080

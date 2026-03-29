@@ -2,12 +2,21 @@
   import { onDestroy, onMount } from 'svelte';
   import { api, getRunMode } from '$lib/api.js';
   import { instances, activeInstanceId, instanceActions } from '$lib/instanceStore.js';
-  import { viewMode, gridInstances, selectedIds, gridFilters } from '$lib/gridStore.js';
+  import {
+    viewMode,
+    gridInstances,
+    selectedIds,
+    gridFilters,
+    trackerFilterEntries,
+  } from '$lib/gridStore.js';
   import { cn } from '$lib/utils.js';
   import Button from '$lib/components/ui/button.svelte';
+  import Input from '$lib/components/ui/input.svelte';
+  import Checkbox from '$lib/components/ui/checkbox.svelte';
   import ConfirmDialog from '../common/ConfirmDialog.svelte';
   import SettingsDialog from './SettingsDialog.svelte';
   import NetworkStatus from './NetworkStatus.svelte';
+  import TrackerBadge from '../grid/TrackerBadge.svelte';
   import {
     PanelLeftClose,
     Play,
@@ -24,6 +33,7 @@
     LayoutGrid,
     FolderSearch,
     LoaderCircle,
+    Search,
   } from '@lucide/svelte';
 
   /* global __APP_VERSION__ */
@@ -162,6 +172,7 @@
   });
 
   let activeStateFilter = $derived($gridFilters.stateFilter);
+  let activeTrackerFilter = $derived($gridFilters.trackerFilter);
 
   const stateConfig = [
     { key: 'running', label: 'Running', icon: Circle, color: 'text-stat-upload' },
@@ -181,6 +192,23 @@
 
   function setStateFilter(state) {
     gridFilters.update(f => ({ ...f, stateFilter: state }));
+  }
+
+  function setTrackerFilter(tracker) {
+    gridFilters.update(f => ({
+      ...f,
+      trackerFilter: f.trackerFilter.includes(tracker)
+        ? f.trackerFilter.filter(value => value !== tracker)
+        : [...f.trackerFilter, tracker],
+    }));
+  }
+
+  function clearTrackerFilters() {
+    gridFilters.update(f => ({ ...f, trackerFilter: [] }));
+  }
+
+  function handleTrackerSearch(event) {
+    gridFilters.update(f => ({ ...f, trackerSearch: event.target.value }));
   }
 
   function formatRate(rate) {
@@ -897,6 +925,9 @@
                     <span class={sc.color}>
                       <StateIcon
                         size={12}
+                        class={cn(
+                          (sc.key === 'starting' || sc.key === 'stopping') && 'animate-spin'
+                        )}
                         fill={sc.key === 'running' || sc.key === 'idle' ? 'currentColor' : 'none'}
                       />
                     </span>
@@ -930,6 +961,63 @@
               {/each}
             </div>
           </div>
+
+          {#if $trackerFilterEntries.length > 0}
+            <div class="space-y-1.5">
+              <div class="flex items-center justify-between px-1">
+                <span class="text-[10px] font-medium text-muted-foreground uppercase tracking-wider"
+                  >Trackers</span
+                >
+                {#if activeTrackerFilter.length > 0}
+                  <button
+                    class="text-[10px] text-primary hover:text-primary/80 cursor-pointer bg-transparent border-0 p-0"
+                    onclick={clearTrackerFilters}
+                  >
+                    Clear
+                  </button>
+                {/if}
+              </div>
+
+              <div class="relative px-1">
+                <Search
+                  size={12}
+                  class="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                />
+                <Input
+                  value={$gridFilters.trackerSearch}
+                  oninput={handleTrackerSearch}
+                  placeholder="Search trackers..."
+                  class="h-8 pl-7 text-xs"
+                />
+              </div>
+
+              <div class="space-y-0.5 max-h-60 overflow-y-auto pr-1">
+                {#each $trackerFilterEntries as tracker (tracker.value)}
+                  <label
+                    class={cn(
+                      'w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors cursor-pointer',
+                      activeTrackerFilter.includes(tracker.value)
+                        ? 'bg-primary/10 text-foreground font-medium'
+                        : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                    )}
+                    title={`Filter by ${tracker.label}`}
+                  >
+                    <Checkbox
+                      checked={activeTrackerFilter.includes(tracker.value)}
+                      onchange={() => setTrackerFilter(tracker.value)}
+                    />
+                    <TrackerBadge
+                      tracker={tracker.label}
+                      iconUrl={tracker.iconUrl}
+                      initial={tracker.initial}
+                    />
+                    <span class="flex-1 min-w-0 truncate text-left">{tracker.label}</span>
+                    <span class="font-mono font-semibold tabular-nums">{tracker.count}</span>
+                  </label>
+                {/each}
+              </div>
+            </div>
+          {/if}
 
           <!-- Selection Summary -->
           {#if selectionStats()}

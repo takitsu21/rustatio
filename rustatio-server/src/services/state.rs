@@ -7,8 +7,9 @@ use super::persistence::{
 };
 use rustatio_core::logger::set_instance_context_str;
 use rustatio_core::{
-    FakerConfig, FakerState, FakerStats, InstanceSummary, PeerListenerService, PeerListenerStatus,
-    RatioFaker, RatioFakerHandle, TorrentInfo, TorrentSummary,
+    primary_tracker_host, FakerConfig, FakerState, FakerStats, InstanceSummary,
+    PeerListenerService, PeerListenerStatus, RatioFaker, RatioFakerHandle, TorrentInfo,
+    TorrentSummary,
 };
 use std::collections::{BTreeSet, HashMap};
 use std::sync::atomic::{AtomicU16, Ordering};
@@ -833,6 +834,7 @@ impl AppState {
                 id: id.clone(),
                 name: instance.summary.name.clone(),
                 info_hash: hex::encode(instance.torrent_info_hash),
+                primary_tracker_host: primary_tracker_host(&instance.summary.announce),
                 state: state.to_string(),
                 tags: instance.tags.clone(),
                 total_size: instance.summary.total_size,

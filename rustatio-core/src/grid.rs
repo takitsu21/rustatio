@@ -1,6 +1,42 @@
 use crate::faker::PresetSettings;
 use crate::torrent::ClientType;
 use serde::{Deserialize, Serialize};
+use url::Url;
+
+fn normalize_tracker_host(host: &str) -> Option<String> {
+    let value = host.trim().trim_end_matches('.');
+    if value.is_empty() {
+        None
+    } else {
+        Some(value.to_ascii_lowercase())
+    }
+}
+
+pub fn primary_tracker_host(announce: &str) -> Option<String> {
+    let value = announce.trim();
+    if value.is_empty() {
+        return None;
+    }
+
+    if let Ok(parsed) = Url::parse(value) {
+        if let Some(host) = parsed.host_str() {
+            return normalize_tracker_host(host);
+        }
+    }
+
+    if !value.contains("://") {
+        let fallback = format!("https://{value}");
+        if let Ok(parsed) = Url::parse(&fallback) {
+            if let Some(host) = parsed.host_str() {
+                return normalize_tracker_host(host);
+            }
+        }
+    }
+
+    let head = value.split('/').next();
+    let host = head.and_then(|segment| segment.split(':').next());
+    host.and_then(normalize_tracker_host)
+}
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -61,6 +97,8 @@ pub struct InstanceSummary {
     pub id: String,
     pub name: String,
     pub info_hash: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub primary_tracker_host: Option<String>,
     pub state: String,
     pub tags: Vec<String>,
     pub total_size: u64,
@@ -130,5 +168,22 @@ mod tests {
         let resolved = settings.resolve_for_instance();
         assert_eq!(resolved.selected_client, Some(ClientType::Transmission));
         assert_eq!(resolved.selected_client_version, Some("4.0.0".to_string()));
+    }
+
+    #[test]
+    fn test_primary_tracker_host_extracts_normalized_host() {
+        assert_eq!(
+            primary_tracker_host("https://Tracker.EXAMPLE.com:443/announce?passkey=abc"),
+            Some("tracker.example.com".to_string())
+        );
+        assert_eq!(
+            primary_tracker_host("udp://open.stealth.si:80/announce"),
+            Some("open.stealth.si".to_string())
+        );
+        assert_eq!(
+            primary_tracker_host("tracker.torrent.eu.org/announce"),
+            Some("tracker.torrent.eu.org".to_string())
+        );
+        assert_eq!(primary_tracker_host(""), None);
     }
 }

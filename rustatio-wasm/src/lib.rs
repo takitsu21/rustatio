@@ -1,6 +1,6 @@
 use rustatio_core::{
-    ClientType, FakerConfig, FakerState, GridImportSettings, InstanceSummary, PresetSettings,
-    RatioFaker, TorrentInfo, TorrentSummary,
+    primary_tracker_host, ClientType, FakerConfig, FakerState, GridImportSettings, InstanceSummary,
+    PresetSettings, RatioFaker, TorrentInfo, TorrentSummary,
 };
 use serde::Serialize;
 use std::cell::RefCell;
@@ -722,6 +722,7 @@ pub async fn list_summaries() -> Result<JsValue, JsValue> {
             id: id.to_string(),
             name: instance.torrent.name.clone(),
             info_hash: info_hash_hex,
+            primary_tracker_host: primary_tracker_host(&instance.torrent.announce),
             state: match stats.state {
                 FakerState::Paused => "paused".to_string(),
                 _ if stats.is_idling => "idle".to_string(),

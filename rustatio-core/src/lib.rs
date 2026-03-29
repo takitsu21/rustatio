@@ -15,7 +15,7 @@ pub use faker::RatioFakerHandle;
 pub use faker::{
     FakerConfig, FakerError, FakerState, FakerStats, PostStopAction, PresetSettings, RatioFaker,
 };
-pub use grid::{GridImportSettings, GridMode, InstanceSummary};
+pub use grid::{primary_tracker_host, GridImportSettings, GridMode, InstanceSummary};
 #[cfg(not(target_arch = "wasm32"))]
 pub use peer_listener::{PeerCatalog, PeerListenerService, PeerListenerStatus, PeerLookup};
 pub use torrent::{
