@@ -2,21 +2,12 @@
   import { onDestroy, onMount } from 'svelte';
   import { api, getRunMode } from '$lib/api.js';
   import { instances, activeInstanceId, instanceActions } from '$lib/instanceStore.js';
-  import {
-    viewMode,
-    gridInstances,
-    selectedIds,
-    gridFilters,
-    trackerFilterEntries,
-  } from '$lib/gridStore.js';
+  import { viewMode, gridInstances, selectedIds } from '$lib/gridStore.js';
   import { cn } from '$lib/utils.js';
   import Button from '$lib/components/ui/button.svelte';
-  import Input from '$lib/components/ui/input.svelte';
-  import Checkbox from '$lib/components/ui/checkbox.svelte';
   import ConfirmDialog from '../common/ConfirmDialog.svelte';
   import SettingsDialog from './SettingsDialog.svelte';
   import NetworkStatus from './NetworkStatus.svelte';
-  import TrackerBadge from '../grid/TrackerBadge.svelte';
   import {
     PanelLeftClose,
     Play,
@@ -33,7 +24,6 @@
     LayoutGrid,
     FolderSearch,
     LoaderCircle,
-    Search,
   } from '@lucide/svelte';
 
   /* global __APP_VERSION__ */
@@ -171,9 +161,6 @@
     return { count: ids.size, uploaded, downloaded, size };
   });
 
-  let activeStateFilter = $derived($gridFilters.stateFilter);
-  let activeTrackerFilter = $derived($gridFilters.trackerFilter);
-
   const stateConfig = [
     { key: 'running', label: 'Running', icon: Circle, color: 'text-stat-upload' },
     { key: 'paused', label: 'Paused', icon: Pause, color: 'text-stat-ratio' },
@@ -182,34 +169,6 @@
     { key: 'starting', label: 'Starting', icon: LoaderCircle, color: 'text-primary' },
     { key: 'stopping', label: 'Stopping', icon: LoaderCircle, color: 'text-stat-danger' },
   ];
-
-  const quickFilters = [
-    { key: 'all', label: 'All' },
-    { key: 'running', label: 'Running' },
-    { key: 'stopped', label: 'Stopped' },
-    { key: 'paused', label: 'Paused' },
-  ];
-
-  function setStateFilter(state) {
-    gridFilters.update(f => ({ ...f, stateFilter: state }));
-  }
-
-  function setTrackerFilter(tracker) {
-    gridFilters.update(f => ({
-      ...f,
-      trackerFilter: f.trackerFilter.includes(tracker)
-        ? f.trackerFilter.filter(value => value !== tracker)
-        : [...f.trackerFilter, tracker],
-    }));
-  }
-
-  function clearTrackerFilters() {
-    gridFilters.update(f => ({ ...f, trackerFilter: [] }));
-  }
-
-  function handleTrackerSearch(event) {
-    gridFilters.update(f => ({ ...f, trackerSearch: event.target.value }));
-  }
 
   function formatRate(rate) {
     if (!rate || rate === 0) return '0 KB/s';
@@ -912,15 +871,8 @@
                 {@const count = gridStats().stateCounts[sc.key] || 0}
                 {#if count > 0}
                   {@const StateIcon = sc.icon}
-                  <button
-                    class={cn(
-                      'w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors border-0 cursor-pointer',
-                      activeStateFilter === sc.key
-                        ? 'bg-primary/10 text-foreground font-medium'
-                        : 'text-muted-foreground hover:bg-muted hover:text-foreground bg-transparent'
-                    )}
-                    onclick={() => setStateFilter(activeStateFilter === sc.key ? 'all' : sc.key)}
-                    title="Filter by {sc.label}"
+                  <div
+                    class="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs text-muted-foreground"
                   >
                     <span class={sc.color}>
                       <StateIcon
@@ -933,89 +885,9 @@
                     </span>
                     <span class="flex-1 text-left">{sc.label}</span>
                     <span class="font-mono font-semibold tabular-nums">{count}</span>
-                  </button>
+                  </div>
                 {/if}
               {/each}
-            </div>
-          {/if}
-
-          <!-- Quick State Filters -->
-          <div class="space-y-1">
-            <span
-              class="text-[10px] font-medium text-muted-foreground uppercase tracking-wider px-1"
-              >Filter</span
-            >
-            <div class="flex flex-wrap gap-1">
-              {#each quickFilters as qf (qf.key)}
-                <button
-                  class={cn(
-                    'px-2 py-1 rounded-md text-[11px] font-medium transition-colors border-0 cursor-pointer',
-                    activeStateFilter === qf.key
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-muted/70 text-muted-foreground hover:bg-muted hover:text-foreground'
-                  )}
-                  onclick={() => setStateFilter(qf.key)}
-                >
-                  {qf.label}
-                </button>
-              {/each}
-            </div>
-          </div>
-
-          {#if $trackerFilterEntries.length > 0}
-            <div class="space-y-1.5">
-              <div class="flex items-center justify-between px-1">
-                <span class="text-[10px] font-medium text-muted-foreground uppercase tracking-wider"
-                  >Trackers</span
-                >
-                {#if activeTrackerFilter.length > 0}
-                  <button
-                    class="text-[10px] text-primary hover:text-primary/80 cursor-pointer bg-transparent border-0 p-0"
-                    onclick={clearTrackerFilters}
-                  >
-                    Clear
-                  </button>
-                {/if}
-              </div>
-
-              <div class="relative px-1">
-                <Search
-                  size={12}
-                  class="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-                />
-                <Input
-                  value={$gridFilters.trackerSearch}
-                  oninput={handleTrackerSearch}
-                  placeholder="Search trackers..."
-                  class="h-8 pl-7 text-xs"
-                />
-              </div>
-
-              <div class="space-y-0.5 max-h-60 overflow-y-auto pr-1">
-                {#each $trackerFilterEntries as tracker (tracker.value)}
-                  <label
-                    class={cn(
-                      'w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors cursor-pointer',
-                      activeTrackerFilter.includes(tracker.value)
-                        ? 'bg-primary/10 text-foreground font-medium'
-                        : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                    )}
-                    title={`Filter by ${tracker.label}`}
-                  >
-                    <Checkbox
-                      checked={activeTrackerFilter.includes(tracker.value)}
-                      onchange={() => setTrackerFilter(tracker.value)}
-                    />
-                    <TrackerBadge
-                      tracker={tracker.label}
-                      iconUrl={tracker.iconUrl}
-                      initial={tracker.initial}
-                    />
-                    <span class="flex-1 min-w-0 truncate text-left">{tracker.label}</span>
-                    <span class="font-mono font-semibold tabular-nums">{tracker.count}</span>
-                  </label>
-                {/each}
-              </div>
             </div>
           {/if}
 

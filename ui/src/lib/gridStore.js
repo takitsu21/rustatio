@@ -2,8 +2,15 @@ import { writable, derived, get } from 'svelte/store';
 import { api, getRunMode } from '$lib/api';
 import { normalizeViewMode } from '$lib/viewMode.js';
 import { instanceActions } from '$lib/instanceStore.js';
-import { applyBaseGridFilters } from '$lib/gridFilters.js';
-import { buildTrackerFilterEntries, getPrimaryTrackerHost } from '$lib/trackerUtils.js';
+import {
+  applyAllGridFilters,
+  applyBaseGridFilters,
+  applySearchFilter,
+  applyStateFilter,
+  buildStateFilterEntries,
+  buildTagFilterEntries,
+  buildTrackerFilterEntries,
+} from '$lib/gridFilters.js';
 
 const VIEW_MODE_KEY = 'rustatio-view-mode';
 
@@ -35,16 +42,33 @@ export const selectedIds = writable(new Set());
 export const gridFilters = writable({
   search: '',
   stateFilter: 'all',
-  tagFilter: '',
+  tagFilter: [],
   trackerFilter: [],
+  tagSearch: '',
   trackerSearch: '',
+});
+
+export const stateFilterEntries = derived(
+  [gridInstances, gridFilters],
+  ([$instances, $filters]) => {
+    const scoped = applyBaseGridFilters(applySearchFilter($instances, $filters), {
+      ...$filters,
+      stateFilter: 'all',
+    });
+    return buildStateFilterEntries(scoped);
+  }
+);
+
+export const tagFilterEntries = derived([gridInstances, gridFilters], ([$instances, $filters]) => {
+  const scoped = applyStateFilter(applySearchFilter($instances, $filters), $filters);
+  return buildTagFilterEntries(scoped, $filters);
 });
 
 export const trackerFilterEntries = derived(
   [gridInstances, gridFilters],
   ([$instances, $filters]) => {
-    const base = applyBaseGridFilters($instances, $filters);
-    return buildTrackerFilterEntries(base, $filters);
+    const scoped = applyBaseGridFilters($instances, { ...$filters, trackerFilter: [] });
+    return buildTrackerFilterEntries(scoped, $filters);
   }
 );
 
@@ -58,12 +82,7 @@ export const gridSort = writable({
 export const filteredGridInstances = derived(
   [gridInstances, gridFilters, gridSort],
   ([$instances, $filters, $sort]) => {
-    let result = applyBaseGridFilters($instances, $filters);
-
-    if ($filters.trackerFilter.length > 0) {
-      const selectedTrackers = new Set($filters.trackerFilter);
-      result = result.filter(inst => selectedTrackers.has(getPrimaryTrackerHost(inst)));
-    }
+    let result = applyAllGridFilters($instances, $filters);
 
     // Sort
     result = [...result].sort((a, b) => {
@@ -84,19 +103,6 @@ export const filteredGridInstances = derived(
     return result;
   }
 );
-
-// All unique tags across all instances
-export const allTags = derived(gridInstances, $instances => {
-  const tagSet = new Set();
-  for (const inst of $instances) {
-    if (inst.tags) {
-      for (const tag of inst.tags) {
-        tagSet.add(tag);
-      }
-    }
-  }
-  return [...tagSet].sort();
-});
 
 // Polling interval reference
 let pollInterval = null;
