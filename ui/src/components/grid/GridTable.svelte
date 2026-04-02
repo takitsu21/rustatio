@@ -92,7 +92,7 @@
     items.push(null); // separator
     items.push({
       id: 'edit',
-      label: 'Edit in Standard View',
+      label: 'Edit in Detailed View',
       icon: Pencil,
       color: 'text-foreground',
     });
