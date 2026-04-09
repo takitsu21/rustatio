@@ -7,7 +7,7 @@ use std::sync::Arc;
 use tauri::{AppHandle, State};
 use tokio::task::JoinSet;
 
-use crate::logging::log_and_emit;
+use crate::logging::{format_instance_message, log_and_emit};
 use crate::state::{hex_info_hash, now_secs, AppState, FakerInstance};
 use rustatio_watch::InstanceSource;
 
@@ -256,7 +256,7 @@ pub async fn grid_import_files(
 pub async fn grid_start(
     ids: Vec<u32>,
     state: State<'_, AppState>,
-    _app: AppHandle,
+    app: AppHandle,
 ) -> Result<GridActionResponse, String> {
     let mut succeeded = Vec::new();
     let mut failed = Vec::new();
@@ -281,6 +281,7 @@ pub async fn grid_start(
     }
 
     // Spawn HTTP announces in background — return immediately
+    let app_handle = app.clone();
     tauri::async_runtime::spawn(async move {
         let mut join_set = JoinSet::new();
         for (id, faker) in to_start {
@@ -292,8 +293,14 @@ pub async fn grid_start(
 
         while let Some(result) = join_set.join_next().await {
             match result {
-                Ok((id, Ok(()))) => log::info!("[Instance {id}] Started via grid action"),
-                Ok((id, Err(e))) => log::error!("[Instance {id}] Grid start failed: {e}"),
+                Ok((id, Ok(()))) => log::info!(
+                    "{}",
+                    format_instance_message(&app_handle, id, "Started via grid action")
+                ),
+                Ok((id, Err(e))) => {
+                    let msg = format!("Grid start failed: {e}");
+                    log::error!("{}", format_instance_message(&app_handle, id, &msg));
+                }
                 Err(e) => log::error!("Grid start join error: {e}"),
             }
         }
@@ -306,7 +313,7 @@ pub async fn grid_start(
 pub async fn grid_stop(
     ids: Vec<u32>,
     state: State<'_, AppState>,
-    _app: AppHandle,
+    app: AppHandle,
 ) -> Result<GridActionResponse, String> {
     let mut succeeded = Vec::new();
     let mut failed = Vec::new();
@@ -332,6 +339,7 @@ pub async fn grid_stop(
 
     // Spawn HTTP stop announces + cumulative stats update in background
     let fakers_arc = Arc::clone(&state.fakers);
+    let app_handle = app.clone();
     tauri::async_runtime::spawn(async move {
         let mut join_set = JoinSet::new();
         for (id, faker) in to_stop {
@@ -346,11 +354,15 @@ pub async fn grid_stop(
         while let Some(result) = join_set.join_next().await {
             match result {
                 Ok((id, stats, Ok(()))) => {
-                    log::info!("[Instance {id}] Stopped via grid action");
+                    log::info!(
+                        "{}",
+                        format_instance_message(&app_handle, id, "Stopped via grid action")
+                    );
                     stats_updates.push((id, stats));
                 }
                 Ok((id, _, Err(e))) => {
-                    log::error!("[Instance {id}] Grid stop failed: {e}");
+                    let msg = format!("Grid stop failed: {e}");
+                    log::error!("{}", format_instance_message(&app_handle, id, &msg));
                 }
                 Err(e) => log::error!("Grid stop join error: {e}"),
             }

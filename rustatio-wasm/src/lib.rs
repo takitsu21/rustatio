@@ -529,7 +529,7 @@ pub async fn grid_stop(ids_json: JsValue) -> Result<JsValue, JsValue> {
 }
 
 #[wasm_bindgen]
-pub async fn grid_pause(ids_json: JsValue) -> Result<JsValue, JsValue> {
+pub fn grid_pause(ids_json: JsValue) -> Result<JsValue, JsValue> {
     let ids: Vec<u32> =
         serde_wasm_bindgen::from_value(ids_json).map_err(|e| JsValue::from_str(&e.to_string()))?;
 
@@ -557,7 +557,7 @@ pub async fn grid_pause(ids_json: JsValue) -> Result<JsValue, JsValue> {
 }
 
 #[wasm_bindgen]
-pub async fn grid_resume(ids_json: JsValue) -> Result<JsValue, JsValue> {
+pub fn grid_resume(ids_json: JsValue) -> Result<JsValue, JsValue> {
     let ids: Vec<u32> =
         serde_wasm_bindgen::from_value(ids_json).map_err(|e| JsValue::from_str(&e.to_string()))?;
 
@@ -704,7 +704,7 @@ pub fn set_instance_tags(id: u32, tags_json: JsValue) -> Result<(), JsValue> {
 }
 
 #[wasm_bindgen]
-pub async fn list_summaries() -> Result<JsValue, JsValue> {
+pub fn list_summaries() -> Result<JsValue, JsValue> {
     let mut summaries: Vec<InstanceSummary> = Vec::new();
 
     // Collect IDs first to avoid borrow issues with async get_stats

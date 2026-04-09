@@ -102,7 +102,15 @@ async fn update_all_running_instances(
             continue;
         }
 
-        set_instance_context_str(Some(&id));
+        let label = {
+            let guard = instances.read().await;
+            guard
+                .get(&id)
+                .map(|instance| instance.summary.name.clone())
+                .filter(|name| !name.is_empty())
+                .unwrap_or_else(|| id.clone())
+        };
+        set_instance_context_str(Some(&label));
         if let Err(e) = faker.update().await {
             tracing::warn!("Scheduler: update failed for instance {}: {}", id, e);
             continue;

@@ -7,6 +7,19 @@ use tauri::{AppHandle, State};
 use crate::logging::log_and_emit;
 use crate::state::{AppState, FakerInstance};
 
+fn set_instance_label(state: &AppState, instance_id: u32, fallback: Option<&str>) {
+    let label = state
+        .fakers
+        .try_read()
+        .ok()
+        .and_then(|fakers| fakers.get(&instance_id).map(|instance| instance.summary.name.clone()))
+        .filter(|name| !name.is_empty())
+        .or_else(|| fallback.map(std::string::ToString::to_string))
+        .unwrap_or_else(|| instance_id.to_string());
+
+    rustatio_core::logger::set_instance_context_str(Some(&label));
+}
+
 #[tauri::command]
 pub async fn start_faker(
     instance_id: u32,
@@ -46,7 +59,7 @@ pub async fn start_faker(
 
     let torrent_info_hash = torrent.info_hash;
 
-    rustatio_core::logger::set_instance_context(Some(instance_id));
+    set_instance_label(&state, instance_id, Some(&torrent.name));
 
     // Check if instance already exists (restarting) - preserve cumulative stats
     let mut config_with_cumulative = config.clone();
@@ -137,7 +150,7 @@ pub async fn stop_faker(
     app: AppHandle,
 ) -> Result<(), String> {
     log_and_emit!(&app, instance_id, info, "Stopping faker");
-    rustatio_core::logger::set_instance_context(Some(instance_id));
+    set_instance_label(&state, instance_id, None);
 
     // Clone the Arc under read lock, then drop the HashMap lock
     let faker = {
@@ -181,7 +194,7 @@ pub async fn stop_faker(
 
 #[tauri::command]
 pub async fn update_faker(instance_id: u32, state: State<'_, AppState>) -> Result<(), String> {
-    rustatio_core::logger::set_instance_context(Some(instance_id));
+    set_instance_label(&state, instance_id, None);
 
     let faker = {
         let fakers = state.fakers.read().await;
@@ -200,7 +213,7 @@ pub async fn update_stats_only(
     instance_id: u32,
     state: State<'_, AppState>,
 ) -> Result<FakerStats, String> {
-    rustatio_core::logger::set_instance_context(Some(instance_id));
+    set_instance_label(&state, instance_id, None);
 
     let faker = {
         let fakers = state.fakers.read().await;
@@ -233,7 +246,7 @@ pub async fn scrape_tracker(
     instance_id: u32,
     state: State<'_, AppState>,
 ) -> Result<(i64, i64, i64), String> {
-    rustatio_core::logger::set_instance_context(Some(instance_id));
+    set_instance_label(&state, instance_id, None);
 
     let faker = {
         let fakers = state.fakers.read().await;
@@ -254,7 +267,7 @@ pub async fn pause_faker(
     app: AppHandle,
 ) -> Result<(), String> {
     log_and_emit!(&app, instance_id, info, "Pausing faker");
-    rustatio_core::logger::set_instance_context(Some(instance_id));
+    set_instance_label(&state, instance_id, None);
 
     let faker = {
         let fakers = state.fakers.read().await;
@@ -278,7 +291,7 @@ pub async fn resume_faker(
     app: AppHandle,
 ) -> Result<(), String> {
     log_and_emit!(&app, instance_id, info, "Resuming faker");
-    rustatio_core::logger::set_instance_context(Some(instance_id));
+    set_instance_label(&state, instance_id, None);
 
     let faker = {
         let fakers = state.fakers.read().await;

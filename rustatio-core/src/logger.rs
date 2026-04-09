@@ -24,9 +24,8 @@ pub fn set_instance_context(instance_id: Option<u32>) {
 
 /// Get the current instance context
 fn get_instance_prefix() -> String {
-    INSTANCE_CONTEXT.with(|ctx| {
-        ctx.borrow().as_ref().map_or_else(String::new, |id| format!("[Instance {id}] "))
-    })
+    INSTANCE_CONTEXT
+        .with(|ctx| ctx.borrow().as_ref().map_or_else(String::new, |label| format!("[{label}] ")))
 }
 
 #[cfg(all(not(target_arch = "wasm32"), feature = "desktop"))]
@@ -310,7 +309,7 @@ mod tests {
     #[test]
     fn test_instance_context_str_prefix() {
         set_instance_context_str(Some("abc"));
-        assert_eq!(get_instance_prefix(), "[Instance abc] ");
+        assert_eq!(get_instance_prefix(), "[abc] ");
         set_instance_context_str(None);
         assert_eq!(get_instance_prefix(), "");
     }
@@ -318,7 +317,7 @@ mod tests {
     #[test]
     fn test_instance_context_prefix() {
         set_instance_context(Some(7));
-        assert_eq!(get_instance_prefix(), "[Instance 7] ");
+        assert_eq!(get_instance_prefix(), "[7] ");
         set_instance_context(None);
         assert_eq!(get_instance_prefix(), "");
     }
