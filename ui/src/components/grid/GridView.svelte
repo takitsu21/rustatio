@@ -137,7 +137,7 @@
 
 {#if mobileFiltersOpen}
   <div
-    class="fixed inset-x-0 bottom-0 z-50 max-h-[82vh] rounded-t-3xl border-t border-border bg-card shadow-2xl lg:hidden"
+    class="fixed inset-x-0 bottom-0 z-50 flex max-h-[82vh] flex-col rounded-t-3xl border-t border-border bg-card shadow-2xl lg:hidden"
   >
     <div class="mx-auto mt-2 h-1.5 w-12 rounded-full bg-muted-foreground/30"></div>
     <div class="flex items-center justify-between gap-3 px-4 py-3 border-b border-border/70">
@@ -171,7 +171,7 @@
       </div>
     </div>
 
-    <div class="overflow-y-auto px-4 py-3 pb-6">
+    <div class="flex-1 min-h-0 overflow-y-auto overscroll-y-contain px-4 py-3 pb-6">
       <GridFiltersPanel mobile={true} showHeader={false} />
     </div>
   </div>
