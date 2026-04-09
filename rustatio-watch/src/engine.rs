@@ -240,8 +240,7 @@ impl<E: WatchEngine + 'static> WatchService<E> {
     pub async fn get_status(&self) -> WatchStatus {
         let loaded_count = self.loaded_hashes.read().await.len();
         let file_count = scan_torrent_paths(&self.config.watch_dir, self.config.max_depth)
-            .map(|entries| entries.len())
-            .unwrap_or(0);
+            .map_or(0, |entries| entries.len());
 
         WatchStatus {
             enabled: self.config.enabled,
@@ -266,7 +265,7 @@ impl<E: WatchEngine + 'static> WatchService<E> {
             };
 
             let filename = relative.to_string_lossy().to_string();
-            let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+            let size = std::fs::metadata(&path).map_or(0, |m| m.len());
 
             let (status, info_hash, name) =
                 std::fs::read(&path).map_or((WatchedFileStatus::Invalid, None, None), |data| {

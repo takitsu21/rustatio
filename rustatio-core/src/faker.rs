@@ -582,7 +582,7 @@ impl RatioFaker {
             tracker_id: None,
             start_time: Instant::now(),
             last_update: Instant::now(),
-            announce_interval: Duration::from_secs(1800), // Default 30 minutes
+            announce_interval: Duration::from_mins(30), // Default 30 minutes
             last_scrape: Instant::now(),
             scrape_supported: true,
         })
@@ -666,7 +666,7 @@ impl RatioFaker {
         self.stats = stats;
         self.rebase_timers_from_elapsed(now);
         self.tracker_id = None;
-        self.announce_interval = Duration::from_secs(1800);
+        self.announce_interval = Duration::from_mins(30);
         self.last_scrape = now;
         self.scrape_supported = true;
     }

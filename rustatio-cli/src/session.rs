@@ -221,7 +221,7 @@ impl Session {
         }
 
         // Sort by last updated (most recent first)
-        sessions.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+        sessions.sort_by_key(|s| std::cmp::Reverse(s.updated_at));
         Ok(sessions)
     }
 }
@@ -244,7 +244,7 @@ pub struct SessionSummary {
 
 #[allow(clippy::ref_option)]
 fn is_infinite_ratio(r: &Option<f64>) -> bool {
-    r.map(f64::is_infinite).unwrap_or(true)
+    r.is_none_or(f64::is_infinite)
 }
 
 impl From<&Session> for SessionSummary {

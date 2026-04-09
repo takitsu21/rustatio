@@ -25,8 +25,7 @@ struct GluetunPortForward {
 impl VpnPortSyncConfig {
     pub fn from_env() -> Self {
         let enabled = std::env::var("VPN_PORT_SYNC")
-            .map(|v| matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"))
-            .unwrap_or(false);
+            .is_ok_and(|v| matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"));
 
         let interval = std::env::var("VPN_PORT_SYNC_INTERVAL_SECONDS")
             .ok()

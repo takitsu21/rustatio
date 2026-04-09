@@ -11,7 +11,7 @@ use std::sync::Arc;
 use utoipa::ToSchema;
 
 fn env_bool(name: &str, default: bool) -> bool {
-    std::env::var(name).map(|v| v.eq_ignore_ascii_case("true") || v == "1").unwrap_or(default)
+    std::env::var(name).map_or(default, |v| v.eq_ignore_ascii_case("true") || v == "1")
 }
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
