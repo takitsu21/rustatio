@@ -1,5 +1,5 @@
 use rustatio_core::{
-    FakerConfig, FakerState, PeerListenerService, PeerListenerStatus, RatioFakerHandle,
+    FakerConfig, FakerState, FakerStats, PeerListenerService, PeerListenerStatus, RatioFakerHandle,
     TorrentInfo, TorrentSummary,
 };
 use serde::{Deserialize, Serialize};
@@ -28,10 +28,13 @@ pub struct FakerInstance {
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct InstanceInfo {
-    pub id: u32,
-    pub torrent_name: Option<String>,
-    pub is_running: bool,
-    pub is_paused: bool,
+    pub id: String,
+    pub torrent: TorrentSummary,
+    pub config: FakerConfig,
+    pub stats: FakerStats,
+    pub created_at: u64,
+    pub source: String,
+    pub tags: Vec<String>,
 }
 
 #[derive(Clone)]
@@ -152,9 +155,101 @@ impl AppState {
         }
     }
 
+    pub fn build_persisted_state_blocking(&self) -> PersistedState {
+        let fakers = self.fakers.blocking_read();
+        let next_id = *self.next_instance_id.blocking_read();
+        let now = persistence::now_timestamp();
+
+        let mut instances = HashMap::new();
+        for (id, instance) in fakers.iter() {
+            let stats = instance.faker.stats_snapshot();
+            let mut config = instance.config.clone();
+            config.completion_percent = stats.torrent_completion;
+            instances.insert(
+                *id,
+                PersistedInstance {
+                    id: *id,
+                    torrent: (*instance.summary).clone(),
+                    config,
+                    cumulative_uploaded: stats.uploaded,
+                    cumulative_downloaded: stats.downloaded,
+                    state: stats.state,
+                    created_at: instance.created_at,
+                    updated_at: now,
+                    tags: instance.tags.clone(),
+                    from_watch_folder: matches!(
+                        instance.source,
+                        rustatio_watch::InstanceSource::WatchFolder
+                    ),
+                },
+            );
+        }
+
+        let default_config = self.default_config.blocking_read().clone();
+        let watch_settings = self.watch_settings.blocking_read().clone();
+
+        PersistedState {
+            instances,
+            next_instance_id: next_id,
+            default_config,
+            watch_settings,
+            version: 1,
+        }
+    }
+
     pub async fn save_state(&self) -> Result<(), String> {
         let persisted = self.build_persisted_state().await;
         persistence::save_state(&persisted)
+    }
+
+    pub async fn apply_instance_config(
+        &self,
+        instance_id: u32,
+        config: FakerConfig,
+    ) -> Result<(), String> {
+        let old_config = {
+            let mut fakers = self.fakers.write().await;
+            let instance = fakers
+                .get_mut(&instance_id)
+                .ok_or_else(|| format!("Instance {instance_id} not found"))?;
+
+            let stats = instance.faker.stats_snapshot();
+            if matches!(
+                stats.state,
+                FakerState::Running | FakerState::Starting | FakerState::Paused
+            ) {
+                return Err("Cannot update config while faker is running".to_string());
+            }
+
+            let old_config = instance.config.clone();
+            instance
+                .faker
+                .update_config(config.clone(), Some(self.http_client.clone()))
+                .await
+                .map_err(|e| format!("Failed to update faker config: {e}"))?;
+            instance.config = config.clone();
+            old_config
+        };
+
+        if let Err(err) = self.save_state().await {
+            let mut fakers = self.fakers.write().await;
+            if let Some(instance) = fakers.get_mut(&instance_id) {
+                instance.config = old_config.clone();
+                instance
+                    .faker
+                    .update_config(old_config, Some(self.http_client.clone()))
+                    .await
+                    .map_err(|e| {
+                        format!("{err}; rollback failed while restoring previous config: {e}")
+                    })?;
+            }
+
+            return Err(err);
+        }
+
+        self.refresh_peer_listener_port().await;
+
+        Ok(())
     }
 }
 

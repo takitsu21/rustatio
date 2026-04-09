@@ -49,6 +49,101 @@ export function getDownloadType(os) {
   }
 }
 
+export function selectActiveInstanceId(restoredInstances, savedSession = null) {
+  const savedActiveId = savedSession?.activeInstanceId;
+  if (
+    savedActiveId !== null &&
+    savedActiveId !== undefined &&
+    restoredInstances.some(inst => String(inst.id) === String(savedActiveId))
+  ) {
+    return restoredInstances.find(inst => String(inst.id) === String(savedActiveId))?.id ?? null;
+  }
+
+  if (
+    savedSession?.activeInstanceIndex !== null &&
+    savedSession?.activeInstanceIndex !== undefined &&
+    savedSession.activeInstanceIndex >= 0 &&
+    savedSession.activeInstanceIndex < restoredInstances.length
+  ) {
+    return restoredInstances[savedSession.activeInstanceIndex].id;
+  }
+
+  return restoredInstances[0]?.id ?? null;
+}
+
+export function getBackendInstanceStateFlags(state) {
+  const normalized = String(state || '').toLowerCase();
+
+  return {
+    isRunning:
+      normalized === 'running' ||
+      normalized === 'starting' ||
+      normalized === 'paused' ||
+      normalized === 'idle',
+    isPaused: normalized === 'paused',
+    isIdling: normalized === 'idle',
+  };
+}
+
+export function serializeSessionInstances(instances) {
+  return instances.map(inst => ({
+    torrent_path: inst.torrentPath || null,
+    torrent_name: inst.torrent?.name || null,
+    torrent_data: inst.torrent || null,
+    selected_client: inst.selectedClient,
+    selected_client_version: inst.selectedClientVersion,
+    upload_rate: parseFloat(inst.uploadRate),
+    download_rate: parseFloat(inst.downloadRate),
+    port: parseInt(inst.port),
+    vpn_port_sync: !!inst.vpnPortSync,
+    completion_percent: parseFloat(inst.completionPercent),
+    initial_uploaded: parseInt(inst.initialUploaded) * 1024 * 1024,
+    initial_downloaded: parseInt(inst.initialDownloaded) * 1024 * 1024,
+    cumulative_uploaded: parseInt(inst.cumulativeUploaded) * 1024 * 1024,
+    cumulative_downloaded: parseInt(inst.cumulativeDownloaded) * 1024 * 1024,
+    randomize_rates: inst.randomizeRates,
+    random_range_percent: parseFloat(inst.randomRangePercent),
+    update_interval_seconds: parseInt(inst.updateIntervalSeconds),
+    scrape_interval: parseInt(inst.scrapeInterval) || 60,
+    stop_at_ratio_enabled: inst.stopAtRatioEnabled,
+    stop_at_ratio: parseFloat(inst.stopAtRatio),
+    randomize_ratio: inst.randomizeRatio,
+    random_ratio_range_percent: parseFloat(inst.randomRatioRangePercent),
+    effective_stop_at_ratio: inst.effectiveStopAtRatio,
+    stop_at_uploaded_enabled: inst.stopAtUploadedEnabled,
+    stop_at_uploaded_gb: parseFloat(inst.stopAtUploadedGB),
+    stop_at_downloaded_enabled: inst.stopAtDownloadedEnabled,
+    stop_at_downloaded_gb: parseFloat(inst.stopAtDownloadedGB),
+    stop_at_seed_time_enabled: inst.stopAtSeedTimeEnabled,
+    stop_at_seed_time_hours: parseFloat(inst.stopAtSeedTimeHours),
+    idle_when_no_leechers: inst.idleWhenNoLeechers,
+    idle_when_no_seeders: inst.idleWhenNoSeeders,
+    post_stop_action: inst.postStopAction,
+    progressive_rates_enabled: inst.progressiveRatesEnabled,
+    target_upload_rate: parseFloat(inst.targetUploadRate),
+    target_download_rate: parseFloat(inst.targetDownloadRate),
+    progressive_duration_hours: parseFloat(inst.progressiveDurationHours),
+  }));
+}
+
+export function getActiveInstanceIndex(instances, activeId) {
+  const index = instances.findIndex(inst => String(inst.id) === String(activeId));
+  return index >= 0 ? index : null;
+}
+
+export function shouldRetryDesktopRestore(savedSession) {
+  if (!savedSession) {
+    return false;
+  }
+
+  return (
+    Array.isArray(savedSession.instances) &&
+    savedSession.instances.some(
+      inst => Boolean(inst?.torrentPath) || Boolean(inst?.torrentName) || Boolean(inst?.torrent)
+    )
+  );
+}
+
 /**
  * Detects Linux distribution for appropriate package type
  * @returns {string} Package type (deb, rpm, or AppImage)
