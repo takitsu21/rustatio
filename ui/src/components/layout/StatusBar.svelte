@@ -84,11 +84,19 @@
 >
   <div
     class={cn(
-      'flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between',
-      embedded && 'gap-2 lg:gap-3'
+      embedded
+        ? 'flex min-w-0 items-center justify-between gap-3'
+        : 'flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between'
     )}
   >
-    <div class="min-w-0 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+    <div
+      class={cn(
+        'min-w-0',
+        embedded
+          ? 'flex flex-1 items-center gap-3'
+          : 'flex flex-col gap-2 lg:flex-row lg:items-center lg:gap-3'
+      )}
+    >
       <span
         class={cn(
           embedded
@@ -117,9 +125,9 @@
 
       <p
         class={cn(
-          'min-w-0 leading-5 sm:truncate',
+          'min-w-0 leading-5',
           embedded
-            ? 'text-sm font-medium text-foreground/80'
+            ? 'truncate text-sm font-medium text-foreground/80'
             : 'text-sm font-medium text-foreground/90'
         )}
       >
@@ -128,7 +136,13 @@
     </div>
 
     {#if startFaking && stopFaking}
-      <div class="flex flex-wrap items-center gap-2 lg:justify-end">
+      <div
+        class={cn(
+          embedded
+            ? 'flex shrink-0 items-center gap-2'
+            : 'flex w-full items-center gap-2 overflow-x-auto pb-1 lg:w-auto lg:justify-end lg:overflow-visible lg:pb-0'
+        )}
+      >
         {#if !isRunning}
           <button
             onclick={startFaking}
@@ -136,8 +150,8 @@
             title="Start"
             class={cn(
               embedded
-                ? `${embeddedActionBase} border-stat-upload/30 bg-stat-upload text-white shadow-sm hover:bg-stat-upload/90`
-                : `${actionBase} border-stat-upload/30 bg-stat-upload text-white hover:bg-stat-upload/90`
+                ? `${embeddedActionBase} shrink-0 border-stat-upload/30 bg-stat-upload text-white shadow-sm hover:bg-stat-upload/90`
+                : `${actionBase} shrink-0 whitespace-nowrap border-stat-upload/30 bg-stat-upload text-white hover:bg-stat-upload/90`
             )}
           >
             <Play size={13} fill="currentColor" />
@@ -151,8 +165,8 @@
               title="Pause"
               class={cn(
                 embedded
-                  ? `${embeddedActionBase} border-stat-ratio/30 bg-stat-ratio/10 text-stat-ratio hover:bg-stat-ratio/15`
-                  : `${actionBase} border-stat-ratio/30 bg-stat-ratio/10 text-stat-ratio hover:bg-stat-ratio/15`
+                  ? `${embeddedActionBase} shrink-0 border-stat-ratio/30 bg-stat-ratio/10 text-stat-ratio hover:bg-stat-ratio/15`
+                  : `${actionBase} shrink-0 whitespace-nowrap border-stat-ratio/30 bg-stat-ratio/10 text-stat-ratio hover:bg-stat-ratio/15`
               )}
             >
               <Pause size={13} fill="currentColor" />
@@ -165,8 +179,8 @@
               title="Resume"
               class={cn(
                 embedded
-                  ? `${embeddedActionBase} border-primary/30 bg-primary/10 text-primary hover:bg-primary/15`
-                  : `${actionBase} border-primary/30 bg-primary/10 text-primary hover:bg-primary/15`
+                  ? `${embeddedActionBase} shrink-0 border-primary/30 bg-primary/10 text-primary hover:bg-primary/15`
+                  : `${actionBase} shrink-0 whitespace-nowrap border-primary/30 bg-primary/10 text-primary hover:bg-primary/15`
               )}
             >
               <Play size={13} fill="currentColor" />
@@ -179,8 +193,8 @@
             title="Update"
             class={cn(
               embedded
-                ? `${embeddedActionBase} border-border/70 bg-background/65 text-muted-foreground hover:border-border hover:bg-secondary/60 hover:text-foreground`
-                : `${actionBase} border-border/70 bg-background/65 text-muted-foreground hover:border-border hover:bg-secondary/60 hover:text-foreground`
+                ? `${embeddedActionBase} shrink-0 border-border/70 bg-background/65 text-muted-foreground hover:border-border hover:bg-secondary/60 hover:text-foreground`
+                : `${actionBase} shrink-0 whitespace-nowrap border-border/70 bg-background/65 text-muted-foreground hover:border-border hover:bg-secondary/60 hover:text-foreground`
             )}
           >
             <RefreshCw size={13} />
@@ -192,8 +206,8 @@
             title="Stop"
             class={cn(
               embedded
-                ? `${embeddedActionBase} border-destructive/20 bg-destructive/10 text-destructive hover:bg-destructive/15`
-                : `${actionBase} border-destructive/20 bg-destructive/10 text-destructive hover:bg-destructive/15`
+                ? `${embeddedActionBase} shrink-0 border-destructive/20 bg-destructive/10 text-destructive hover:bg-destructive/15`
+                : `${actionBase} shrink-0 whitespace-nowrap border-destructive/20 bg-destructive/10 text-destructive hover:bg-destructive/15`
             )}
           >
             <Square size={13} fill="currentColor" />
