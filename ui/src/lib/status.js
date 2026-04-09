@@ -38,6 +38,28 @@ export function getPausedStatus(message = 'Paused') {
   };
 }
 
+export function getTrackerInvalidStatus(message = 'Torrent not found on tracker') {
+  return {
+    statusMessage: message,
+    statusType: 'warning',
+    statusIcon: null,
+  };
+}
+
+export function getTrackerIssue(stats) {
+  const message = stats?.tracker_error || stats?.trackerError;
+  if (!message) {
+    return null;
+  }
+
+  return {
+    statusMessage: message,
+    statusType: 'warning',
+    statusIcon: null,
+    issueLabel: 'Tracker issue',
+  };
+}
+
 export function getIdlingStatus(reason) {
   const text = getIdlingReasonText(reason);
 
@@ -49,6 +71,11 @@ export function getIdlingStatus(reason) {
 }
 
 export function getStatusFromStats(stats) {
+  const trackerIssue = getTrackerIssue(stats);
+  if (trackerIssue) {
+    return trackerIssue;
+  }
+
   if (stats?.is_idling) {
     return getIdlingStatus(stats.idling_reason);
   }

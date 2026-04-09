@@ -58,6 +58,7 @@ pub struct GridBulkUpdateConfigEntry {
 #[derive(Serialize)]
 pub struct GridImportResponse {
     pub imported: Vec<GridImportedInstance>,
+    pub duplicates: Vec<String>,
     pub errors: Vec<String>,
 }
 
@@ -83,7 +84,9 @@ pub struct GridActionError {
 pub async fn grid_import(State(state): State<ServerState>, mut multipart: Multipart) -> Response {
     let mut torrents: Vec<(String, TorrentSummary)> = Vec::new();
     let mut config = GridImportSettings::default();
+    let mut duplicates: Vec<String> = Vec::new();
     let mut errors: Vec<String> = Vec::new();
+    let mut seen_hashes = std::collections::HashSet::new();
 
     loop {
         match multipart.next_field().await {
@@ -110,6 +113,20 @@ pub async fn grid_import(State(state): State<ServerState>, mut multipart: Multip
                     match field.bytes().await {
                         Ok(bytes) => match TorrentSummary::from_bytes(&bytes) {
                             Ok(summary) => {
+                                if !seen_hashes.insert(summary.info_hash) {
+                                    duplicates
+                                        .push(format!("{filename}: duplicate in import batch"));
+                                    continue;
+                                }
+                                if state
+                                    .app
+                                    .find_instance_by_info_hash(&summary.info_hash)
+                                    .await
+                                    .is_some()
+                                {
+                                    duplicates.push(format!("{filename}: already imported"));
+                                    continue;
+                                }
                                 let id = state.app.next_instance_id();
                                 torrents.push((id, summary));
                             }
@@ -160,7 +177,11 @@ pub async fn grid_import(State(state): State<ServerState>, mut multipart: Multip
                 });
             }
             Err(e) => {
-                errors.push(format!("{}: {}", summary.name, e));
+                if e.starts_with("Duplicate torrent skipped:") {
+                    duplicates.push(format!("{}: {}", summary.name, e));
+                } else {
+                    errors.push(format!("{}: {}", summary.name, e));
+                }
             }
         }
     }
@@ -181,7 +202,7 @@ pub async fn grid_import(State(state): State<ServerState>, mut multipart: Multip
         }
     }
 
-    ApiSuccess::response(GridImportResponse { imported, errors })
+    ApiSuccess::response(GridImportResponse { imported, duplicates, errors })
 }
 
 pub async fn grid_import_folder(
@@ -197,7 +218,9 @@ pub async fn grid_import_folder(
     }
 
     let mut torrents: Vec<(String, TorrentSummary)> = Vec::new();
+    let mut duplicates: Vec<String> = Vec::new();
     let mut errors: Vec<String> = Vec::new();
+    let mut seen_hashes = std::collections::HashSet::new();
 
     let entries = match std::fs::read_dir(path) {
         Ok(e) => e,
@@ -221,8 +244,12 @@ pub async fn grid_import_folder(
             Ok(bytes) => match TorrentSummary::from_bytes(&bytes) {
                 Ok(summary) => {
                     // Skip if already imported (same info_hash)
+                    if !seen_hashes.insert(summary.info_hash) {
+                        duplicates.push(format!("{filename}: duplicate in import batch"));
+                        continue;
+                    }
                     if state.app.find_instance_by_info_hash(&summary.info_hash).await.is_some() {
-                        errors.push(format!("{filename}: already imported"));
+                        duplicates.push(format!("{filename}: already imported"));
                         continue;
                     }
                     let id = state.app.next_instance_id();
@@ -263,7 +290,11 @@ pub async fn grid_import_folder(
                 });
             }
             Err(e) => {
-                errors.push(format!("{}: {}", summary.name, e));
+                if e.starts_with("Duplicate torrent skipped:") {
+                    duplicates.push(format!("{}: {}", summary.name, e));
+                } else {
+                    errors.push(format!("{}: {}", summary.name, e));
+                }
             }
         }
     }
@@ -281,7 +312,7 @@ pub async fn grid_import_folder(
         }
     }
 
-    ApiSuccess::response(GridImportResponse { imported, errors })
+    ApiSuccess::response(GridImportResponse { imported, duplicates, errors })
 }
 
 pub async fn grid_start(

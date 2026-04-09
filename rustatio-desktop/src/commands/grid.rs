@@ -29,6 +29,7 @@ pub struct GridActionError {
 #[serde(rename_all = "camelCase")]
 pub struct GridImportResponse {
     imported: Vec<GridImportedInstance>,
+    duplicates: Vec<String>,
     errors: Vec<String>,
 }
 
@@ -47,8 +48,10 @@ async fn import_torrent_files(
     app: &AppHandle,
 ) -> GridImportResponse {
     let mut imported = Vec::new();
+    let mut duplicates = Vec::new();
     let mut errors = Vec::new();
     let mut auto_start_ids = Vec::new();
+    let mut seen_hashes = std::collections::HashSet::new();
 
     let now = now_secs();
 
@@ -71,6 +74,16 @@ async fn import_torrent_files(
         let faker_config: FakerConfig = preset.into();
         let torrent_name = torrent.name.clone();
         let torrent_info_hash = torrent.info_hash;
+
+        if !seen_hashes.insert(torrent_info_hash) {
+            duplicates.push(format!("{}: duplicate in import batch", path.display()));
+            continue;
+        }
+
+        if fakers_lock.values().any(|instance| instance.torrent.info_hash == torrent_info_hash) {
+            duplicates.push(format!("{}: already imported", path.display()));
+            continue;
+        }
 
         let torrent_arc = Arc::new(torrent.without_files());
         let summary_arc = Arc::new(torrent_arc.summary());
@@ -124,7 +137,14 @@ async fn import_torrent_files(
     }
     drop(next_id);
 
-    log_and_emit!(app, info, "Imported {} torrent(s) ({} errors)", imported.len(), errors.len());
+    log_and_emit!(
+        app,
+        info,
+        "Imported {} torrent(s) ({} duplicates, {} errors)",
+        imported.len(),
+        duplicates.len(),
+        errors.len()
+    );
 
     if !auto_start_ids.is_empty() {
         let state_fakers = Arc::clone(&state.fakers);
@@ -180,7 +200,7 @@ async fn import_torrent_files(
         });
     }
 
-    GridImportResponse { imported, errors }
+    GridImportResponse { imported, duplicates, errors }
 }
 
 #[tauri::command]
@@ -210,6 +230,7 @@ pub async fn grid_import_folder(
     if torrent_paths.is_empty() {
         return Ok(GridImportResponse {
             imported: vec![],
+            duplicates: vec![],
             errors: vec!["No .torrent files found in directory".to_string()],
         });
     }
@@ -679,6 +700,8 @@ pub async fn list_summaries(state: State<'_, AppState>) -> Result<Vec<InstanceSu
             info_hash,
             primary_tracker_host: primary_tracker_host(&announce),
             state: state_str.to_string(),
+            is_tracker_invalid: stats.tracker_error.is_some(),
+            tracker_error: stats.tracker_error.clone(),
             tags,
             total_size,
             uploaded: stats.uploaded,

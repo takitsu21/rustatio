@@ -24,6 +24,7 @@
     LayoutGrid,
     FolderSearch,
     LoaderCircle,
+    AlertTriangle,
   } from '@lucide/svelte';
 
   /* global __APP_VERSION__ */
@@ -291,6 +292,10 @@
       return 'running';
     }
     return 'idle';
+  }
+
+  function getIssueMessage(instance) {
+    return instance.stats?.tracker_error || null;
   }
 
   async function handleAddInstance() {
@@ -622,6 +627,7 @@
           {@const status = getInstanceStatus(instance)}
           {@const isActive = $activeInstanceId === instance.id}
           {@const stopProgress = getStopConditionProgress(instance)}
+          {@const issueMessage = getIssueMessage(instance)}
 
           <div
             class={cn(
@@ -673,6 +679,16 @@
                 >
                   {getInstanceLabel(instance)}
                 </span>
+
+                {#if issueMessage && !isCollapsed}
+                  <span
+                    class="flex-shrink-0 text-amber-400"
+                    title={issueMessage}
+                    aria-label={issueMessage}
+                  >
+                    <AlertTriangle size={11} />
+                  </span>
+                {/if}
               </div>
 
               <!-- Ratio Badge (when running or has stats) -->

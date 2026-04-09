@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { getIdlingReasonText, getIdlingStatus, getStatusFromStats } from './status.js';
+import {
+  getIdlingReasonText,
+  getIdlingStatus,
+  getStatusFromStats,
+  getTrackerIssue,
+} from './status.js';
 
 test('getIdlingReasonText handles snake_case and camelCase reasons', () => {
   assert.equal(getIdlingReasonText('no_leechers'), 'No leechers available');
@@ -20,5 +25,21 @@ test('getStatusFromStats uses idling reason when available', () => {
     statusMessage: 'Idling - No leechers available',
     statusType: 'idling',
     statusIcon: 'moon',
+  });
+});
+
+test('getTrackerIssue supports tracker errors from stats and summaries', () => {
+  assert.deepEqual(getTrackerIssue({ tracker_error: 'Tracker unavailable' }), {
+    statusMessage: 'Tracker unavailable',
+    statusType: 'warning',
+    statusIcon: null,
+    issueLabel: 'Tracker issue',
+  });
+
+  assert.deepEqual(getTrackerIssue({ trackerError: 'Torrent not found on tracker' }), {
+    statusMessage: 'Torrent not found on tracker',
+    statusType: 'warning',
+    statusIcon: null,
+    issueLabel: 'Tracker issue',
   });
 });

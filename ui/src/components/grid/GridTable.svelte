@@ -16,6 +16,7 @@
     Trash2,
     Copy,
     Pencil,
+    AlertTriangle,
   } from '@lucide/svelte';
 
   let { data = [], oncontextaction = () => {} } = $props();
@@ -207,6 +208,10 @@
     return value === 'starting' || value === 'stopping';
   }
 
+  function getIssueMessage(instance) {
+    return instance.trackerError || instance.tracker_error || null;
+  }
+
   const columns = [
     { id: 'select', header: '', width: 32, sortable: false },
     { id: 'name', header: 'Name', width: 300, sortable: true },
@@ -371,6 +376,7 @@
           {@const isSelected = $selectedIds.has(instance.id)}
           {@const StateIcon = getStateIcon(instance.state)}
           {@const completionPct = instance.torrentCompletion ?? 100}
+          {@const issueMessage = getIssueMessage(instance)}
           <tr
             class={cn(
               'border-t border-border/50 transition-colors cursor-pointer',
@@ -400,8 +406,19 @@
                 oncontextaction('edit', instance);
               }}
             >
-              <span class="text-foreground font-medium truncate" title={instance.name}>
-                {instance.name}
+              <span class="inline-flex max-w-full items-center gap-1.5">
+                <span class="text-foreground font-medium truncate" title={instance.name}>
+                  {instance.name}
+                </span>
+                {#if issueMessage}
+                  <span
+                    class="flex-shrink-0 text-amber-400"
+                    title={issueMessage}
+                    aria-label={issueMessage}
+                  >
+                    <AlertTriangle size={11} />
+                  </span>
+                {/if}
               </span>
             </td>
 

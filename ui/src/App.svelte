@@ -41,6 +41,8 @@
   import ThemeIcon from './components/common/ThemeIcon.svelte';
   import DownloadButton from './components/common/DownloadButton.svelte';
   import AuthPage from './components/common/AuthPage.svelte';
+  import BaseModal from './components/common/BaseModal.svelte';
+  import Button from './lib/components/ui/button.svelte';
   import ConfirmDialog from './components/common/ConfirmDialog.svelte';
   import GridView from './components/grid/GridView.svelte';
   import WatchView from './components/watch/WatchView.svelte';
@@ -73,6 +75,9 @@
   let showAuthDialog = $state(false);
   let closePromptVisible = $state(false);
   let rememberCloseChoice = $state(false);
+  let errorDialogOpen = $state(false);
+  let errorDialogTitle = $state('Error');
+  let errorDialogMessage = $state('');
 
   // Flag to prevent store subscriptions from firing during initialization
   let isInitializing = true;
@@ -174,6 +179,12 @@
     if (!networkStatusIntervalId) return;
     clearInterval(networkStatusIntervalId);
     networkStatusIntervalId = null;
+  }
+
+  function showErrorDialog(title, message) {
+    errorDialogTitle = title;
+    errorDialogMessage = message;
+    errorDialogOpen = true;
   }
 
   // Load configuration on mount
@@ -621,11 +632,12 @@
         }
       }, 2000);
     } catch (error) {
+      const message = 'Failed to load torrent: ' + error;
       instanceActions.updateInstance($activeInstance.id, {
-        statusMessage: 'Failed to load torrent: ' + error,
+        statusMessage: message,
         statusType: 'error',
       });
-      alert('Failed to load torrent: ' + error);
+      showErrorDialog('Torrent Load Failed', message);
     }
   }
 
@@ -1757,6 +1769,39 @@
     </div>
   </div>
 {/if}
+
+<BaseModal
+  open={errorDialogOpen}
+  onClose={() => {
+    errorDialogOpen = false;
+  }}
+  titleId="app-error-dialog-title"
+  maxWidthClass="max-w-md"
+  panelClass="animate-in fade-in zoom-in-95 duration-200 overflow-hidden"
+>
+  <div class="p-6 border-b border-border/70">
+    <h2 id="app-error-dialog-title" class="text-lg font-semibold text-foreground">
+      {errorDialogTitle}
+    </h2>
+  </div>
+  <div class="p-6 space-y-6">
+    <p class="text-sm leading-6 text-muted-foreground whitespace-pre-line">
+      {errorDialogMessage}
+    </p>
+    <div class="flex justify-end">
+      <Button
+        onclick={() => {
+          errorDialogOpen = false;
+        }}
+        size="sm"
+      >
+        {#snippet children()}
+          OK
+        {/snippet}
+      </Button>
+    </div>
+  </div>
+</BaseModal>
 
 <ConfirmDialog
   bind:open={closePromptVisible}

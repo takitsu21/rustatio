@@ -133,6 +133,16 @@ pub async fn load_instance_torrent(
                     match field.bytes().await {
                         Ok(bytes) => match TorrentSummary::from_bytes(&bytes) {
                             Ok(summary) => {
+                                if let Some(existing_id) =
+                                    state.app.duplicate_instance_id(&id, &summary.info_hash).await
+                                {
+                                    return ApiError::response(
+                                        StatusCode::BAD_REQUEST,
+                                        format!(
+                                            "Duplicate torrent skipped: already imported as instance {existing_id}"
+                                        ),
+                                    );
+                                }
                                 let response_torrent = summary.clone();
                                 let compact_torrent = summary.to_info();
                                 if let Err(e) =

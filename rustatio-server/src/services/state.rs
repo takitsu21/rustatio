@@ -589,6 +589,14 @@ impl AppState {
     async fn create_instance_internal(&self, context: InstanceBuildContext) -> Result<(), String> {
         set_instance_context_str(Some(context.summary.name.as_str()));
 
+        if let Some(existing_id) =
+            self.duplicate_instance_id(&context.id, &context.torrent.info_hash).await
+        {
+            return Err(format!(
+                "Duplicate torrent skipped: already imported as instance {existing_id}"
+            ));
+        }
+
         let id = context.id.clone();
         let existing = self.collect_existing_instance_state(&context).await;
         let faker_config = Self::build_faker_config(&context, &existing);
@@ -738,6 +746,16 @@ impl AppState {
         None
     }
 
+    pub async fn duplicate_instance_id(&self, id: &str, info_hash: &[u8; 20]) -> Option<String> {
+        let instances = self.instances.read().await;
+        for (existing_id, instance) in instances.iter() {
+            if existing_id != id && &instance.torrent_info_hash == info_hash {
+                return Some(existing_id.clone());
+            }
+        }
+        None
+    }
+
     pub async fn update_instance_source(
         &self,
         id: &str,
@@ -836,6 +854,8 @@ impl AppState {
                 info_hash: hex::encode(instance.torrent_info_hash),
                 primary_tracker_host: primary_tracker_host(&instance.summary.announce),
                 state: state.to_string(),
+                is_tracker_invalid: stats.tracker_error.is_some(),
+                tracker_error: stats.tracker_error.clone(),
                 tags: instance.tags.clone(),
                 total_size: instance.summary.total_size,
                 uploaded: stats.uploaded,
@@ -1046,6 +1066,7 @@ impl AppState {
             stop_condition_met: stats.stop_condition_met,
             is_idling: stats.is_idling,
             idling_reason: stats.idling_reason.clone(),
+            tracker_error: stats.tracker_error.clone(),
             announce_count: stats.announce_count,
         }
     }
@@ -1066,6 +1087,7 @@ impl AppState {
             state,
             is_idling: runtime.is_idling,
             idling_reason: runtime.idling_reason.clone(),
+            tracker_error: runtime.tracker_error.clone(),
             session_uploaded: runtime.session_uploaded,
             session_downloaded: runtime.session_downloaded,
             session_ratio: runtime.session_ratio,
@@ -1116,8 +1138,12 @@ mod tests {
     use rustatio_core::{FakerConfig, FakerState, PostStopAction, PresetSettings, TorrentInfo};
 
     fn torrent() -> TorrentInfo {
+        torrent_with_hash(7)
+    }
+
+    fn torrent_with_hash(byte: u8) -> TorrentInfo {
         TorrentInfo {
-            info_hash: [7u8; 20],
+            info_hash: [byte; 20],
             announce: "https://tracker.test/announce".to_string(),
             announce_list: None,
             name: "sample".to_string(),
@@ -1157,7 +1183,7 @@ mod tests {
 
         let created_synced = state.create_instance("synced", torrent(), synced).await;
         assert!(created_synced.is_ok());
-        let created_fixed = state.create_instance("fixed", torrent(), fixed).await;
+        let created_fixed = state.create_instance("fixed", torrent_with_hash(8), fixed).await;
         assert!(created_fixed.is_ok());
 
         let applied = state.apply_vpn_forwarded_port(51413).await;
@@ -1295,7 +1321,7 @@ mod tests {
         let created_manual = state
             .create_instance(
                 "manual",
-                torrent(),
+                torrent_with_hash(8),
                 FakerConfig { vpn_port_sync: false, port: 50000, ..FakerConfig::default() },
             )
             .await;
@@ -1413,5 +1439,64 @@ mod tests {
             Some("Custom One")
         );
         assert_eq!(persisted.default_config.as_ref().map(|cfg| cfg.upload_rate), Some(123.0));
+    }
+
+    #[tokio::test]
+    async fn duplicate_instance_id_ignores_same_id_but_finds_other_instances() {
+        let temp = tempfile::tempdir();
+        assert!(temp.is_ok());
+        let temp = temp.unwrap_or_else(|_| panic!("failed to create tempdir"));
+        let state = AppState::new(&temp.path().to_string_lossy());
+
+        let one = state.create_instance("one", torrent(), FakerConfig::default()).await;
+        assert!(one.is_ok());
+
+        let same = state.duplicate_instance_id("one", &[7u8; 20]).await;
+        assert!(same.is_none());
+
+        let other = state.duplicate_instance_id("two", &[7u8; 20]).await;
+        assert_eq!(other.as_deref(), Some("one"));
+    }
+
+    #[tokio::test]
+    async fn save_and_load_restores_tracker_error_runtime_state() {
+        let temp = tempfile::tempdir();
+        assert!(temp.is_ok());
+        let temp = match temp {
+            Ok(value) => value,
+            Err(e) => panic!("failed to create tempdir: {e}"),
+        };
+        let path = temp.path().to_string_lossy().to_string();
+        let state = AppState::new(&path);
+
+        let created = state.create_instance("invalid", torrent(), FakerConfig::default()).await;
+        assert!(created.is_ok());
+
+        {
+            let instances = state.instances.read().await;
+            let instance = instances.get("invalid");
+            assert!(instance.is_some());
+            if let Some(instance) = instance {
+                let mut stats = instance.faker.stats_snapshot();
+                stats.state = FakerState::Stopped;
+                stats.tracker_error = Some("Torrent not found on tracker".to_string());
+                stats.current_upload_rate = 0.0;
+                stats.current_download_rate = 0.0;
+                instance.faker.restore_snapshot(stats).await;
+            }
+        }
+
+        let saved = state.save_state().await;
+        assert!(saved.is_ok());
+
+        let restored = AppState::new(&path);
+        let loaded = restored.load_saved_state().await;
+        assert!(loaded.is_ok());
+
+        let instances = restored.list_instances().await;
+        assert_eq!(instances.len(), 1);
+        let stats = &instances[0].stats;
+        assert!(matches!(stats.state, FakerState::Stopped));
+        assert_eq!(stats.tracker_error.as_deref(), Some("Torrent not found on tracker"));
     }
 }

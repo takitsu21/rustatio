@@ -2,7 +2,7 @@ import { writable, get } from 'svelte/store';
 import { api } from '$lib/api';
 import { getDefaultPreset } from '$lib/defaultPreset.js';
 import { getRunMode } from '$lib/api.js';
-import { getIdlingStatus, getStatusFromStats } from '$lib/status.js';
+import { getIdlingStatus, getStatusFromStats, getTrackerIssue } from '$lib/status.js';
 import {
   getActiveInstanceIndex,
   getBackendInstanceStateFlags,
@@ -345,7 +345,12 @@ function buildRestoredInstance(serverInst, statusMessage = 'restored from server
   instance.isRunning = flags.isRunning;
   instance.isPaused = flags.isPaused;
 
-  if (instance.isPaused) {
+  const trackerIssue = getTrackerIssue(serverInst.stats);
+  if (trackerIssue) {
+    instance.statusMessage = trackerIssue.statusMessage;
+    instance.statusType = trackerIssue.statusType;
+    instance.statusIcon = trackerIssue.statusIcon;
+  } else if (instance.isPaused) {
     instance.statusMessage = `Paused - ${statusMessage}`;
     instance.statusType = 'paused';
     instance.statusIcon = 'pause';
@@ -938,7 +943,12 @@ export const instanceActions = {
         instance.torrentPath = gridSummary.name || '';
       }
 
-      if (instance.isPaused) {
+      const trackerIssue = getTrackerIssue(gridSummary);
+      if (trackerIssue) {
+        instance.statusMessage = trackerIssue.statusMessage;
+        instance.statusType = trackerIssue.statusType;
+        instance.statusIcon = trackerIssue.statusIcon;
+      } else if (instance.isPaused) {
         instance.statusMessage = 'Paused';
         instance.statusType = 'paused';
         instance.statusIcon = 'pause';
@@ -980,8 +990,15 @@ export const instanceActions = {
       if (torrent) {
         instance.torrent = torrent;
         instance.torrentPath = name || torrent.name || '';
-        instance.statusMessage = 'Ready to start faking';
-        instance.statusType = 'idle';
+        const trackerIssue = getTrackerIssue(instance.stats);
+        if (trackerIssue) {
+          instance.statusMessage = trackerIssue.statusMessage;
+          instance.statusType = trackerIssue.statusType;
+          instance.statusIcon = trackerIssue.statusIcon;
+        } else {
+          instance.statusMessage = 'Ready to start faking';
+          instance.statusType = 'idle';
+        }
       }
     } catch {
       instance.torrentPath = name || '';
@@ -1012,7 +1029,12 @@ export const instanceActions = {
     if (isPaused !== undefined) updates.isPaused = isPaused;
     if (stats !== undefined) updates.stats = stats;
 
-    if (isPaused) {
+    const trackerIssue = getTrackerIssue(stats);
+    if (trackerIssue) {
+      updates.statusMessage = trackerIssue.statusMessage;
+      updates.statusType = trackerIssue.statusType;
+      updates.statusIcon = trackerIssue.statusIcon;
+    } else if (isPaused) {
       updates.statusMessage = 'Paused';
       updates.statusType = 'paused';
       updates.statusIcon = 'pause';
@@ -1050,6 +1072,13 @@ export const instanceActions = {
         const isPaused = state === 'paused';
 
         const updates = { isRunning, isPaused };
+
+        const trackerIssue = getTrackerIssue(summary);
+        if (trackerIssue) {
+          updates.statusMessage = trackerIssue.statusMessage;
+          updates.statusType = trackerIssue.statusType;
+          updates.statusIcon = trackerIssue.statusIcon;
+        }
 
         if (summary.source === 'watch_folder' || summary.source === 'manual') {
           updates.source = summary.source;
