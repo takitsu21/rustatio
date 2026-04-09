@@ -275,4 +275,45 @@ mod tests {
 
         persistence::set_test_state_file_path(None);
     }
+
+    #[tokio::test]
+    async fn save_state_persists_bulk_style_config_changes() {
+        let _guard = state_path_test_lock().lock().await;
+        let temp = tempfile::tempdir();
+        assert!(temp.is_ok());
+        let temp = temp.unwrap_or_else(|_| unreachable!());
+        let path = temp.path().join("desktop-state.json");
+        persistence::set_test_state_file_path(Some(path));
+
+        let state = app_state();
+        let updated = FakerConfig {
+            upload_rate: 777.0,
+            port: 42424,
+            stop_at_ratio: Some(5.0),
+            ..FakerConfig::default()
+        };
+
+        insert_instance(&state, 5, FakerConfig::default()).await;
+
+        {
+            let mut fakers = state.fakers.write().await;
+            let instance = fakers.get_mut(&5);
+            assert!(instance.is_some());
+            let instance = instance.unwrap_or_else(|| unreachable!());
+            instance.config = updated.clone();
+        }
+
+        let saved = state.save_state().await;
+        assert!(saved.is_ok());
+
+        let persisted = persistence::load_state();
+        let saved = persisted.instances.get(&5);
+        assert!(saved.is_some());
+        let saved = saved.unwrap_or_else(|| unreachable!());
+        assert_eq!(saved.config.upload_rate, updated.upload_rate);
+        assert_eq!(saved.config.port, updated.port);
+        assert_eq!(saved.config.stop_at_ratio, updated.stop_at_ratio);
+
+        persistence::set_test_state_file_path(None);
+    }
 }

@@ -18,7 +18,7 @@
     "stopAtDownloadedEnabled": true,
     "stopAtDownloadedGB": 5,
     "stopAtSeedTimeEnabled": false,
-    "stopWhenNoLeechers": false
+    "idleWhenNoLeechers": false
   },
   "tips": [
     "3:1 upload to download ratio builds ratio while \"downloading\"",

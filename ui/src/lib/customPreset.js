@@ -1,3 +1,30 @@
+export function normalizePresetSettings(settings = {}) {
+  return {
+    ...settings,
+    ...(settings.idleWhenNoLeechers == null && settings.stopWhenNoLeechers != null
+      ? { idleWhenNoLeechers: settings.stopWhenNoLeechers }
+      : {}),
+    ...(settings.idleWhenNoSeeders == null && settings.stopWhenNoSeeders != null
+      ? { idleWhenNoSeeders: settings.stopWhenNoSeeders }
+      : {}),
+  };
+}
+
+export function normalizePreset(preset) {
+  if (!preset?.settings) {
+    return preset;
+  }
+
+  return {
+    ...preset,
+    settings: normalizePresetSettings(preset.settings),
+  };
+}
+
+export function normalizePresets(presets = []) {
+  return presets.map(normalizePreset);
+}
+
 export function buildCustomPreset(instance, { name, description = '', id, now = new Date() } = {}) {
   if (!instance) {
     throw new Error('Instance not found.');

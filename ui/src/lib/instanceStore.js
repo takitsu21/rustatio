@@ -1,6 +1,7 @@
 import { writable, get } from 'svelte/store';
 import { api } from '$lib/api';
 import { getDefaultPreset } from '$lib/defaultPreset.js';
+import { normalizePreset } from '$lib/customPreset.js';
 import { getRunMode } from '$lib/api.js';
 import { getIdlingStatus, getStatusFromStats, getTrackerIssue } from '$lib/status.js';
 import {
@@ -135,7 +136,7 @@ async function getServerEffectiveDefaults() {
 
 async function buildNewInstanceDefaults(defaults = {}) {
   const presetDefaults =
-    (await api.getDefaultPreset())?.settings || getDefaultPreset()?.settings || {};
+    normalizePreset(await api.getDefaultPreset())?.settings || getDefaultPreset()?.settings || {};
   const serverMode = isServerMode();
   const serverDefaults = serverMode ? await getServerEffectiveDefaults() : {};
   const vpnPortSync = serverMode
@@ -867,6 +868,8 @@ export const instanceActions = {
               port: serverDefaults.port,
               vpnPortSync: serverDefaults.vpnPortSync,
               completionPercent: serverDefaults.completionPercent,
+              initialUploaded: serverDefaults.initialUploaded,
+              initialDownloaded: serverDefaults.initialDownloaded,
               randomizeRates: serverDefaults.randomizeRates,
               randomRangePercent: serverDefaults.randomRangePercent,
               progressiveRatesEnabled: serverDefaults.progressiveRatesEnabled,
@@ -875,6 +878,9 @@ export const instanceActions = {
               progressiveDurationHours: serverDefaults.progressiveDurationHours,
               stopAtRatioEnabled: serverDefaults.stopAtRatioEnabled,
               stopAtRatio: serverDefaults.stopAtRatio,
+              randomizeRatio: serverDefaults.randomizeRatio,
+              randomRatioRangePercent: serverDefaults.randomRatioRangePercent,
+              effectiveStopAtRatio: serverDefaults.effectiveStopAtRatio,
               stopAtUploadedEnabled: serverDefaults.stopAtUploadedEnabled,
               stopAtUploadedGB: serverDefaults.stopAtUploadedGB,
               stopAtDownloadedEnabled: serverDefaults.stopAtDownloadedEnabled,

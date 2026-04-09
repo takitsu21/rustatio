@@ -22,7 +22,7 @@
     "stopAtDownloadedEnabled": false,
     "stopAtSeedTimeEnabled": true,
     "stopAtSeedTimeHours": 48,
-    "stopWhenNoLeechers": true
+    "idleWhenNoLeechers": true
   },
   "tips": [
     "Gradual ramp-up from 100 to 300 KB/s looks natural",

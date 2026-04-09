@@ -12,7 +12,13 @@
     clearDefaultPreset,
     refreshDefaultPreset,
   } from '$lib/defaultPreset.js';
-  import { buildCustomPreset, buildPresetExportData } from '$lib/customPreset.js';
+  import {
+    buildCustomPreset,
+    buildPresetExportData,
+    normalizePreset,
+    normalizePresets,
+    normalizePresetSettings,
+  } from '$lib/customPreset.js';
   import { THEMES, THEME_CATEGORIES, getTheme, selectTheme } from '$lib/themeStore.svelte.js';
   import { Settings, X, Check, Trash2, Download, Upload, Save } from '@lucide/svelte';
   import PresetIcon from '../config/PresetIcon.svelte';
@@ -69,7 +75,7 @@
 
   async function loadPresetState() {
     try {
-      customPresets = (await api.listCustomPresets()) || [];
+      customPresets = normalizePresets((await api.listCustomPresets()) || []);
       const preset = await refreshDefaultPreset();
       defaultPresetId = preset?.id || null;
       defaultPresetName = preset?.name || 'Rustatio defaults';
@@ -155,7 +161,7 @@
   function applyPreset(preset) {
     const active = get(activeInstanceId);
     if (active !== null) {
-      instanceActions.updateInstance(active, preset.settings);
+      instanceActions.updateInstance(active, normalizePresetSettings(preset.settings));
     }
     close();
   }
@@ -165,7 +171,7 @@
     if (!instance) return false;
 
     // Compare all settings in the preset with the instance
-    for (const [key, value] of Object.entries(preset.settings)) {
+    for (const [key, value] of Object.entries(normalizePresetSettings(preset.settings))) {
       // Handle numeric comparisons with tolerance for floating point
       if (typeof value === 'number' && typeof instance[key] === 'number') {
         if (Math.abs(instance[key] - value) > 0.001) return false;
@@ -370,7 +376,7 @@
       }
 
       // Create custom preset object
-      const newPreset = {
+      const newPreset = normalizePreset({
         id: `custom-${Date.now()}`,
         name: data.name || 'Imported Preset',
         description: data.description || 'Imported custom preset',
@@ -378,7 +384,7 @@
         custom: true,
         created_at: data.created_at || data.createdAt || new Date().toISOString(),
         settings: data.settings,
-      };
+      });
 
       // Add to custom presets
       await api.upsertCustomPreset(newPreset);

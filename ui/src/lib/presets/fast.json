@@ -22,7 +22,7 @@
     "stopAtUploadedGB": 50,
     "stopAtDownloadedEnabled": false,
     "stopAtSeedTimeEnabled": false,
-    "stopWhenNoLeechers": false
+    "idleWhenNoLeechers": false
   },
   "tips": [
     "Ramps from 1 to 2 MB/s for quick ratio building",
