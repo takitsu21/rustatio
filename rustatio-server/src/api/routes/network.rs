@@ -1,6 +1,6 @@
 //! Network and VPN status endpoints.
 
-use axum::{extract::State, http::StatusCode, response::Response, routing::get, Router};
+use axum::{extract::State, response::Response, routing::get, Router};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -12,6 +12,7 @@ use crate::services::GluetunAuth;
 
 #[derive(Serialize, ToSchema)]
 pub struct NetworkStatus {
+    pub configured: bool,
     pub ip: String,
     pub country: Option<String>,
     pub organization: Option<String>,
@@ -45,12 +46,11 @@ struct GluetunForwardedPort {
     path = "/network/status",
     tag = "network",
     summary = "Get network status",
-    description = "Returns the current public IP address and VPN connection status. Requires gluetun container to be running.",
+    description = "Returns the current public IP address and VPN connection status. When no VPN is configured, returns a normal response with configured=false.",
     security(("bearer_auth" = [])),
     responses(
         (status = 200, description = "Network status retrieved", body = ApiSuccess<NetworkStatus>),
-        (status = 401, description = "Unauthorized", body = ApiError),
-        (status = 503, description = "Gluetun not available", body = ApiError)
+        (status = 401, description = "Unauthorized", body = ApiError)
     )
 )]
 pub async fn get_network_status(State(state): State<ServerState>) -> Response {
@@ -59,18 +59,31 @@ pub async fn get_network_status(State(state): State<ServerState>) -> Response {
         &GluetunAuth::from_env(),
         state.app.current_forwarded_port(),
         state.app.vpn_port_sync_enabled(),
-        listener_status,
+        listener_status.clone(),
     )
     .await
     .map_or_else(
-        || {
-            ApiError::response(
-                StatusCode::SERVICE_UNAVAILABLE,
-                "Gluetun not available. Network status requires Docker with gluetun VPN container.",
-            )
-        },
+        || ApiSuccess::response(no_vpn_status(state.app.vpn_port_sync_enabled(), listener_status)),
         ApiSuccess::response,
     )
+}
+
+fn no_vpn_status(
+    vpn_port_sync_enabled: bool,
+    listener_status: rustatio_core::PeerListenerStatus,
+) -> NetworkStatus {
+    NetworkStatus {
+        configured: false,
+        ip: String::new(),
+        country: None,
+        organization: None,
+        is_vpn: false,
+        forwarded_port: None,
+        peer_listener_port: listener_status.bound_port,
+        peer_listener_active: listener_status.bound_port.is_some(),
+        peer_listener_error: listener_status.last_error,
+        vpn_port_sync_enabled,
+    }
 }
 
 async fn try_gluetun_detection(
@@ -115,6 +128,7 @@ async fn try_gluetun_detection(
     };
 
     Some(NetworkStatus {
+        configured: true,
         ip: public_ip.public_ip,
         country: public_ip.country,
         organization: public_ip.organization,
@@ -129,4 +143,32 @@ async fn try_gluetun_detection(
 
 pub fn router() -> Router<ServerState> {
     Router::new().route("/network/status", get(get_network_status))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn no_vpn_status_reports_unconfigured_without_error() {
+        let status = no_vpn_status(
+            true,
+            rustatio_core::PeerListenerStatus {
+                enabled: true,
+                desired_port: Some(51413),
+                bound_port: Some(51413),
+                active_torrents: 1,
+                last_error: Some("bind warning".to_string()),
+            },
+        );
+
+        assert!(!status.configured);
+        assert!(status.ip.is_empty());
+        assert!(!status.is_vpn);
+        assert_eq!(status.forwarded_port, None);
+        assert_eq!(status.peer_listener_port, Some(51413));
+        assert!(status.peer_listener_active);
+        assert_eq!(status.peer_listener_error.as_deref(), Some("bind warning"));
+        assert!(status.vpn_port_sync_enabled);
+    }
 }

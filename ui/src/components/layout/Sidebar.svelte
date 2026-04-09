@@ -57,6 +57,10 @@
   let watchCount = $state(null);
   let watchInterval = null;
 
+  function shouldShowNetworkStatus(status) {
+    return status?.configured !== false;
+  }
+
   // Derived state
   let hasMultipleInstancesWithTorrents = $derived(
     $instances.filter(inst => inst.torrent).length > 1
@@ -955,13 +959,15 @@
     {#if isOpen}
       <!-- Mobile footer stays in the scroll flow -->
       <div class="border-t border-border bg-card p-3 space-y-2">
-        <NetworkStatus
-          isCollapsed={isCompact}
-          {networkStatus}
-          {networkStatusLoading}
-          {networkStatusError}
-          {onRefreshNetworkStatus}
-        />
+        {#if shouldShowNetworkStatus(networkStatus)}
+          <NetworkStatus
+            isCollapsed={isCompact}
+            {networkStatus}
+            {networkStatusLoading}
+            {networkStatusError}
+            {onRefreshNetworkStatus}
+          />
+        {/if}
 
         {#if !isCompact}
           <a
@@ -987,13 +993,15 @@
   {#if !isOpen}
     <!-- Desktop footer stays pinned below the scroll area -->
     <div class="shrink-0 border-t border-border bg-card p-3 space-y-2">
-      <NetworkStatus
-        isCollapsed={isCompact}
-        {networkStatus}
-        {networkStatusLoading}
-        {networkStatusError}
-        {onRefreshNetworkStatus}
-      />
+      {#if shouldShowNetworkStatus(networkStatus)}
+        <NetworkStatus
+          isCollapsed={isCompact}
+          {networkStatus}
+          {networkStatusLoading}
+          {networkStatusError}
+          {onRefreshNetworkStatus}
+        />
+      {/if}
 
       {#if !isCompact}
         <a

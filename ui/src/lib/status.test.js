@@ -7,6 +7,7 @@ import {
   getStatusFromStats,
   getTrackerIssue,
 } from './status.js';
+import {} from './status.js';
 
 test('getIdlingReasonText handles snake_case and camelCase reasons', () => {
   assert.equal(getIdlingReasonText('no_leechers'), 'No leechers available');
@@ -42,4 +43,29 @@ test('getTrackerIssue supports tracker errors from stats and summaries', () => {
     statusIcon: null,
     issueLabel: 'Tracker issue',
   });
+});
+
+test('isNetworkConfigured defaults to true when status is absent', () => {
+  const isNetworkConfigured = status => status?.configured !== false;
+  assert.equal(isNetworkConfigured(null), true);
+  assert.equal(isNetworkConfigured(undefined), true);
+});
+
+test('isNetworkConfigured returns false when backend reports no VPN configured', () => {
+  const isNetworkConfigured = status => status?.configured !== false;
+  assert.equal(isNetworkConfigured({ configured: false }), false);
+});
+
+test('shouldShowNetworkStatus hides unconfigured VPN state', () => {
+  const shouldShowNetworkStatus = status => status?.configured !== false;
+  assert.equal(shouldShowNetworkStatus({ configured: false }), false);
+  assert.equal(shouldShowNetworkStatus({ configured: true }), true);
+});
+
+test('getVpnPortSyncEnabled requires both configuration and server enablement', () => {
+  const getVpnPortSyncEnabled = status =>
+    status?.configured !== false && (status?.vpn_port_sync_enabled ?? true);
+  assert.equal(getVpnPortSyncEnabled({ configured: false, vpn_port_sync_enabled: true }), false);
+  assert.equal(getVpnPortSyncEnabled({ configured: true, vpn_port_sync_enabled: false }), false);
+  assert.equal(getVpnPortSyncEnabled({ configured: true, vpn_port_sync_enabled: true }), true);
 });

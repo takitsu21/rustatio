@@ -115,6 +115,14 @@
     return status?.forwarded_port ?? status?.forwardedPort ?? null;
   }
 
+  function isNetworkConfigured(status) {
+    return status?.configured !== false;
+  }
+
+  function getVpnPortSyncEnabled(status) {
+    return isNetworkConfigured(status) && (status?.vpn_port_sync_enabled ?? true);
+  }
+
   // Store cleanup functions
   let unsubActiveInstance = null;
   let unsubSessionSave = null;
@@ -158,6 +166,9 @@
       const result = await api.getNetworkStatus();
       if (result) {
         networkStatus = result;
+        if (isNetworkConfigured(result) === false) {
+          stopNetworkStatusPolling();
+        }
       } else {
         networkStatus = null;
         networkStatusError = 'unavailable';
@@ -171,8 +182,8 @@
 
   function startNetworkStatusPolling() {
     if (networkStatusIntervalId) return;
-    refreshNetworkStatus();
     networkStatusIntervalId = setInterval(refreshNetworkStatus, 15000);
+    refreshNetworkStatus();
   }
 
   function stopNetworkStatusPolling() {
@@ -1622,9 +1633,8 @@
                   port={$activeInstance.port}
                   currentForwardedPort={getForwardedPort(networkStatus)}
                   vpnPortSyncVisible={isServerMode}
-                  vpnPortSyncEnabled={isServerMode
-                    ? (networkStatus?.vpn_port_sync_enabled ?? true)
-                    : false}
+                  networkStatusConfigured={isServerMode ? isNetworkConfigured(networkStatus) : true}
+                  vpnPortSyncEnabled={isServerMode ? getVpnPortSyncEnabled(networkStatus) : false}
                   {networkStatusError}
                   vpnPortSync={$activeInstance.vpnPortSync}
                   uploadRate={$activeInstance.uploadRate}

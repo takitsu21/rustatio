@@ -16,6 +16,14 @@
   let networkStatus = $state(null);
   let networkStatusError = $state(null);
 
+  function isNetworkConfigured(status) {
+    return status?.configured !== false;
+  }
+
+  function getVpnPortSyncEnabled(status) {
+    return isNetworkConfigured(status) && (status?.vpn_port_sync_enabled ?? true);
+  }
+
   let activeFiltersCount = $derived(
     ($gridFilters.stateFilter !== 'all' ? 1 : 0) +
       $gridFilters.tagFilter.length +
@@ -212,7 +220,8 @@
   bind:isOpen={importDialogOpen}
   vpnPortSyncVisible={true}
   currentForwardedPort={networkStatus?.forwarded_port ?? networkStatus?.forwardedPort ?? null}
-  vpnPortSyncEnabled={networkStatus?.vpn_port_sync_enabled ?? true}
+  networkStatusConfigured={isNetworkConfigured(networkStatus)}
+  vpnPortSyncEnabled={getVpnPortSyncEnabled(networkStatus)}
   {networkStatusError}
   onRefreshNetworkStatus={refreshNetworkStatus}
 />

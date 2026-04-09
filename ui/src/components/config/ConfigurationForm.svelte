@@ -21,6 +21,7 @@
     vpnPortSyncVisible = false,
     currentForwardedPort = null,
     vpnPortSyncEnabled = true,
+    networkStatusConfigured = true,
     networkStatusError = null,
     vpnPortSync,
     uploadRate,
@@ -96,6 +97,15 @@
       localPort = currentForwardedPort;
     }
   });
+
+  let networkStatusUnavailable = $derived(networkStatusError === 'unavailable');
+  let vpnPortSyncBlocked = $derived(
+    !networkStatusConfigured || !vpnPortSyncEnabled || networkStatusUnavailable
+  );
+  let useSyncedPort = $derived(
+    vpnPortSyncVisible && localVpnPortSync && networkStatusConfigured && vpnPortSyncEnabled
+  );
+  let disableVpnPortSyncToggle = $derived(isRunning || (vpnPortSyncBlocked && !localVpnPortSync));
 
   // Helper to call onUpdate
   function updateValue(key, value) {
@@ -215,7 +225,7 @@
   }
 
   function handleVpnPortSyncChange(checked) {
-    if (checked && (!vpnPortSyncEnabled || networkStatusError === 'unavailable')) {
+    if (checked && vpnPortSyncBlocked) {
       return;
     }
 
@@ -275,9 +285,7 @@
                 <Checkbox
                   id="vpn-port-sync"
                   bind:checked={localVpnPortSync}
-                  disabled={isRunning ||
-                    (!vpnPortSyncEnabled && !localVpnPortSync) ||
-                    (networkStatusError === 'unavailable' && !localVpnPortSync)}
+                  disabled={disableVpnPortSyncToggle}
                   onchange={handleVpnPortSyncChange}
                 />
                 <Label for="vpn-port-sync" class="cursor-pointer flex items-center gap-1">
@@ -291,18 +299,14 @@
             id="port"
             type="number"
             bind:value={localPort}
-            disabled={isRunning || (localVpnPortSync && vpnPortSyncEnabled)}
+            disabled={isRunning || useSyncedPort}
             min="1024"
             max="65535"
             class={cn(
               'h-9 transition-colors',
-              vpnPortSyncVisible &&
-                localVpnPortSync &&
-                vpnPortSyncEnabled &&
+              useSyncedPort &&
                 'border-stat-upload/50 bg-stat-upload/10 text-stat-upload placeholder:text-stat-upload/60',
-              vpnPortSyncVisible &&
-                localVpnPortSync &&
-                vpnPortSyncEnabled &&
+              useSyncedPort &&
                 currentForwardedPort &&
                 'ring-1 ring-stat-upload/30 focus-visible:ring-stat-upload'
             )}
@@ -310,7 +314,9 @@
             onblur={handlePortBlur}
             oninput={handlePortInput}
           />
-          {#if vpnPortSyncVisible && localVpnPortSync && vpnPortSyncEnabled && currentForwardedPort}
+          {#if vpnPortSyncVisible && !networkStatusConfigured}
+            <p class="mt-1 text-[11px] text-amber-400">No VPN configured.</p>
+          {:else if vpnPortSyncVisible && useSyncedPort && currentForwardedPort}
             <p class="mt-1 text-[11px] text-foreground/80">
               Current forwarded port: <span class="font-mono">{currentForwardedPort}</span>
             </p>
@@ -325,12 +331,12 @@
               >
               and restart Rustatio to enable it.
             </p>
-          {:else if vpnPortSyncVisible && networkStatusError === 'unavailable'}
+          {:else if vpnPortSyncVisible && networkStatusUnavailable}
             <p class="mt-1 text-[11px] text-amber-400">
               Gluetun status is unavailable. Check that Gluetun is running with port forwarding
               enabled.
             </p>
-          {:else if vpnPortSyncVisible && localVpnPortSync && vpnPortSyncEnabled && !currentForwardedPort}
+          {:else if vpnPortSyncVisible && useSyncedPort && !currentForwardedPort}
             <p class="mt-1 text-[11px] text-amber-400">
               Waiting for a forwarded port from Gluetun. Make sure <span class="font-mono"
                 >VPN_PORT_FORWARDING=on</span
