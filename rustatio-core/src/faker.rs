@@ -816,6 +816,8 @@ impl RatioFaker {
         self.stats.state = FakerState::Stopped;
         self.stats.is_idling = false;
         self.stats.idling_reason = None;
+        self.stats.current_upload_rate = 0.0;
+        self.stats.current_download_rate = 0.0;
     }
 
     async fn apply_post_stop_action(&mut self) -> Result<()> {
@@ -1361,6 +1363,8 @@ impl RatioFaker {
         self.stats.state = FakerState::Paused;
         self.stats.is_idling = false;
         self.stats.idling_reason = None;
+        self.stats.current_upload_rate = 0.0;
+        self.stats.current_download_rate = 0.0;
         Ok(())
     }
 
@@ -2290,5 +2294,74 @@ mod tests {
         assert!(matches!(faker.stats.state, FakerState::Stopped));
         assert_eq!(faker.stats.tracker_error.as_deref(), Some("Tracker unavailable"));
         assert!(faker.stats.next_announce.is_none());
+    }
+
+    #[test]
+    fn pause_clears_current_rates() {
+        let torrent = Arc::new(TorrentInfo {
+            info_hash: [15u8; 20],
+            announce: "https://tracker.test/announce".to_string(),
+            announce_list: None,
+            name: "sample".to_string(),
+            total_size: 1024,
+            piece_length: 256,
+            num_pieces: 4,
+            creation_date: None,
+            comment: None,
+            created_by: None,
+            is_single_file: true,
+            file_count: 1,
+            files: Vec::new(),
+        });
+
+        let faker = RatioFaker::new(torrent, FakerConfig::default(), None);
+        assert!(faker.is_ok());
+        let mut faker = faker.unwrap_or_else(|_| panic!("failed to create faker"));
+
+        faker.stats.state = FakerState::Running;
+        faker.stats.current_upload_rate = 42.0;
+        faker.stats.current_download_rate = 24.0;
+
+        let paused = faker.pause();
+        assert!(paused.is_ok());
+
+        assert!(matches!(faker.stats.state, FakerState::Paused));
+        assert_eq!(faker.stats.current_upload_rate, 0.0);
+        assert_eq!(faker.stats.current_download_rate, 0.0);
+    }
+
+    #[test]
+    fn stop_result_clears_current_rates() {
+        let torrent = Arc::new(TorrentInfo {
+            info_hash: [16u8; 20],
+            announce: "https://tracker.test/announce".to_string(),
+            announce_list: None,
+            name: "sample".to_string(),
+            total_size: 1024,
+            piece_length: 256,
+            num_pieces: 4,
+            creation_date: None,
+            comment: None,
+            created_by: None,
+            is_single_file: true,
+            file_count: 1,
+            files: Vec::new(),
+        });
+
+        let faker = RatioFaker::new(torrent, FakerConfig::default(), None);
+        assert!(faker.is_ok());
+        let mut faker = faker.unwrap_or_else(|_| panic!("failed to create faker"));
+
+        faker.stats.state = FakerState::Running;
+        faker.stats.current_upload_rate = 42.0;
+        faker.stats.current_download_rate = 24.0;
+
+        faker.apply_stop_result(Err(FakerError::TrackerError(TrackerError::HttpError(
+            "connection refused".to_string(),
+        ))));
+
+        assert!(matches!(faker.stats.state, FakerState::Stopped));
+        assert_eq!(faker.stats.current_upload_rate, 0.0);
+        assert_eq!(faker.stats.current_download_rate, 0.0);
     }
 }

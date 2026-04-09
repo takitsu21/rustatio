@@ -1,6 +1,7 @@
 <script>
   import { onDestroy, onMount } from 'svelte';
   import { api, getRunMode } from '$lib/api.js';
+  import { getGridLiveRate } from '$lib/gridMetrics.js';
   import { instances, activeInstanceId, instanceActions } from '$lib/instanceStore.js';
   import { viewMode, gridInstances, selectedIds } from '$lib/gridStore.js';
   import { cn } from '$lib/utils.js';
@@ -128,8 +129,8 @@
       totalUploaded += inst.uploaded || 0;
       totalDownloaded += inst.downloaded || 0;
       totalSize += inst.totalSize || 0;
-      totalUploadRate += inst.currentUploadRate || 0;
-      totalDownloadRate += inst.currentDownloadRate || 0;
+      totalUploadRate += getGridLiveRate(inst.state, inst.currentUploadRate);
+      totalDownloadRate += getGridLiveRate(inst.state, inst.currentDownloadRate);
       if ((inst.torrentCompletion ?? 100) < 100) downloadingCount++;
       const s = inst.state || 'stopped';
       stateCounts[s] = (stateCounts[s] || 0) + 1;
