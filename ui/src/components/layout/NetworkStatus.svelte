@@ -22,6 +22,10 @@
     return status?.peer_listener_error ?? status?.peerListenerError ?? null;
   }
 
+  function isNetworkConfigured(status) {
+    return status?.configured !== false;
+  }
+
   // Mask IP address for privacy (show first and last octets)
   function maskIp(ip) {
     if (!ip) return '---';
@@ -71,7 +75,12 @@
     <div class="space-y-1.5">
       <!-- VPN Status indicator -->
       <div class={cn('flex items-center gap-2', isCollapsed && 'lg:justify-center')}>
-        {#if networkStatus.is_vpn}
+        {#if !isNetworkConfigured(networkStatus)}
+          <LockOpen size={16} class="flex-shrink-0 text-stat-ratio" />
+          <div class={cn('flex-1 min-w-0', isCollapsed && 'lg:hidden')}>
+            <div class="text-xs font-medium text-stat-ratio">No VPN configured</div>
+          </div>
+        {:else if networkStatus.is_vpn}
           <!-- VPN detected - green lock -->
           <Lock size={16} class="flex-shrink-0 text-stat-upload" />
           <div class={cn('flex-1 min-w-0', isCollapsed && 'lg:hidden')}>
@@ -101,7 +110,7 @@
       </div>
 
       <!-- IP and Location -->
-      {#if !isCollapsed}
+      {#if !isCollapsed && isNetworkConfigured(networkStatus)}
         <div class="text-[10px] text-muted-foreground pl-6">
           <div class="flex items-center gap-1.5">
             <span class="font-mono">{maskIp(networkStatus.ip)}</span>
