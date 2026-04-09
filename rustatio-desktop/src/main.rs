@@ -4,6 +4,8 @@ mod commands;
 mod logging;
 mod persistence;
 mod state;
+#[cfg(test)]
+mod state_tests;
 mod watch;
 #[cfg(test)]
 mod watch_tests;
@@ -46,17 +48,8 @@ impl PeerLookup for DesktopPeerLookup {
 
 /// Synchronous save for the exit handler (tokio runtime may be winding down)
 fn save_state_sync(state: &AppState) {
-    let Ok(handle) = tokio::runtime::Handle::try_current() else {
-        log::warn!("No tokio runtime available for exit save");
-        return;
-    };
-
-    let result = tokio::task::block_in_place(|| {
-        handle.block_on(async move {
-            let persisted = state.build_persisted_state().await;
-            persistence::save_state(&persisted)
-        })
-    });
+    let persisted = state.build_persisted_state_blocking();
+    let result = persistence::save_state(&persisted);
 
     match result {
         Ok(()) => log::info!("Final state saved successfully"),
