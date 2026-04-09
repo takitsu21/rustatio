@@ -1,10 +1,10 @@
 use super::state::AppState;
+use crate::services::GluetunAuth;
 use serde::Deserialize;
 use std::time::Duration;
 use tokio::sync::mpsc;
 
 const DEFAULT_INTERVAL_SECS: u64 = 15;
-const GLUETUN_PORTFORWARD_URL: &str = "http://localhost:8000/v1/portforward";
 
 pub struct VpnPortSync {
     shutdown_tx: Option<mpsc::Sender<()>>,
@@ -72,6 +72,7 @@ async fn sync_loop(
     config: VpnPortSyncConfig,
     mut shutdown_rx: mpsc::Receiver<()>,
 ) {
+    let auth = GluetunAuth::from_env();
     let client = match reqwest::Client::builder().timeout(Duration::from_secs(2)).build() {
         Ok(client) => client,
         Err(err) => {
@@ -87,7 +88,7 @@ async fn sync_loop(
         tokio::select! {
             _ = shutdown_rx.recv() => break,
             _ = ticker.tick() => {
-                if let Err(err) = sync_once(&state, &client).await {
+                if let Err(err) = sync_once(&state, &client, &auth).await {
                     tracing::debug!("VPN port sync skipped update: {}", err);
                 }
             }
@@ -95,8 +96,12 @@ async fn sync_loop(
     }
 }
 
-async fn sync_once(state: &AppState, client: &reqwest::Client) -> Result<(), String> {
-    let port = fetch_forwarded_port(client).await?;
+async fn sync_once(
+    state: &AppState,
+    client: &reqwest::Client,
+    auth: &GluetunAuth,
+) -> Result<(), String> {
+    let port = fetch_forwarded_port(client, auth).await?;
     if state.current_forwarded_port() == Some(port) {
         return Ok(());
     }
@@ -115,9 +120,9 @@ async fn sync_once(state: &AppState, client: &reqwest::Client) -> Result<(), Str
     Ok(())
 }
 
-async fn fetch_forwarded_port(client: &reqwest::Client) -> Result<u16, String> {
-    let response = client
-        .get(GLUETUN_PORTFORWARD_URL)
+async fn fetch_forwarded_port(client: &reqwest::Client, auth: &GluetunAuth) -> Result<u16, String> {
+    let response = auth
+        .get(client, "/v1/portforward")
         .send()
         .await
         .map_err(|e| format!("Failed to query Gluetun port forward endpoint: {e}"))?;

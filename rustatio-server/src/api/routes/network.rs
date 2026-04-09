@@ -8,6 +8,7 @@ use crate::api::{
     common::{ApiError, ApiSuccess},
     ServerState,
 };
+use crate::services::GluetunAuth;
 
 #[derive(Serialize, ToSchema)]
 pub struct NetworkStatus {
@@ -55,6 +56,7 @@ struct GluetunForwardedPort {
 pub async fn get_network_status(State(state): State<ServerState>) -> Response {
     let listener_status = state.app.peer_listener_status().await;
     try_gluetun_detection(
+        &GluetunAuth::from_env(),
         state.app.current_forwarded_port(),
         state.app.vpn_port_sync_enabled(),
         listener_status,
@@ -72,6 +74,7 @@ pub async fn get_network_status(State(state): State<ServerState>) -> Response {
 }
 
 async fn try_gluetun_detection(
+    auth: &GluetunAuth,
     current_forwarded_port: Option<u16>,
     vpn_port_sync_enabled: bool,
     listener_status: rustatio_core::PeerListenerStatus,
@@ -80,8 +83,8 @@ async fn try_gluetun_detection(
         reqwest::Client::builder().timeout(std::time::Duration::from_millis(1000)).build().ok()?;
 
     // Get VPN status
-    let vpn_status = client
-        .get("http://localhost:8000/v1/vpn/status")
+    let vpn_status = auth
+        .get(&client, "/v1/vpn/status")
         .send()
         .await
         .ok()?
@@ -91,8 +94,8 @@ async fn try_gluetun_detection(
 
     let is_vpn = vpn_status.status == "running";
 
-    let public_ip = client
-        .get("http://localhost:8000/v1/publicip/ip")
+    let public_ip = auth
+        .get(&client, "/v1/publicip/ip")
         .send()
         .await
         .ok()?
@@ -100,7 +103,7 @@ async fn try_gluetun_detection(
         .await
         .ok()?;
 
-    let forwarded_port = match client.get("http://localhost:8000/v1/portforward").send().await {
+    let forwarded_port = match auth.get(&client, "/v1/portforward").send().await {
         Ok(response) => match response.error_for_status() {
             Ok(response) => match response.json::<GluetunForwardedPort>().await {
                 Ok(data) if data.port > 0 => Some(data.port),

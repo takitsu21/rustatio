@@ -238,9 +238,8 @@ services:
       - WIREGUARD_PRIVATE_KEY=${WIREGUARD_PRIVATE_KEY}
       - SERVER_COUNTRIES=${SERVER_COUNTRIES:-Switzerland}
       # Gluetun control server auth (v3.39.1+ defaults to private routes)
-      # If you want to have your network status available you have to disable the gluetun auth
-      # Since the control server is only reachable within the container network namespace it is safe
-      - HTTP_CONTROL_SERVER_AUTH_DEFAULT_ROLE={"auth":"none"}
+      # Generate a key with: docker run --rm qmcgaw/gluetun genkey
+      - HTTP_CONTROL_SERVER_AUTH_DEFAULT_ROLE={"auth":"apikey","apikey":"${GLUETUN_API_KEY:-CHANGE_ME}"}
     ports:
       - "${WEBUI_PORT:-8080}:8080" # Rustatio Web UI
     restart: unless-stopped
@@ -252,6 +251,7 @@ services:
       - PORT=8080
       - RUST_LOG=${RUST_LOG:-trace}
       - VPN_PORT_SYNC=${VPN_PORT_SYNC:-on}
+      - GLUETUN_CONTROL_SERVER_API_KEY=${GLUETUN_API_KEY:-CHANGE_ME}
       - PUID=${PUID:-1000}
       - PGID=${PGID:-1000}
       # Optional authentication for your server (Recommended if exposing on internet)
@@ -269,6 +269,8 @@ services:
 volumes:
   rustatio_data:
 ```
+
+Rustatio reads the Gluetun API key from `GLUETUN_CONTROL_SERVER_API_KEY` and sends it as the `X-API-Key` header for control server requests. This example enables Gluetun auth by default with the `CHANGE_ME` placeholder, so replace it with a real key before running the stack.
 
 > **Note**: The `ports` are defined on the `gluetun` container since Rustatio uses its network stack. See the [gluetun wiki](https://github.com/qdm12/gluetun-wiki) for VPN provider-specific configuration.
 
