@@ -187,7 +187,7 @@
               />
             </div>
 
-            <div class="space-y-1 max-h-56 overflow-y-auto pr-1">
+            <div class={cn('space-y-1 pr-1', mobile ? '' : 'max-h-56 overflow-y-auto')}>
               {#if $tagFilterEntries.length === 0}
                 <div class="px-2 py-3 text-xs text-muted-foreground">No tags found.</div>
               {:else}
@@ -250,7 +250,7 @@
               />
             </div>
 
-            <div class="space-y-1 max-h-64 overflow-y-auto pr-1">
+            <div class={cn('space-y-1 pr-1', mobile ? '' : 'max-h-64 overflow-y-auto')}>
               {#if $trackerFilterEntries.length === 0}
                 <div class="px-2 py-3 text-xs text-muted-foreground">No trackers found.</div>
               {:else}
