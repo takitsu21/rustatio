@@ -4,6 +4,17 @@ use rustatio_core::logger::set_instance_context_str;
 use rustatio_core::FakerStats;
 use std::sync::Arc;
 
+fn resolve_instance_label(
+    instances: &std::collections::HashMap<String, super::instance::FakerInstance>,
+    id: &str,
+) -> String {
+    instances
+        .get(id)
+        .map(|instance| instance.summary.name.clone())
+        .filter(|name| !name.is_empty())
+        .unwrap_or_else(|| id.to_string())
+}
+
 #[async_trait]
 pub trait InstanceLifecycle {
     async fn start_instance(&self, id: &str) -> Result<(), String>;
@@ -17,7 +28,11 @@ pub trait InstanceLifecycle {
 #[async_trait]
 impl InstanceLifecycle for AppState {
     async fn start_instance(&self, id: &str) -> Result<(), String> {
-        set_instance_context_str(Some(id));
+        let label = {
+            let instances = self.instances.read().await;
+            resolve_instance_label(&instances, id)
+        };
+        set_instance_context_str(Some(&label));
 
         let (faker, restore) = {
             let instances = self.instances.read().await;
@@ -45,7 +60,11 @@ impl InstanceLifecycle for AppState {
     }
 
     async fn stop_instance(&self, id: &str) -> Result<FakerStats, String> {
-        set_instance_context_str(Some(id));
+        let label = {
+            let instances = self.instances.read().await;
+            resolve_instance_label(&instances, id)
+        };
+        set_instance_context_str(Some(&label));
 
         let faker = {
             let instances = self.instances.read().await;
@@ -75,7 +94,11 @@ impl InstanceLifecycle for AppState {
     }
 
     async fn pause_instance(&self, id: &str) -> Result<(), String> {
-        set_instance_context_str(Some(id));
+        let label = {
+            let instances = self.instances.read().await;
+            resolve_instance_label(&instances, id)
+        };
+        set_instance_context_str(Some(&label));
 
         let faker = {
             let instances = self.instances.read().await;
@@ -94,7 +117,11 @@ impl InstanceLifecycle for AppState {
     }
 
     async fn resume_instance(&self, id: &str) -> Result<(), String> {
-        set_instance_context_str(Some(id));
+        let label = {
+            let instances = self.instances.read().await;
+            resolve_instance_label(&instances, id)
+        };
+        set_instance_context_str(Some(&label));
 
         let faker = {
             let instances = self.instances.read().await;
@@ -113,7 +140,11 @@ impl InstanceLifecycle for AppState {
     }
 
     async fn update_instance(&self, id: &str) -> Result<FakerStats, String> {
-        set_instance_context_str(Some(id));
+        let label = {
+            let instances = self.instances.read().await;
+            resolve_instance_label(&instances, id)
+        };
+        set_instance_context_str(Some(&label));
 
         let faker = {
             let instances = self.instances.read().await;
@@ -137,7 +168,11 @@ impl InstanceLifecycle for AppState {
     }
 
     async fn update_stats_only(&self, id: &str) -> Result<FakerStats, String> {
-        set_instance_context_str(Some(id));
+        let label = {
+            let instances = self.instances.read().await;
+            resolve_instance_label(&instances, id)
+        };
+        set_instance_context_str(Some(&label));
 
         let faker = {
             let instances = self.instances.read().await;

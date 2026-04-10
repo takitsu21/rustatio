@@ -587,7 +587,7 @@ impl AppState {
     }
 
     async fn create_instance_internal(&self, context: InstanceBuildContext) -> Result<(), String> {
-        set_instance_context_str(Some(&context.id));
+        set_instance_context_str(Some(context.summary.name.as_str()));
 
         let id = context.id.clone();
         let existing = self.collect_existing_instance_state(&context).await;
