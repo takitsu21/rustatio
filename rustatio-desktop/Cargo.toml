@@ -15,7 +15,7 @@ rustatio-core = { path = "../rustatio-core", features = ["desktop"] }
 rustatio-watch = { path = "../rustatio-watch" }
 async-trait = "0.1"
 
-tauri = { version = "2.9", features = ["tray-icon"] }
+tauri = { version = "2.11", features = ["tray-icon"] }
 tauri-plugin-dialog = "2.0"
 tauri-plugin-updater = "2.0"
 tauri-plugin-process = "2.0"
