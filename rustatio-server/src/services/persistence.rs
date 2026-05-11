@@ -62,6 +62,8 @@ pub struct PersistedRuntime {
     pub stop_condition_met: bool,
     pub is_idling: bool,
     pub idling_reason: Option<String>,
+    #[serde(default)]
+    pub tracker_error: Option<String>,
     pub announce_count: u32,
 }
 

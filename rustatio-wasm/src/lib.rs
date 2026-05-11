@@ -124,6 +124,15 @@ pub fn load_instance_torrent(id: u32, file_bytes: &[u8]) -> Result<JsValue, JsVa
     let config = FakerConfig::default();
     let response_torrent = torrent.clone();
 
+    let duplicate = INSTANCES.with(|instances| {
+        instances.borrow().iter().any(|(existing_id, instance)| {
+            *existing_id != id && instance.torrent_info_hash == torrent_info_hash
+        })
+    });
+    if duplicate {
+        return Err(JsValue::from_str("Duplicate torrent skipped: already imported"));
+    }
+
     let torrent = Arc::new(torrent.without_files());
     let summary = Arc::new(torrent.summary());
 
@@ -396,7 +405,9 @@ pub async fn grid_import(torrent_files: JsValue, config_json: JsValue) -> Result
         .map_err(|e| JsValue::from_str(&e.to_string()))?;
 
     let mut imported: Vec<serde_json::Value> = Vec::new();
+    let mut duplicates: Vec<String> = Vec::new();
     let mut errors: Vec<String> = Vec::new();
+    let mut seen_hashes = std::collections::HashSet::new();
 
     for file_bytes in &files {
         let torrent = match TorrentInfo::from_bytes_summary(file_bytes) {
@@ -407,7 +418,6 @@ pub async fn grid_import(torrent_files: JsValue, config_json: JsValue) -> Result
             }
         };
 
-        let id = allocate_id();
         let preset = settings.resolve_for_instance();
         let mut config: FakerConfig = preset.into();
         config.initial_uploaded = 0;
@@ -420,6 +430,24 @@ pub async fn grid_import(torrent_files: JsValue, config_json: JsValue) -> Result
         });
         let torrent_info_hash = torrent.info_hash;
         let total_size = torrent.total_size;
+
+        if !seen_hashes.insert(torrent_info_hash) {
+            duplicates.push(format!("{name}: duplicate in import batch"));
+            continue;
+        }
+
+        let already_imported = INSTANCES.with(|instances| {
+            instances
+                .borrow()
+                .values()
+                .any(|instance| instance.torrent_info_hash == torrent_info_hash)
+        });
+        if already_imported {
+            duplicates.push(format!("{name}: already imported"));
+            continue;
+        }
+
+        let id = allocate_id();
 
         let torrent = Arc::new(torrent.without_files());
         let summary = Arc::new(torrent.summary());
@@ -463,7 +491,8 @@ pub async fn grid_import(torrent_files: JsValue, config_json: JsValue) -> Result
         }
     }
 
-    let result = serde_json::json!({ "imported": imported, "errors": errors });
+    let result =
+        serde_json::json!({ "imported": imported, "duplicates": duplicates, "errors": errors });
     to_js(&result)
 }
 
@@ -728,6 +757,8 @@ pub fn list_summaries() -> Result<JsValue, JsValue> {
                 _ if stats.is_idling => "idle".to_string(),
                 _ => format!("{:?}", stats.state).to_lowercase(),
             },
+            is_tracker_invalid: stats.tracker_error.is_some(),
+            tracker_error: stats.tracker_error.clone(),
             tags: instance.tags.clone(),
             total_size: instance.torrent.total_size,
             uploaded: stats.uploaded,

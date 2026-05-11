@@ -156,6 +156,12 @@ pub async fn load_instance_torrent(
     );
 
     let mut fakers = state.fakers.write().await;
+    if fakers
+        .iter()
+        .any(|(id, instance)| *id != instance_id && instance.torrent.info_hash == torrent.info_hash)
+    {
+        return Err("Duplicate torrent skipped: already imported".to_string());
+    }
     let response_torrent = torrent.clone();
     let torrent_arc = Arc::new(torrent.without_files());
     let summary_arc = Arc::new(torrent_arc.summary());

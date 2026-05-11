@@ -313,6 +313,10 @@ pub struct FakerStats {
     pub is_idling: bool,               // True when idling due to no peers
     pub idling_reason: Option<String>, // "no_leechers" or "no_seeders"
 
+    // === TRACKER STATE ===
+    #[serde(default)]
+    pub tracker_error: Option<String>,
+
     // === SESSION STATS (current session only) ===
     pub session_uploaded: u64,   // Uploaded in current session
     pub session_downloaded: u64, // Downloaded in current session
@@ -434,6 +438,56 @@ impl ScrapePlan {
 }
 
 impl RatioFaker {
+    fn tracker_error_message(error: &TrackerError) -> String {
+        let message = match error {
+            TrackerError::TrackerFailure(reason) | TrackerError::InvalidResponse(reason) => {
+                if Self::is_missing_torrent_message(reason) {
+                    "Torrent not found on tracker"
+                } else {
+                    "Tracker unavailable"
+                }
+            }
+            TrackerError::HttpError(_)
+            | TrackerError::BencodeError(_)
+            | TrackerError::UrlError(_) => "Tracker unavailable",
+        };
+
+        message.to_string()
+    }
+
+    fn is_missing_torrent_message(message: &str) -> bool {
+        let message = message.to_ascii_lowercase();
+        message.contains("torrent not found")
+            || message.contains("not registered")
+            || message.contains("unregistered torrent")
+            || message.contains("unknown torrent")
+            || message.contains("torrent deleted")
+            || message.contains("torrent does not exist")
+    }
+
+    fn mark_tracker_invalid(&mut self, message: &str) {
+        self.stats.tracker_error = Some(message.to_string());
+        self.stats.state = FakerState::Stopped;
+        self.stats.is_idling = false;
+        self.stats.idling_reason = None;
+        self.stats.current_upload_rate = 0.0;
+        self.stats.current_download_rate = 0.0;
+        self.stats.next_announce = None;
+        self.stats.last_announce = None;
+        log_warn!("Stopping faker because tracker issue requires attention: {}", message);
+    }
+
+    fn apply_tracker_error(&mut self, error: &FakerError) {
+        if let FakerError::TrackerError(tracker_error) = error {
+            let message = Self::tracker_error_message(tracker_error);
+            self.mark_tracker_invalid(&message);
+        }
+    }
+
+    fn clear_tracker_error(&mut self) {
+        self.stats.tracker_error = None;
+    }
+
     fn resolve_stop_ratio(config: &mut FakerConfig) {
         if config.randomize_ratio {
             if let Some(base_ratio) = config.stop_at_ratio {
@@ -529,6 +583,7 @@ impl RatioFaker {
             // Idle state
             is_idling: false,
             idling_reason: None,
+            tracker_error: None,
 
             // Session stats (starts fresh at 0)
             session_uploaded: 0,
@@ -644,6 +699,7 @@ impl RatioFaker {
         self.stats.stop_condition_met = false;
         self.stats.is_idling = false;
         self.stats.idling_reason = None;
+        self.stats.tracker_error = None;
         self.stats.state = FakerState::Starting;
     }
 
@@ -687,6 +743,7 @@ impl RatioFaker {
     fn apply_start_result(&mut self, result: Result<AnnounceResponse>) {
         match result {
             Ok(response) => {
+                self.clear_tracker_error();
                 self.announce_interval = Duration::from_secs(response.interval as u64);
                 self.tracker_id = response.tracker_id;
 
@@ -704,12 +761,19 @@ impl RatioFaker {
                 );
             }
             Err(e) => {
-                log_warn!("Initial announce failed, will retry on next cycle: {}", e);
-                self.stats.next_announce = Some(Instant::now() + Duration::from_secs(30));
+                self.apply_tracker_error(&e);
+                if matches!(self.stats.state, FakerState::Stopped) {
+                    log_warn!("Initial announce failed, stopping faker: {}", e);
+                } else {
+                    log_warn!("Initial announce failed, will retry on next cycle: {}", e);
+                    self.stats.next_announce = Some(Instant::now() + Duration::from_secs(30));
+                }
             }
         }
 
-        self.stats.state = FakerState::Running;
+        if !matches!(self.stats.state, FakerState::Stopped) {
+            self.stats.state = FakerState::Running;
+        }
     }
 
     /// Stop the ratio faking session
@@ -817,6 +881,17 @@ impl RatioFaker {
     fn tick(&mut self, now: Instant) -> UpdateOutcome {
         let elapsed = now.duration_since(self.last_update);
         self.last_update = now;
+
+        if self.stats.tracker_error.is_some() {
+            self.stats.current_upload_rate = 0.0;
+            self.stats.current_download_rate = 0.0;
+            return UpdateOutcome {
+                completed: false,
+                stop: false,
+                scrape_due: false,
+                announce_due: false,
+            };
+        }
 
         if self.check_stop_conditions(&self.stats) {
             self.stats.current_upload_rate = 0.0;
@@ -1036,6 +1111,7 @@ impl RatioFaker {
     ) {
         match result {
             Ok(scrape_response) => {
+                self.clear_tracker_error();
                 self.stats.seeders = scrape_response.complete;
                 self.stats.leechers = scrape_response.incomplete;
                 self.last_scrape = now;
@@ -1046,6 +1122,7 @@ impl RatioFaker {
                 );
             }
             Err(e) => {
+                self.apply_tracker_error(e);
                 log_warn!("Scrape failed, disabling periodic scrape: {}", e);
                 self.scrape_supported = false;
             }
@@ -1055,6 +1132,7 @@ impl RatioFaker {
     fn apply_periodic_announce_result(&mut self, result: Result<AnnounceResponse>) {
         match result {
             Ok(response) => {
+                self.clear_tracker_error();
                 self.announce_interval = Duration::from_secs(response.interval as u64);
                 self.stats.seeders = response.complete;
                 self.stats.leechers = response.incomplete;
@@ -1069,8 +1147,11 @@ impl RatioFaker {
                 );
             }
             Err(e) => {
+                self.apply_tracker_error(&e);
                 log_warn!("Periodic announce failed, will retry next cycle: {}", e);
-                self.stats.next_announce = Some(Instant::now() + Duration::from_secs(30));
+                if !matches!(self.stats.state, FakerState::Stopped) {
+                    self.stats.next_announce = Some(Instant::now() + Duration::from_secs(30));
+                }
             }
         }
     }
@@ -1137,6 +1218,7 @@ impl RatioFaker {
             state: FakerState::Stopped,
             is_idling: false,
             idling_reason: None,
+            tracker_error: None,
             session_uploaded: 0,
             session_downloaded: 0,
             session_ratio: 0.0,
@@ -2085,5 +2167,128 @@ mod tests {
         assert_eq!(faker.stats.downloaded, downloaded_before);
         assert_eq!(faker.stats.current_upload_rate, 0.0);
         assert_eq!(faker.stats.current_download_rate, 0.0);
+    }
+
+    #[test]
+    fn tracker_error_message_marks_missing_torrents_as_invalid() {
+        let message = RatioFaker::tracker_error_message(&TrackerError::TrackerFailure(
+            "Torrent not registered here".to_string(),
+        ));
+
+        assert_eq!(message, "Torrent not found on tracker");
+    }
+
+    #[test]
+    fn tracker_invalid_stops_faker_and_clears_runtime_rates() {
+        let torrent = Arc::new(TorrentInfo {
+            info_hash: [12u8; 20],
+            announce: "https://tracker.test/announce".to_string(),
+            announce_list: None,
+            name: "sample".to_string(),
+            total_size: 1024,
+            piece_length: 256,
+            num_pieces: 4,
+            creation_date: None,
+            comment: None,
+            created_by: None,
+            is_single_file: true,
+            file_count: 1,
+            files: Vec::new(),
+        });
+
+        let faker = RatioFaker::new(torrent, FakerConfig::default(), None);
+        assert!(faker.is_ok());
+        let mut faker = faker.unwrap_or_else(|_| panic!("failed to create faker"));
+
+        faker.stats.state = FakerState::Running;
+        faker.stats.is_idling = true;
+        faker.stats.idling_reason = Some("no_leechers".to_string());
+        faker.stats.current_upload_rate = 123.0;
+        faker.stats.current_download_rate = 45.0;
+        faker.stats.last_announce = Some(Instant::now());
+        faker.stats.next_announce = Some(Instant::now() + Duration::from_mins(1));
+
+        faker.apply_tracker_error(&FakerError::TrackerError(TrackerError::InvalidResponse(
+            "Torrent deleted".to_string(),
+        )));
+
+        assert!(matches!(faker.stats.state, FakerState::Stopped));
+        assert_eq!(faker.stats.tracker_error.as_deref(), Some("Torrent not found on tracker"));
+        assert!(!faker.stats.is_idling);
+        assert!(faker.stats.idling_reason.is_none());
+        assert_eq!(faker.stats.current_upload_rate, 0.0);
+        assert_eq!(faker.stats.current_download_rate, 0.0);
+        assert!(faker.stats.last_announce.is_none());
+        assert!(faker.stats.next_announce.is_none());
+    }
+
+    #[test]
+    fn tracker_unreachable_stops_faker_and_sets_warning_message() {
+        let torrent = Arc::new(TorrentInfo {
+            info_hash: [13u8; 20],
+            announce: "https://tracker.test/announce".to_string(),
+            announce_list: None,
+            name: "sample".to_string(),
+            total_size: 1024,
+            piece_length: 256,
+            num_pieces: 4,
+            creation_date: None,
+            comment: None,
+            created_by: None,
+            is_single_file: true,
+            file_count: 1,
+            files: Vec::new(),
+        });
+
+        let faker = RatioFaker::new(torrent, FakerConfig::default(), None);
+        assert!(faker.is_ok());
+        let mut faker = faker.unwrap_or_else(|_| panic!("failed to create faker"));
+
+        faker.stats.state = FakerState::Running;
+        faker.stats.current_upload_rate = 123.0;
+        faker.stats.current_download_rate = 45.0;
+        faker.stats.next_announce = Some(Instant::now() + Duration::from_mins(1));
+
+        faker.apply_tracker_error(&FakerError::TrackerError(TrackerError::HttpError(
+            "connection refused".to_string(),
+        )));
+
+        assert!(matches!(faker.stats.state, FakerState::Stopped));
+        assert_eq!(faker.stats.tracker_error.as_deref(), Some("Tracker unavailable"));
+        assert_eq!(faker.stats.current_upload_rate, 0.0);
+        assert_eq!(faker.stats.current_download_rate, 0.0);
+        assert!(faker.stats.next_announce.is_none());
+    }
+
+    #[test]
+    fn start_failure_keeps_faker_stopped_for_tracker_issues() {
+        let torrent = Arc::new(TorrentInfo {
+            info_hash: [14u8; 20],
+            announce: "https://tracker.test/announce".to_string(),
+            announce_list: None,
+            name: "sample".to_string(),
+            total_size: 1024,
+            piece_length: 256,
+            num_pieces: 4,
+            creation_date: None,
+            comment: None,
+            created_by: None,
+            is_single_file: true,
+            file_count: 1,
+            files: Vec::new(),
+        });
+
+        let faker = RatioFaker::new(torrent, FakerConfig::default(), None);
+        assert!(faker.is_ok());
+        let mut faker = faker.unwrap_or_else(|_| panic!("failed to create faker"));
+
+        faker.begin_start();
+        faker.apply_start_result(Err(FakerError::TrackerError(TrackerError::HttpError(
+            "connection refused".to_string(),
+        ))));
+
+        assert!(matches!(faker.stats.state, FakerState::Stopped));
+        assert_eq!(faker.stats.tracker_error.as_deref(), Some("Tracker unavailable"));
+        assert!(faker.stats.next_announce.is_none());
     }
 }

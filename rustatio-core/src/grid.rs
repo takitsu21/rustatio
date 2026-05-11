@@ -100,6 +100,10 @@ pub struct InstanceSummary {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub primary_tracker_host: Option<String>,
     pub state: String,
+    #[serde(default)]
+    pub is_tracker_invalid: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tracker_error: Option<String>,
     pub tags: Vec<String>,
     pub total_size: u64,
     pub uploaded: u64,

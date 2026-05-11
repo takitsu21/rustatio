@@ -984,6 +984,17 @@
             {importResult.error}
           {:else}
             {importResult.imported?.length || 0} torrent(s) imported successfully
+            {#if importResult.duplicates?.length > 0}
+              <div class="mt-1 text-xs text-warning">
+                {importResult.duplicates.length} duplicate(s) skipped:
+                {#each importResult.duplicates.slice(0, 3) as duplicate, idx (idx)}
+                  <div>{duplicate}</div>
+                {/each}
+                {#if importResult.duplicates.length > 3}
+                  <div>...and {importResult.duplicates.length - 3} more</div>
+                {/if}
+              </div>
+            {/if}
             {#if importResult.errors?.length > 0}
               <div class="mt-1 text-xs text-stat-ratio">
                 {importResult.errors.length} error(s):
