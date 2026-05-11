@@ -221,7 +221,7 @@ impl Session {
         }
 
         // Sort by last updated (most recent first)
-        sessions.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+        sessions.sort_by_key(|s| std::cmp::Reverse(s.updated_at));
         Ok(sessions)
     }
 }
@@ -244,7 +244,7 @@ pub struct SessionSummary {
 
 #[allow(clippy::ref_option)]
 fn is_infinite_ratio(r: &Option<f64>) -> bool {
-    r.map(f64::is_infinite).unwrap_or(true)
+    r.is_none_or(f64::is_infinite)
 }
 
 impl From<&Session> for SessionSummary {
@@ -282,7 +282,7 @@ mod tests {
             torrent_path: "/path/to/test.torrent".to_string(),
             torrent_size,
             client: "qbittorrent".to_string(),
-            client_version: Some("5.1.4".to_string()),
+            client_version: Some("5.2.0".to_string()),
         });
 
         assert_eq!(session.uploaded, 0);
@@ -305,7 +305,7 @@ mod tests {
             torrent_path: "/path/to/test.torrent".to_string(),
             torrent_size: 1024 * 1024 * 100, // 100 MB
             client: "qbittorrent".to_string(),
-            client_version: Some("5.1.4".to_string()),
+            client_version: Some("5.2.0".to_string()),
         });
 
         session.save(&path).unwrap();

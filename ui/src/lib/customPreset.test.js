@@ -6,7 +6,7 @@ import { buildCustomPreset, buildPresetExportData } from './customPreset.js';
 function makeInstance() {
   return {
     selectedClient: 'qbittorrent',
-    selectedClientVersion: '5.1.4',
+    selectedClientVersion: '5.2.0',
     uploadRate: 50,
     downloadRate: 100,
     port: 6881,

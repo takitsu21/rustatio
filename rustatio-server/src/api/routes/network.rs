@@ -80,7 +80,7 @@ async fn try_gluetun_detection(
     listener_status: rustatio_core::PeerListenerStatus,
 ) -> Option<NetworkStatus> {
     let client =
-        reqwest::Client::builder().timeout(std::time::Duration::from_millis(1000)).build().ok()?;
+        reqwest::Client::builder().timeout(std::time::Duration::from_secs(1)).build().ok()?;
 
     // Get VPN status
     let vpn_status = auth

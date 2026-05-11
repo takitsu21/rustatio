@@ -80,9 +80,9 @@ impl AppState {
             custom_presets: Arc::new(RwLock::new(Vec::new())),
             http_client: reqwest::Client::new(),
             forwarded_port: Arc::new(AtomicU16::new(0)),
-            server_vpn_port_sync: std::env::var("VPN_PORT_SYNC")
-                .map(|v| matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"))
-                .unwrap_or(false),
+            server_vpn_port_sync: std::env::var("VPN_PORT_SYNC").is_ok_and(|v| {
+                matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on")
+            }),
             peer_listener: Arc::new(RwLock::new(None)),
             peer_listener_status: Arc::new(RwLock::new(PeerListenerStatus::default())),
         }
@@ -1340,7 +1340,7 @@ mod tests {
                 stats.session_uploaded = 2_000;
                 stats.session_downloaded = 500;
                 stats.session_ratio = 1.9531;
-                stats.elapsed_time = Duration::from_secs(7200);
+                stats.elapsed_time = Duration::from_hours(2);
                 stats.seed_time_progress = 50.0;
                 stats.stop_condition_met = false;
                 stats.post_stop_action = PostStopAction::Idle;

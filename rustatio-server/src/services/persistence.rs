@@ -92,9 +92,7 @@ const fn default_watch_max_depth() -> u32 {
 }
 
 fn default_watch_auto_start() -> bool {
-    std::env::var("WATCH_AUTO_START")
-        .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
-        .unwrap_or(false)
+    std::env::var("WATCH_AUTO_START").is_ok_and(|v| v.eq_ignore_ascii_case("true") || v == "1")
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema, PartialEq, Eq)]
