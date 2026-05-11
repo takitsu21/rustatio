@@ -282,7 +282,7 @@ mod tests {
             torrent_path: "/path/to/test.torrent".to_string(),
             torrent_size,
             client: "qbittorrent".to_string(),
-            client_version: Some("5.1.4".to_string()),
+            client_version: Some("5.2.0".to_string()),
         });
 
         assert_eq!(session.uploaded, 0);
@@ -305,7 +305,7 @@ mod tests {
             torrent_path: "/path/to/test.torrent".to_string(),
             torrent_size: 1024 * 1024 * 100, // 100 MB
             client: "qbittorrent".to_string(),
-            client_version: Some("5.1.4".to_string()),
+            client_version: Some("5.2.0".to_string()),
         });
 
         session.save(&path).unwrap();

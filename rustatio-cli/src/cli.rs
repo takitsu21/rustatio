@@ -32,7 +32,7 @@ pub enum Commands {
         #[arg(short, long, value_enum, default_value = "qbittorrent")]
         client: ClientArg,
 
-        /// Client version string (e.g., "5.1.4")
+        /// Client version string (e.g., "5.2.0")
         #[arg(long, value_name = "VERSION")]
         client_version: Option<String>,
 

@@ -72,8 +72,9 @@ impl ClientType {
             Self::QBittorrent => ClientInfo {
                 id: "qbittorrent".to_string(),
                 name: "qBittorrent".to_string(),
-                default_version: "5.1.4".to_string(),
+                default_version: "5.2.0".to_string(),
                 versions: vec![
+                    "5.2.0".to_string(),
                     "5.1.4".to_string(),
                     "5.1.3".to_string(),
                     "5.0.2".to_string(),
@@ -333,9 +334,9 @@ mod tests {
         assert!(peer_id.starts_with("-qB"), "qBittorrent peer ID should start with -qB");
 
         // Test with specific version
-        let config = ClientConfig::get(ClientType::QBittorrent, Some("5.1.4".to_string()));
+        let config = ClientConfig::get(ClientType::QBittorrent, Some("5.2.0".to_string()));
         let peer_id = config.generate_peer_id();
-        assert!(peer_id.starts_with("-qB5140-"), "Peer ID should include version 5.1.4");
+        assert!(peer_id.starts_with("-qB5200-"), "Peer ID should include version 5.2.0");
     }
 
     #[test]
