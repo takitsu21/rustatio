@@ -456,6 +456,11 @@ impl AppState {
             .map_err(|e| e.to_string())?;
         instance.config = config;
         drop(instances);
+
+        if let Err(e) = self.save_state().await {
+            tracing::warn!("Failed to save state after updating instance config: {}", e);
+        }
+
         self.refresh_peer_listener_port().await;
 
         Ok(())
@@ -530,6 +535,13 @@ impl AppState {
         }
 
         drop(instances);
+
+        if !succeeded.is_empty() {
+            if let Err(e) = self.save_state().await {
+                tracing::warn!("Failed to save state after bulk config update: {}", e);
+            }
+        }
+
         self.refresh_peer_listener_port().await;
 
         (succeeded, failed)
@@ -1498,5 +1510,37 @@ mod tests {
         let stats = &instances[0].stats;
         assert!(matches!(stats.state, FakerState::Stopped));
         assert_eq!(stats.tracker_error.as_deref(), Some("Torrent not found on tracker"));
+    }
+
+    #[tokio::test]
+    async fn bulk_update_configs_persists_successful_updates() {
+        let temp = tempfile::tempdir();
+        assert!(temp.is_ok());
+        let temp = temp.unwrap_or_else(|_| panic!("failed to create tempdir"));
+        let state = AppState::new(&temp.path().to_string_lossy());
+
+        let created = state.create_instance("bulk", torrent(), FakerConfig::default()).await;
+        assert!(created.is_ok());
+
+        let updated = FakerConfig {
+            upload_rate: 333.0,
+            port: 51413,
+            stop_at_ratio: Some(4.0),
+            ..FakerConfig::default()
+        };
+
+        let (succeeded, failed) =
+            state.bulk_update_configs(vec![("bulk".to_string(), updated.clone())]).await;
+
+        assert_eq!(succeeded, vec!["bulk".to_string()]);
+        assert!(failed.is_empty());
+
+        let persisted = state.persistence.load().await;
+        let saved = persisted.instances.get("bulk");
+        assert!(saved.is_some());
+        let saved = saved.unwrap_or_else(|| unreachable!());
+        assert_eq!(saved.config.upload_rate, updated.upload_rate);
+        assert_eq!(saved.config.port, updated.port);
+        assert_eq!(saved.config.stop_at_ratio, updated.stop_at_ratio);
     }
 }

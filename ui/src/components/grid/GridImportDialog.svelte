@@ -12,14 +12,14 @@
   import FolderBrowser from './FolderBrowser.svelte';
   import { builtInPresets } from '$lib/presets/index.js';
   import { getDefaultPreset, refreshDefaultPreset } from '$lib/defaultPreset.js';
+  import { normalizePreset, normalizePresets } from '$lib/customPreset.js';
   import { Upload, FolderOpen, X, FileText, ChevronDown, Settings } from '@lucide/svelte';
   import PresetIcon from '../config/PresetIcon.svelte';
   import ClientIcon from '../config/ClientIcon.svelte';
-  import ClientSelect from '../config/ClientSelect.svelte';
-  import VersionSelect from '../config/VersionSelect.svelte';
   import RandomizationSettings from '../config/RandomizationSettings.svelte';
   import ProgressiveRateSettings from '../config/ProgressiveRateSettings.svelte';
   import StopConditionSettings from '../config/StopConditionSettings.svelte';
+  import GridClientConfigFields from './GridClientConfigFields.svelte';
 
   let {
     isOpen = $bindable(false),
@@ -96,11 +96,11 @@
   let importResult = $state(null);
 
   let customPresets = $state([]);
-  let allPresets = $derived([...builtInPresets, ...customPresets]);
+  let allPresets = $derived([...builtInPresets, ...normalizePresets(customPresets)]);
 
   async function loadPresetState() {
     try {
-      customPresets = (await api.listCustomPresets()) || [];
+      customPresets = normalizePresets((await api.listCustomPresets()) || []);
       await refreshDefaultPreset();
     } catch (e) {
       console.warn('Failed to load presets:', e);
@@ -151,7 +151,7 @@
   });
 
   function applyPreset(preset) {
-    const s = preset.settings || {};
+    const s = normalizePreset(preset)?.settings || {};
 
     if (s.uploadRate != null) uploadRate = s.uploadRate;
     if (s.downloadRate != null) downloadRate = s.downloadRate;
@@ -779,44 +779,31 @@
       </div>
 
       <!-- Rates -->
-      <div class="grid grid-cols-2 gap-3">
-        <div>
-          <Label>Upload Rate (KB/s)</Label>
-          <Input type="number" bind:value={uploadRate} min="0" step="1" class="mt-1 text-xs" />
-        </div>
-        <div>
-          <Label>Download Rate (KB/s)</Label>
-          <Input type="number" bind:value={downloadRate} min="0" step="1" class="mt-1 text-xs" />
-        </div>
-      </div>
+      <GridClientConfigFields
+        mode="rates"
+        class="grid-cols-2"
+        bind:uploadRate
+        bind:downloadRate
+        uploadLabel="Upload Rate (KB/s)"
+        downloadLabel="Download Rate (KB/s)"
+        labelClass=""
+        inputClass="mt-1 text-xs"
+        inputStep="1"
+      />
 
       <!-- Timing -->
-      <div class="grid grid-cols-2 gap-3">
-        <div>
-          <Label>Refresh Interval (sec)</Label>
-          <Input
-            type="number"
-            bind:value={updateIntervalSeconds}
-            min="1"
-            max="300"
-            step="1"
-            class="mt-1 text-xs"
-            onblur={handleRefreshIntervalBlur}
-          />
-        </div>
-        <div>
-          <Label>Scrape Interval (sec)</Label>
-          <Input
-            type="number"
-            bind:value={scrapeInterval}
-            min="10"
-            max="3600"
-            step="1"
-            class="mt-1 text-xs"
-            onblur={handleScrapeIntervalBlur}
-          />
-        </div>
-      </div>
+      <GridClientConfigFields
+        mode="timing"
+        class="grid-cols-2"
+        bind:updateIntervalSeconds
+        bind:scrapeInterval
+        refreshLabel="Refresh Interval (sec)"
+        scrapeLabel="Scrape Interval (sec)"
+        labelClass=""
+        inputClass="mt-1 text-xs"
+        onRefreshBlur={handleRefreshIntervalBlur}
+        onScrapeBlur={handleScrapeIntervalBlur}
+      />
 
       <!-- Client Selection -->
       <div>
@@ -838,21 +825,18 @@
             </div>
           {/if}
         </div>
-        <div class="grid grid-cols-3 gap-3">
-          <ClientSelect clients={clientTypes} bind:value={selectedClient} />
-          {#if selectedClient && clientVersions.length > 0}
-            <VersionSelect versions={clientVersions} bind:value={selectedVersion} />
-          {/if}
-          <div class="self-start">
-            <Input
-              type="number"
-              bind:value={port}
-              disabled={useSyncedPort}
-              min="1024"
-              max="65535"
-              placeholder="Port"
-              class="h-9"
-            />
+        <GridClientConfigFields
+          class="grid-cols-3"
+          clients={clientTypes}
+          versions={clientVersions}
+          bind:selectedClient
+          bind:selectedVersion
+          bind:port
+          showVersion={selectedClient && clientVersions.length > 0}
+          portDisabled={useSyncedPort}
+          portInputClass="h-9"
+        >
+          {#snippet portFooter()}
             {#if vpnPortSyncVisible && !networkStatusConfigured}
               <p class="mt-1 text-[11px] text-amber-400">No VPN configured.</p>
             {:else if vpnPortSyncVisible && !vpnPortSyncEnabled && vpnPortSync}
@@ -890,8 +874,8 @@
                 Current forwarded port: <span class="font-mono">{currentForwardedPort}</span>
               </p>
             {/if}
-          </div>
-        </div>
+          {/snippet}
+        </GridClientConfigFields>
       </div>
 
       <!-- Tags -->

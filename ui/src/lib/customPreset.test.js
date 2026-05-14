@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { buildCustomPreset, buildPresetExportData } from './customPreset.js';
+import {
+  buildCustomPreset,
+  buildPresetExportData,
+  normalizePreset,
+  normalizePresetSettings,
+} from './customPreset.js';
 
 function makeInstance() {
   return {
@@ -69,4 +74,34 @@ test('buildCustomPreset rejects missing preset names', () => {
     () => buildCustomPreset(makeInstance(), { name: '   ' }),
     /Please enter a preset name/
   );
+});
+
+test('normalizePresetSettings maps legacy stopWhenNo aliases', () => {
+  const settings = normalizePresetSettings({
+    stopWhenNoLeechers: true,
+    stopWhenNoSeeders: false,
+  });
+
+  assert.equal(settings.idleWhenNoLeechers, true);
+  assert.equal(settings.idleWhenNoSeeders, false);
+});
+
+test('normalizePresetSettings preserves canonical idleWhen keys', () => {
+  const settings = normalizePresetSettings({
+    stopWhenNoLeechers: false,
+    idleWhenNoLeechers: true,
+  });
+
+  assert.equal(settings.idleWhenNoLeechers, true);
+});
+
+test('normalizePreset normalizes nested preset settings', () => {
+  const preset = normalizePreset({
+    id: 'legacy',
+    settings: {
+      stopWhenNoLeechers: true,
+    },
+  });
+
+  assert.equal(preset.settings.idleWhenNoLeechers, true);
 });

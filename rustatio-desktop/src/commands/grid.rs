@@ -554,6 +554,11 @@ pub async fn grid_update_config(
     }
 
     drop(fakers);
+
+    if !succeeded.is_empty() {
+        state.save_state().await?;
+    }
+
     state.refresh_peer_listener_port().await;
     Ok(GridActionResponse { succeeded, failed })
 }

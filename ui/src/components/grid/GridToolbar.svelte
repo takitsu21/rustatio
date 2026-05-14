@@ -10,9 +10,19 @@
     gridInstances,
     filteredGridInstances,
   } from '$lib/gridStore.js';
-  import { Play, Square, Pause, Trash2, Upload, Search, ChevronDown, Funnel } from '@lucide/svelte';
+  import {
+    Play,
+    Square,
+    Pause,
+    Trash2,
+    Upload,
+    Search,
+    ChevronDown,
+    Funnel,
+    Pencil,
+  } from '@lucide/svelte';
 
-  let { onImport = () => {}, onOpenFilters = () => {} } = $props();
+  let { onImport = () => {}, onOpenFilters = () => {}, onBulkEdit = () => {} } = $props();
 
   let selectionCount = $derived($selectedIds.size);
   let totalCount = $derived($gridInstances.length);
@@ -295,6 +305,20 @@
       <div class="w-px h-6 bg-border"></div>
 
       <GridTagPopover />
+
+      <Button
+        onclick={onBulkEdit}
+        size="sm"
+        variant="outline"
+        class="gap-1.5"
+        title="Edit selected"
+        aria-label="Edit selected"
+      >
+        {#snippet children()}
+          <Pencil size={14} />
+          Edit selected
+        {/snippet}
+      </Button>
 
       <Button
         onclick={handleDelete}

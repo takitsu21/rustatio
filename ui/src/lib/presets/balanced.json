@@ -18,7 +18,7 @@
     "stopAtUploadedEnabled": false,
     "stopAtDownloadedEnabled": false,
     "stopAtSeedTimeEnabled": false,
-    "stopWhenNoLeechers": false
+    "idleWhenNoLeechers": false
   },
   "tips": [
     "500 KB/s upload is realistic for modern connections",

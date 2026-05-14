@@ -1,20 +1,35 @@
 <script>
   import { onDestroy } from 'svelte';
-  import { api, listenToInstanceEvents } from '$lib/api.js';
-  import { filteredGridInstances, gridActions, gridFilters, viewMode } from '$lib/gridStore.js';
-  import { instanceActions } from '$lib/instanceStore.js';
+  import { api, getRunMode, listenToInstanceEvents } from '$lib/api.js';
+  import {
+    filteredGridInstances,
+    gridActions,
+    gridFilters,
+    selectedIds,
+    viewMode,
+  } from '$lib/gridStore.js';
+  import { instanceActions, instances } from '$lib/instanceStore.js';
   import { clearAllGridFilters } from '$lib/gridFilters.js';
   import GridFiltersPanel from './GridFiltersPanel.svelte';
   import GridToolbar from './GridToolbar.svelte';
   import GridTable from './GridTable.svelte';
   import GridImportDialog from './GridImportDialog.svelte';
+  import GridBulkEditDialog from './GridBulkEditDialog.svelte';
   import Button from '$lib/components/ui/button.svelte';
-  import { Funnel, X, Upload } from '@lucide/svelte';
+  import { Funnel, X, Upload, Pencil } from '@lucide/svelte';
 
   let importDialogOpen = $state(false);
+  let bulkEditDialogOpen = $state(false);
   let mobileFiltersOpen = $state(false);
   let networkStatus = $state(null);
   let networkStatusError = $state(null);
+  let clientInfos = $state([]);
+
+  let clients = $derived(clientInfos.map(c => ({ id: c.id, name: c.name })));
+  let clientVersions = $derived(Object.fromEntries(clientInfos.map(c => [c.id, c.versions])));
+  let selectedSummaries = $derived(
+    $filteredGridInstances.filter(instance => $selectedIds.has(instance.id))
+  );
 
   function isNetworkConfigured(status) {
     return status?.configured !== false;
@@ -40,6 +55,14 @@
     }
   }
 
+  async function refreshClientInfos() {
+    try {
+      clientInfos = (await api.getClientInfos()) || [];
+    } catch {
+      clientInfos = [];
+    }
+  }
+
   // Debounce rapid instance events (e.g. during restoration) into a single fetch
   let debounceTimer = null;
   function debouncedFetch() {
@@ -50,6 +73,7 @@
   // Start polling and SSE on mount
   gridActions.startPolling(3000);
   refreshNetworkStatus();
+  refreshClientInfos();
 
   const cleanupEvents = listenToInstanceEvents(event => {
     if (event.type === 'created' || event.type === 'deleted' || event.type === 'state_changed') {
@@ -107,6 +131,25 @@
     mobileFiltersOpen = false;
   }
 
+  async function handleBulkApply(entries, mergedInstances = []) {
+    const result = await api.bulkUpdateConfigs(entries);
+    if (result?.failed?.length > 0) {
+      const first = result.failed[0];
+      throw new Error(first?.error || 'Failed to update selected instances.');
+    }
+
+    for (const instance of mergedInstances) {
+      instanceActions.updateInstance(String(instance.id), instance);
+    }
+
+    await Promise.all(entries.map(entry => instanceActions.ensureInstance(String(entry.id))));
+    await gridActions.fetchSummaries();
+  }
+
+  function openBulkEdit() {
+    bulkEditDialogOpen = true;
+  }
+
   onDestroy(() => {
     gridActions.stopPolling();
     cleanupEvents();
@@ -120,7 +163,11 @@
   </div>
 
   <div class="flex min-h-0 flex-1 flex-col gap-3 pb-20 lg:pb-0">
-    <GridToolbar onImport={() => (importDialogOpen = true)} onOpenFilters={openMobileFilters} />
+    <GridToolbar
+      onImport={() => (importDialogOpen = true)}
+      onOpenFilters={openMobileFilters}
+      onBulkEdit={openBulkEdit}
+    />
 
     {#if $filteredGridInstances.length === 0}
       <div
@@ -187,13 +234,22 @@
 
 <div class="fixed inset-x-3 bottom-3 z-30 sm:hidden">
   <div class="rounded-2xl border border-border bg-card/95 p-1.5 shadow-2xl backdrop-blur-xl">
-    <div class="grid grid-cols-2 gap-1.5">
+    <div class="grid grid-cols-3 gap-1.5">
       <button
         class="flex w-full flex-col items-center justify-center gap-1 rounded-xl px-3 py-2 text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground cursor-pointer"
         onclick={() => (importDialogOpen = true)}
       >
         <Upload size={16} />
         <span>Import</span>
+      </button>
+
+      <button
+        class="flex w-full flex-col items-center justify-center gap-1 rounded-xl px-3 py-2 text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground cursor-pointer disabled:pointer-events-none disabled:opacity-50"
+        onclick={openBulkEdit}
+        disabled={$selectedIds.size === 0}
+      >
+        <Pencil size={16} />
+        <span>Edit</span>
       </button>
 
       <button
@@ -224,4 +280,20 @@
   vpnPortSyncEnabled={getVpnPortSyncEnabled(networkStatus)}
   {networkStatusError}
   onRefreshNetworkStatus={refreshNetworkStatus}
+/>
+
+<GridBulkEditDialog
+  bind:isOpen={bulkEditDialogOpen}
+  selectedIds={[...$selectedIds]}
+  {selectedSummaries}
+  fallbackInstances={$instances.filter(instance => $selectedIds.has(instance.id))}
+  {clients}
+  {clientVersions}
+  currentForwardedPort={networkStatus?.forwarded_port ?? networkStatus?.forwardedPort ?? null}
+  vpnPortSyncVisible={true}
+  networkStatusConfigured={isNetworkConfigured(networkStatus)}
+  vpnPortSyncEnabled={getVpnPortSyncEnabled(networkStatus)}
+  {networkStatusError}
+  isServerMode={getRunMode() === 'server'}
+  onApply={handleBulkApply}
 />

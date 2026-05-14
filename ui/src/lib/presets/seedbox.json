@@ -18,7 +18,7 @@
     "stopAtUploadedEnabled": false,
     "stopAtDownloadedEnabled": false,
     "stopAtSeedTimeEnabled": false,
-    "stopWhenNoLeechers": true
+    "idleWhenNoLeechers": true
   },
   "tips": [
     "5 MB/s upload typical for budget seedboxes",

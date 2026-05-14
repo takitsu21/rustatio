@@ -1,4 +1,5 @@
 import { api } from '$lib/api.js';
+import { normalizePreset } from '$lib/customPreset.js';
 
 const DEFAULT_PRESET_KEY = 'rustatio-default-preset';
 export const DEFAULT_PRESET_CHANGED_EVENT = 'rustatio:default-preset-changed';
@@ -13,7 +14,7 @@ function loadLocalDefaultPreset() {
   try {
     const stored = localStorage.getItem(DEFAULT_PRESET_KEY);
     if (!stored) return null;
-    return JSON.parse(stored);
+    return normalizePreset(JSON.parse(stored));
   } catch {
     return null;
   }
@@ -52,7 +53,7 @@ export function getDefaultPresetId() {
 }
 
 export async function refreshDefaultPreset() {
-  const next = await api.getDefaultPreset();
+  const next = normalizePreset(await api.getDefaultPreset());
   const changed = JSON.stringify(cachedDefaultPreset) !== JSON.stringify(next);
   cachedDefaultPreset = next;
   saveLocalDefaultPreset(cachedDefaultPreset);
@@ -67,11 +68,11 @@ export async function setDefaultPreset(preset) {
     throw new Error('Invalid preset object');
   }
 
-  const data = {
+  const data = normalizePreset({
     id: preset.id,
     name: preset.name,
     settings: preset.settings,
-  };
+  });
 
   await api.setDefaultPreset(data);
   cachedDefaultPreset = data;
