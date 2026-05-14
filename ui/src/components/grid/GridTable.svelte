@@ -1,5 +1,6 @@
 <script>
   import { cn } from '$lib/utils.js';
+  import { getGridLivePeers, getGridLiveRate } from '$lib/gridMetrics.js';
   import ConfirmDialog from '../common/ConfirmDialog.svelte';
   import { selectedIds, gridActions, gridSort } from '$lib/gridStore.js';
   import TagBadge from './TagBadge.svelte';
@@ -377,6 +378,9 @@
           {@const StateIcon = getStateIcon(instance.state)}
           {@const completionPct = instance.torrentCompletion ?? 100}
           {@const issueMessage = getIssueMessage(instance)}
+          {@const liveRateUp = getGridLiveRate(instance.state, instance.currentUploadRate)}
+          {@const liveRateDown = getGridLiveRate(instance.state, instance.currentDownloadRate)}
+          {@const livePeers = getGridLivePeers(instance.state, instance.seeders, instance.leechers)}
           <tr
             class={cn(
               'border-t border-border/50 transition-colors cursor-pointer',
@@ -500,19 +504,19 @@
 
             <!-- UL Rate -->
             <td class="px-2 py-1 whitespace-nowrap overflow-hidden">
-              <span class="text-stat-upload">{formatRate(instance.currentUploadRate)}</span>
+              <span class="text-stat-upload">{formatRate(liveRateUp)}</span>
             </td>
 
             <!-- DL Rate -->
             <td class="px-2 py-1 whitespace-nowrap overflow-hidden">
-              <span class="text-stat-leecher">{formatRate(instance.currentDownloadRate)}</span>
+              <span class="text-stat-leecher">{formatRate(liveRateDown)}</span>
             </td>
 
             <!-- Seeders / Leechers -->
             <td class="px-2 py-1 whitespace-nowrap">
-              <span class="text-stat-upload">{instance.seeders ?? '-'}</span>
+              <span class="text-stat-upload">{livePeers.seeders ?? '-'}</span>
               <span class="text-muted-foreground">/</span>
-              <span class="text-stat-leecher">{instance.leechers ?? '-'}</span>
+              <span class="text-stat-leecher">{livePeers.leechers ?? '-'}</span>
             </td>
           </tr>
         {/each}
