@@ -351,7 +351,6 @@ pub async fn recover_tracker_faker(id: u32) -> Result<JsValue, JsValue> {
         let result = instance
             .faker
             .recover_tracker()
-            .await
             .map(|stats| to_js(&stats))
             .map_err(|e| JsValue::from_str(&e.to_string()));
 

@@ -793,6 +793,7 @@ impl RatioFaker {
         self.scrape_supported = true;
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     fn begin_restore_running(&mut self) -> AnnouncePlan {
         log_info!("Restoring active ratio faker for torrent: {}", self.torrent.name);
 
