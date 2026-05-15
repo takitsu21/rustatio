@@ -345,6 +345,27 @@ pub async fn resume_faker(id: u32) -> Result<(), JsValue> {
 }
 
 #[wasm_bindgen]
+pub async fn recover_tracker_faker(id: u32) -> Result<JsValue, JsValue> {
+    rustatio_core::logger::set_instance_context(Some(id));
+    with_instance(id, |mut instance| async move {
+        let result = instance
+            .faker
+            .recover_tracker()
+            .await
+            .map(|stats| to_js(&stats))
+            .map_err(|e| JsValue::from_str(&e.to_string()));
+
+        let result = match result {
+            Ok(stats) => stats,
+            Err(err) => return (instance, Err(err)),
+        };
+
+        (instance, result)
+    })
+    .await
+}
+
+#[wasm_bindgen]
 pub async fn scrape_tracker(id: u32) -> Result<JsValue, JsValue> {
     rustatio_core::logger::set_instance_context(Some(id));
     with_instance(id, |instance| async move {
@@ -759,6 +780,8 @@ pub fn list_summaries() -> Result<JsValue, JsValue> {
             },
             is_tracker_invalid: stats.tracker_error.is_some(),
             tracker_error: stats.tracker_error.clone(),
+            tracker_retry_attempt: stats.tracker_retry_attempt,
+            tracker_retry_at_ms: stats.tracker_retry_at_ms,
             tags: instance.tags.clone(),
             total_size: instance.torrent.total_size,
             uploaded: stats.uploaded,

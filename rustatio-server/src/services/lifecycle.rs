@@ -18,6 +18,7 @@ fn resolve_instance_label(
 #[async_trait]
 pub trait InstanceLifecycle {
     async fn start_instance(&self, id: &str) -> Result<(), String>;
+    async fn recover_tracker_instance(&self, id: &str) -> Result<FakerStats, String>;
     async fn stop_instance(&self, id: &str) -> Result<FakerStats, String>;
     async fn pause_instance(&self, id: &str) -> Result<(), String>;
     async fn resume_instance(&self, id: &str) -> Result<(), String>;
@@ -57,6 +58,39 @@ impl InstanceLifecycle for AppState {
         self.refresh_peer_listener_port().await;
 
         Ok(())
+    }
+
+    async fn recover_tracker_instance(&self, id: &str) -> Result<FakerStats, String> {
+        let label = {
+            let instances = self.instances.read().await;
+            resolve_instance_label(&instances, id)
+        };
+        set_instance_context_str(Some(&label));
+
+        let faker = {
+            let instances = self.instances.read().await;
+            let instance = instances.get(id).ok_or("Instance not found")?;
+            Arc::clone(&instance.faker)
+        };
+
+        let stats = faker.recover_tracker().await.map_err(|e| e.to_string())?;
+
+        {
+            let mut instances = self.instances.write().await;
+            if let Some(instance) = instances.get_mut(id) {
+                instance.cumulative_uploaded = stats.uploaded;
+                instance.cumulative_downloaded = stats.downloaded;
+                instance.config.completion_percent = stats.torrent_completion;
+            }
+        }
+
+        if let Err(e) = self.save_state().await {
+            tracing::warn!("Failed to save state after tracker recovery attempt: {}", e);
+        }
+
+        self.refresh_peer_listener_port().await;
+
+        Ok(stats)
     }
 
     async fn stop_instance(&self, id: &str) -> Result<FakerStats, String> {

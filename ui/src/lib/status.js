@@ -46,14 +46,32 @@ export function getTrackerInvalidStatus(message = 'Torrent not found on tracker'
   };
 }
 
+export function formatRetrySeconds(retryAtMs, nowMs = Date.now()) {
+  if (retryAtMs == null) {
+    return null;
+  }
+
+  const remainingMs = Math.max(0, retryAtMs - nowMs);
+  return Math.ceil(remainingMs / 1000);
+}
+
 export function getTrackerIssue(stats) {
   const message = stats?.tracker_error || stats?.trackerError;
   if (!message) {
     return null;
   }
 
+  const retryAtMs = stats?.tracker_retry_at_ms ?? stats?.trackerRetryAtMs;
+  const retrySecs = formatRetrySeconds(retryAtMs);
+  const statusMessage =
+    message === 'Tracker unavailable' && retrySecs != null
+      ? retrySecs > 0
+        ? `Tracker unavailable, retrying in ${retrySecs}s`
+        : 'Tracker unavailable, retrying now'
+      : message;
+
   return {
-    statusMessage: message,
+    statusMessage,
     statusType: 'warning',
     statusIcon: null,
     issueLabel: 'Tracker issue',

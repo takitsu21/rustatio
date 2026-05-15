@@ -2,6 +2,7 @@
   import { onDestroy, onMount } from 'svelte';
   import { api, getRunMode } from '$lib/api.js';
   import { getGridLiveRate } from '$lib/gridMetrics.js';
+  import { getTrackerIssue } from '$lib/status.js';
   import { instances, activeInstanceId, instanceActions } from '$lib/instanceStore.js';
   import { viewMode, gridInstances, selectedIds } from '$lib/gridStore.js';
   import { cn } from '$lib/utils.js';
@@ -300,7 +301,7 @@
   }
 
   function getIssueMessage(instance) {
-    return instance.stats?.tracker_error || null;
+    return getTrackerIssue(instance.stats)?.statusMessage || null;
   }
 
   async function handleAddInstance() {

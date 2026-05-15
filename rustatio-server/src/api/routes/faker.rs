@@ -132,6 +132,32 @@ pub async fn resume_faker(State(state): State<ServerState>, Path(id): Path<Strin
 
 #[utoipa::path(
     post,
+    path = "/faker/{id}/recover-tracker",
+    tag = "faker",
+    summary = "Retry tracker after temporary failure",
+    description = "Retries a faker instance that was auto-stopped due to a temporary tracker communication failure.",
+    security(("bearer_auth" = [])),
+    params(
+        ("id" = String, Path, description = "Instance ID to recover")
+    ),
+    responses(
+        (status = 200, description = "Tracker recovery attempted", body = ApiSuccess<Object>),
+        (status = 401, description = "Unauthorized", body = ApiError),
+        (status = 404, description = "Instance not found", body = ApiError)
+    )
+)]
+pub async fn recover_tracker_faker(
+    State(state): State<ServerState>,
+    Path(id): Path<String>,
+) -> Response {
+    match state.app.recover_tracker_instance(&id).await {
+        Ok(stats) => ApiSuccess::response(stats),
+        Err(e) => ApiError::response(StatusCode::NOT_FOUND, e),
+    }
+}
+
+#[utoipa::path(
+    post,
     path = "/faker/{id}/update",
     tag = "faker",
     summary = "Force tracker announce",
@@ -208,6 +234,7 @@ pub fn router() -> Router<ServerState> {
         .route("/faker/{id}/stop", post(stop_faker))
         .route("/faker/{id}/pause", post(pause_faker))
         .route("/faker/{id}/resume", post(resume_faker))
+        .route("/faker/{id}/recover-tracker", post(recover_tracker_faker))
         .route("/faker/{id}/update", post(update_faker))
         .route("/faker/{id}/stats", get(get_stats))
         .route("/faker/{id}/stats-only", post(update_stats_only))

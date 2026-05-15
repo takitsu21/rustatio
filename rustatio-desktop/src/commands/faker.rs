@@ -307,3 +307,27 @@ pub async fn resume_faker(
     log_and_emit!(&app, instance_id, info, "Faker resumed successfully");
     Ok(())
 }
+
+#[tauri::command]
+pub async fn recover_tracker_faker(
+    instance_id: u32,
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<FakerStats, String> {
+    log_and_emit!(&app, instance_id, info, "Retrying tracker after temporary failure");
+    set_instance_label(&state, instance_id, None);
+
+    let faker = {
+        let fakers = state.fakers.read().await;
+        let instance =
+            fakers.get(&instance_id).ok_or_else(|| format!("Instance {instance_id} not found"))?;
+        Arc::clone(&instance.faker)
+    };
+
+    let stats =
+        faker.recover_tracker().await.map_err(|e| format!("Failed to retry tracker: {e}"))?;
+
+    state.refresh_peer_listener_port().await;
+
+    Ok(stats)
+}

@@ -132,6 +132,7 @@
   let instanceEventsCleanup = null;
   let closeRequestedCleanup = null;
   let desktopReconcileIntervalId = null;
+  let trackerRetryIntervalId = null;
   let networkStatusIntervalId = null;
   let networkStatus = $state(null);
   let networkStatusLoading = $state(false);
@@ -457,6 +458,7 @@
     // Initialize instance store (will restore session from localStorage)
     await instanceActions.initialize();
     startNetworkStatusPolling();
+    startTrackerRetryPolling();
 
     // Start polling for any instances that were restored in a running state (server mode)
     // This ensures UI updates after page refresh when instances are still running on server
@@ -570,6 +572,7 @@
     }
 
     stopNetworkStatusPolling();
+    stopTrackerRetryPolling();
 
     // Clean up config sync timeout
     if (configSyncTimeout) {
@@ -676,6 +679,18 @@
 
   // Handle auto-stop when a stop condition is met
   async function handleAutoStop(instanceId, stats) {
+    if (stats?.tracker_error) {
+      clearInstanceIntervals(instanceId);
+      instanceActions.updateInstance(instanceId, {
+        isRunning: false,
+        isPaused: false,
+        updateInterval: null,
+        stats,
+        ...getStatusFromStats(stats),
+      });
+      return;
+    }
+
     // In server mode, the scheduler already called stop() when the condition was met.
     // Calling stopFaker again would redundantly re-enter Stopping state (sending
     // another tracker announce), causing the grid to briefly show "Stopping".
@@ -739,6 +754,66 @@
   // Check if stats indicate the faker should auto-stop
   function shouldAutoStop(stats) {
     return stats.state === 'Stopped';
+  }
+
+  function shouldRetryTracker(stats) {
+    return stats?.state === 'Stopped' && stats?.tracker_error === 'Tracker unavailable';
+  }
+
+  async function refreshTrackerRetryStatuses() {
+    const currentInstances = get(instances);
+    const retryable = currentInstances.filter(inst => shouldRetryTracker(inst.stats));
+
+    for (const instance of retryable) {
+      try {
+        const stats = await api.getStats(instance.id);
+        instanceActions.updateInstance(instance.id, {
+          isRunning: stats.state !== 'Stopped',
+          isPaused: false,
+          stats,
+          ...getStatusFromStats(stats),
+        });
+
+        if (!shouldRetryTracker(stats)) {
+          if (stats.state !== 'Stopped') {
+            startPollingForInstance(instance.id, instance.updateIntervalSeconds ?? 5);
+          }
+          continue;
+        }
+
+        if (getRunMode() !== 'server' && stats.tracker_retry_at_ms != null) {
+          if (stats.tracker_retry_at_ms <= Date.now()) {
+            const nextStats = await api.recoverTrackerFaker(instance.id);
+            instanceActions.updateInstance(instance.id, {
+              isRunning: nextStats.state !== 'Stopped',
+              isPaused: false,
+              stats: nextStats,
+              ...getStatusFromStats(nextStats),
+            });
+
+            if (nextStats.state !== 'Stopped') {
+              startPollingForInstance(instance.id, instance.updateIntervalSeconds ?? 5);
+            }
+          }
+        }
+      } catch (error) {
+        console.debug('Tracker retry refresh error:', error);
+      }
+    }
+  }
+
+  function startTrackerRetryPolling() {
+    if (trackerRetryIntervalId) return;
+    trackerRetryIntervalId = setInterval(() => {
+      refreshTrackerRetryStatuses();
+    }, 1000);
+    refreshTrackerRetryStatuses();
+  }
+
+  function stopTrackerRetryPolling() {
+    if (!trackerRetryIntervalId) return;
+    clearInterval(trackerRetryIntervalId);
+    trackerRetryIntervalId = null;
   }
 
   // =============================================================================

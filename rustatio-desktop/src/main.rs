@@ -285,6 +285,7 @@ fn main() {
             commands::scrape_tracker,
             commands::pause_faker,
             commands::resume_faker,
+            commands::recover_tracker_faker,
             commands::get_client_types,
             commands::get_client_infos,
             commands::get_network_status,

@@ -1084,13 +1084,15 @@ export const instanceActions = {
           updates.statusMessage = trackerIssue.statusMessage;
           updates.statusType = trackerIssue.statusType;
           updates.statusIcon = trackerIssue.statusIcon;
-        }
-
-        if (summary.source === 'watch_folder' || summary.source === 'manual') {
+        } else if (summary.source === 'watch_folder' || summary.source === 'manual') {
           updates.source = summary.source;
         }
 
-        if (isPaused) {
+        if (trackerIssue) {
+          if (summary.source === 'watch_folder' || summary.source === 'manual') {
+            updates.source = summary.source;
+          }
+        } else if (isPaused) {
           updates.statusMessage = 'Paused';
           updates.statusType = 'paused';
           updates.statusIcon = 'pause';
@@ -1107,6 +1109,10 @@ export const instanceActions = {
           updates.statusMessage = 'Ready to start faking';
           updates.statusType = 'idle';
           updates.statusIcon = null;
+        }
+
+        if (summary.source === 'watch_folder' || summary.source === 'manual') {
+          updates.source = summary.source;
         }
 
         // Merge available stats from summary into the existing stats object

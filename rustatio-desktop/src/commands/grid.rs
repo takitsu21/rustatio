@@ -707,6 +707,8 @@ pub async fn list_summaries(state: State<'_, AppState>) -> Result<Vec<InstanceSu
             state: state_str.to_string(),
             is_tracker_invalid: stats.tracker_error.is_some(),
             tracker_error: stats.tracker_error.clone(),
+            tracker_retry_attempt: stats.tracker_retry_attempt,
+            tracker_retry_at_ms: stats.tracker_retry_at_ms,
             tags,
             total_size,
             uploaded: stats.uploaded,

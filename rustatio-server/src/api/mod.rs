@@ -80,6 +80,7 @@ impl Modify for SecurityAddon {
         routes::faker::stop_faker,
         routes::faker::pause_faker,
         routes::faker::resume_faker,
+        routes::faker::recover_tracker_faker,
         routes::faker::update_faker,
         routes::faker::update_stats_only,
         routes::faker::get_stats,

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  formatRetrySeconds,
   getIdlingReasonText,
   getIdlingStatus,
   getStatusFromStats,
@@ -43,6 +44,26 @@ test('getTrackerIssue supports tracker errors from stats and summaries', () => {
     statusIcon: null,
     issueLabel: 'Tracker issue',
   });
+});
+
+test('getTrackerIssue formats visible retry countdown for temporary tracker failures', () => {
+  const retryAtMs = Date.now() + 12_000;
+
+  assert.deepEqual(
+    getTrackerIssue({ tracker_error: 'Tracker unavailable', tracker_retry_at_ms: retryAtMs }),
+    {
+      statusMessage: 'Tracker unavailable, retrying in 12s',
+      statusType: 'warning',
+      statusIcon: null,
+      issueLabel: 'Tracker issue',
+    }
+  );
+});
+
+test('formatRetrySeconds rounds up remaining retry countdown', () => {
+  assert.equal(formatRetrySeconds(1_500, 0), 2);
+  assert.equal(formatRetrySeconds(1_000, 0), 1);
+  assert.equal(formatRetrySeconds(0, 0), 0);
 });
 
 test('isNetworkConfigured defaults to true when status is absent', () => {

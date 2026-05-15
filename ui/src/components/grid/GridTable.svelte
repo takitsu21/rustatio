@@ -1,6 +1,7 @@
 <script>
   import { cn } from '$lib/utils.js';
   import { getGridLivePeers, getGridLiveRate } from '$lib/gridMetrics.js';
+  import { getTrackerIssue } from '$lib/status.js';
   import ConfirmDialog from '../common/ConfirmDialog.svelte';
   import { selectedIds, gridActions, gridSort } from '$lib/gridStore.js';
   import TagBadge from './TagBadge.svelte';
@@ -210,7 +211,7 @@
   }
 
   function getIssueMessage(instance) {
-    return instance.trackerError || instance.tracker_error || null;
+    return getTrackerIssue(instance)?.statusMessage || null;
   }
 
   const columns = [

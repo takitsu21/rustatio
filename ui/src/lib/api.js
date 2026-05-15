@@ -510,6 +510,9 @@ const serverApi = {
   resumeFaker: async id => {
     await serverFetch(`/faker/${id}/resume`, { method: 'POST' }, `[Instance ${id}] Faker resumed`);
   },
+  recoverTrackerFaker: async id => {
+    return serverFetch(`/faker/${id}/recover-tracker`, { method: 'POST' });
+  },
   updateStatsOnly: async id => {
     return serverFetch(`/faker/${id}/stats-only`, { method: 'POST' });
   },
@@ -893,6 +896,10 @@ const tauriApi = {
     const { invoke } = await import('@tauri-apps/api/core');
     return invoke('resume_faker', { instanceId: Number(id) });
   },
+  recoverTrackerFaker: async id => {
+    const { invoke } = await import('@tauri-apps/api/core');
+    return invoke('recover_tracker_faker', { instanceId: Number(id) });
+  },
   updateStatsOnly: async id => {
     const { invoke } = await import('@tauri-apps/api/core');
     return invoke('update_stats_only', { instanceId: Number(id) });
@@ -1111,6 +1118,9 @@ const wasmApi = {
   },
   resumeFaker: async id => {
     return wasm.resume_faker(Number(id));
+  },
+  recoverTrackerFaker: async id => {
+    return wasm.recover_tracker_faker(Number(id));
   },
   updateStatsOnly: async id => {
     return wasm.update_stats_only(Number(id));
