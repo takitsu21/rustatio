@@ -72,8 +72,9 @@ impl ClientType {
             Self::QBittorrent => ClientInfo {
                 id: "qbittorrent".to_string(),
                 name: "qBittorrent".to_string(),
-                default_version: "5.2.0".to_string(),
+                default_version: "5.2.1".to_string(),
                 versions: vec![
+                    "5.2.1".to_string(),
                     "5.2.0".to_string(),
                     "5.1.4".to_string(),
                     "5.1.3".to_string(),

@@ -222,7 +222,7 @@
       id: String(summary.id),
       torrent: null,
       selectedClient: 'qbittorrent',
-      selectedClientVersion: clientVersions.qbittorrent?.[0] || '5.2.0',
+      selectedClientVersion: clientVersions.qbittorrent?.[0] || '5.2.1',
       uploadRate: 50,
       downloadRate: 100,
       port: 6881,
