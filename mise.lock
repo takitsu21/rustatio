@@ -206,6 +206,9 @@ url = "https://github.com/apple/pkl/releases/download/0.31.1/pkl-windows-amd64.e
 version = "1.96.0"
 backend = "core:rust"
 
+[tools.rust.options]
+components = "clippy,rustfmt"
+
 [[tools.shellcheck]]
 version = "0.11.0"
 backend = "aqua:koalaman/shellcheck"
