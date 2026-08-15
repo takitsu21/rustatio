@@ -1,5 +1,4 @@
 <script>
-  import Card from '$lib/components/ui/card.svelte';
   import { Timer, Upload, Download, TrendingUp, TrendingDown, Percent } from '@lucide/svelte';
 
   let { stats, formatBytes, formatDuration } = $props();
@@ -20,7 +19,7 @@
   });
 </script>
 
-<Card class="p-4">
+<section class="workspace-section p-3.5">
   <div class="flex items-center justify-between mb-4">
     <h2 class="text-primary text-lg font-semibold flex items-center gap-2">
       <Timer size={20} /> Session Stats
@@ -112,4 +111,4 @@
       </div>
     </div>
   </div>
-</Card>
+</section>

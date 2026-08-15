@@ -322,7 +322,7 @@
 <div
   bind:this={scrollContainer}
   bind:clientHeight={containerHeight}
-  class="overflow-auto flex-1 border border-border rounded-lg"
+  class="min-w-0 overflow-auto flex-1 border border-border rounded-lg"
   onscroll={onScroll}
 >
   <table class="w-full text-xs table-fixed">

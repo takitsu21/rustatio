@@ -1,5 +1,4 @@
 <script>
-  import Card from '$lib/components/ui/card.svelte';
   import Button from '$lib/components/ui/button.svelte';
   import {
     FileText,
@@ -92,10 +91,13 @@
   let trackers = $derived(getAllTrackers(torrent));
 </script>
 
-<Card class="p-3">
-  <h2 class="mb-3 text-primary text-lg font-semibold flex items-center gap-2">
-    <FileText size={20} /> Torrent File
-  </h2>
+<section class="workspace-section p-3.5">
+  <div class="mb-3">
+    <div class="workspace-kicker">Step 1</div>
+    <h2 class="mt-1 flex items-center gap-2 text-base font-semibold text-foreground">
+      <FileText size={17} class="text-primary" /> Torrent
+    </h2>
+  </div>
 
   <input
     type="file"
@@ -107,7 +109,7 @@
 
   {#if torrent}
     <!-- Torrent loaded state -->
-    <div class="bg-muted/50 rounded-lg border border-border overflow-hidden">
+    <div class="quiet-surface overflow-hidden">
       <!-- Main info row -->
       <div class="p-3 flex items-center gap-3">
         <div
@@ -260,35 +262,55 @@
     </div>
   {:else}
     <!-- Empty state with drag and drop -->
-    <button
-      onclick={handleFileSelect}
-      ondragover={handleDragOver}
-      ondragleave={handleDragLeave}
-      ondrop={handleDrop}
-      class="w-full p-6 border-2 border-dashed rounded-lg flex flex-col items-center gap-3 cursor-pointer transition-all group
+    <div class="py-5 sm:py-8">
+      <div class="mx-auto mb-5 max-w-lg text-center">
+        <h3 class="text-xl font-bold tracking-tight text-foreground">Choose a torrent to begin</h3>
+        <p class="mt-2 text-sm leading-6 text-muted-foreground">
+          Rustatio will read the torrent locally, then guide you through the few settings needed to
+          start a session.
+        </p>
+      </div>
+      <button
+        onclick={handleFileSelect}
+        ondragover={handleDragOver}
+        ondragleave={handleDragLeave}
+        ondrop={handleDrop}
+        class="mx-auto flex w-full max-w-lg cursor-pointer flex-col items-center gap-3 rounded-lg border-2 border-dashed p-6 transition-all group
         {isDragging
-        ? 'border-primary bg-primary/10'
-        : 'border-border bg-muted/30 hover:bg-muted/50 hover:border-primary/50'}"
-    >
-      <div
-        class="w-12 h-12 rounded-full flex items-center justify-center transition-colors
-        {isDragging ? 'bg-primary/20' : 'bg-muted group-hover:bg-primary/10'}"
+          ? 'border-primary bg-primary/10'
+          : 'border-border bg-muted/30 hover:bg-muted/50 hover:border-primary/50'}"
       >
-        <Upload
-          size={24}
-          class="transition-colors {isDragging
-            ? 'text-primary'
-            : 'text-muted-foreground group-hover:text-primary'}"
-        />
-      </div>
-      <div class="text-center">
-        <div class="font-medium text-sm mb-1">
-          {isDragging ? 'Drop torrent file here' : 'Select Torrent File'}
+        <div
+          class="w-12 h-12 rounded-full flex items-center justify-center transition-colors
+        {isDragging ? 'bg-primary/20' : 'bg-muted group-hover:bg-primary/10'}"
+        >
+          <Upload
+            size={24}
+            class="transition-colors {isDragging
+              ? 'text-primary'
+              : 'text-muted-foreground group-hover:text-primary'}"
+          />
         </div>
-        <div class="text-xs text-muted-foreground">
-          {isDragging ? 'Release to load' : 'Click to browse or drag and drop'}
+        <div class="text-center">
+          <div class="font-medium text-sm mb-1">
+            {isDragging ? 'Drop torrent file here' : 'Select Torrent File'}
+          </div>
+          <div class="text-xs text-muted-foreground">
+            {isDragging ? 'Release to load' : 'Click to browse or drag and drop'}
+          </div>
         </div>
-      </div>
-    </button>
+      </button>
+      <ol class="mx-auto mt-5 grid max-w-lg gap-2 text-left sm:grid-cols-3">
+        {#each ['Choose torrent', 'Review essentials', 'Start session'] as step, index (step)}
+          <li class="quiet-surface flex items-center gap-2 p-2.5 text-xs text-muted-foreground">
+            <span
+              class="mono-data flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground"
+              >{index + 1}</span
+            >
+            {step}
+          </li>
+        {/each}
+      </ol>
+    </div>
   {/if}
-</Card>
+</section>

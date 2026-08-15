@@ -36,7 +36,6 @@
   import TotalStats from './components/stats/TotalStats.svelte';
   import RateGraph from './components/stats/RateGraph.svelte';
   import Logs from './components/common/Logs.svelte';
-  import ProxySettings from './components/common/ProxySettings.svelte';
   import UpdateChecker from './components/common/UpdateChecker.svelte';
   import ThemeIcon from './components/common/ThemeIcon.svelte';
   import DownloadButton from './components/common/DownloadButton.svelte';
@@ -1527,7 +1526,7 @@
       <!-- Theme Toggle (Absolute Top-Right) -->
       <div class="fixed top-4 right-4 z-30 flex items-center gap-3">
         {#if !isTauri}
-          <div class="hidden sm:block">
+          <div class="hidden xl:block">
             <DownloadButton />
           </div>
         {/if}
@@ -1589,13 +1588,26 @@
       <!-- Header -->
       <Header
         onToggleSidebar={() => (sidebarOpen = !sidebarOpen)}
+        eyebrow={$viewMode === 'grid' ? 'Grid' : $viewMode === 'watch' ? 'Watch' : 'Standard'}
+        title={$viewMode === 'grid'
+          ? 'Torrent grid'
+          : $viewMode === 'watch'
+            ? 'Watch explorer'
+            : $activeInstance?.torrent?.name || 'New torrent session'}
+        description={$viewMode === 'grid'
+          ? 'Import, filter, and manage many torrent instances'
+          : $viewMode === 'watch'
+            ? 'Review files discovered in the configured watch folder'
+            : $activeInstance?.torrent
+              ? 'Review the session state and use the primary action to continue'
+              : 'Choose a torrent first; configuration appears when it becomes relevant'}
         showStatus={$viewMode === 'standard'}
         statusMessage={$activeInstance?.statusMessage || 'Select a torrent file to begin'}
         statusType={$activeInstance?.statusType || 'warning'}
         statusIcon={$activeInstance?.statusIcon || null}
         isRunning={$activeInstance?.isRunning || false}
         isPaused={$activeInstance?.isPaused || false}
-        {startFaking}
+        startFaking={$activeInstance?.torrent ? startFaking : null}
         {stopFaking}
         {pauseFaking}
         {resumeFaking}
@@ -1613,187 +1625,217 @@
         </div>
       {:else}
         <div class="flex-1 overflow-y-auto p-3">
-          <div class="max-w-7xl mx-auto">
-            <!-- CORS Proxy Settings -->
-            <ProxySettings />
-
-            {#if $activeInstance?.source === 'watch_folder'}
-              <div class="mb-3 flex items-center gap-2 flex-wrap">
-                <span
-                  class="inline-flex items-center gap-1 rounded-md border border-primary/30 bg-primary/10 px-2 py-1 text-xs text-primary"
-                  title="This instance is managed by watch folder"
-                >
-                  <FolderOpen size={12} />
-                  Watch folder instance
-                </span>
-                <button
-                  class="inline-flex items-center gap-1 rounded-md border border-primary/30 bg-primary/10 px-2 py-1 text-xs text-primary hover:bg-primary/20 transition-colors"
-                  onclick={() => {
-                    const name =
-                      $activeInstance?.torrent?.name || $activeInstance?.torrentPath || '';
-                    focusWatchQuery(name);
-                    viewMode.set('watch');
-                  }}
-                  title="Open this torrent in watch explorer"
-                >
-                  <FolderOpen size={12} />
-                  Open in Watch
-                </button>
+          <div class="mx-auto max-w-[1500px]">
+            {#if !$activeInstance?.torrent}
+              <div class="mx-auto max-w-3xl py-3 sm:py-8">
+                <TorrentSelector torrent={null} {selectTorrent} {formatBytes} />
               </div>
-            {/if}
-            <!-- Torrent Selection & Configuration -->
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
-              <TorrentSelector torrent={$activeInstance?.torrent} {selectTorrent} {formatBytes} />
-
-              {#if $activeInstance}
-                <ConfigurationForm
-                  {clients}
-                  {clientVersions}
-                  selectedClient={$activeInstance.selectedClient}
-                  selectedClientVersion={$activeInstance.selectedClientVersion}
-                  port={$activeInstance.port}
-                  currentForwardedPort={getForwardedPort(networkStatus)}
-                  vpnPortSyncVisible={isServerMode}
-                  networkStatusConfigured={isServerMode ? isNetworkConfigured(networkStatus) : true}
-                  vpnPortSyncEnabled={isServerMode ? getVpnPortSyncEnabled(networkStatus) : false}
-                  {networkStatusError}
-                  vpnPortSync={$activeInstance.vpnPortSync}
-                  uploadRate={$activeInstance.uploadRate}
-                  downloadRate={$activeInstance.downloadRate}
-                  completionPercent={$activeInstance.completionPercent}
-                  initialUploaded={$activeInstance.initialUploaded}
-                  updateIntervalSeconds={$activeInstance.updateIntervalSeconds}
-                  scrapeInterval={$activeInstance.scrapeInterval}
-                  randomizeRates={$activeInstance.randomizeRates}
-                  randomRangePercent={$activeInstance.randomRangePercent}
-                  progressiveRatesEnabled={$activeInstance.progressiveRatesEnabled}
-                  targetUploadRate={$activeInstance.targetUploadRate}
-                  targetDownloadRate={$activeInstance.targetDownloadRate}
-                  progressiveDurationHours={$activeInstance.progressiveDurationHours}
-                  isRunning={$activeInstance.isRunning || false}
-                  onUpdate={updates => {
-                    // Reset cumulative stats if user changes initial values
-                    if (
-                      updates.initialUploaded !== undefined ||
-                      updates.completionPercent !== undefined
-                    ) {
-                      updates.cumulativeUploaded = 0;
-                      updates.cumulativeDownloaded = 0;
-                    }
-                    instanceActions.updateInstance($activeInstance.id, updates);
-                    // Sync config to server (debounced) so it persists across page refreshes
-                    syncConfigToServer($activeInstance.id);
-                  }}
-                />
+            {:else}
+              {#if $activeInstance?.source === 'watch_folder'}
+                <div class="mb-3 flex items-center gap-2 flex-wrap">
+                  <span
+                    class="inline-flex items-center gap-1 rounded-md border border-primary/30 bg-primary/10 px-2 py-1 text-xs text-primary"
+                    title="This instance is managed by watch folder"
+                  >
+                    <FolderOpen size={12} />
+                    Watch folder instance
+                  </span>
+                  <button
+                    class="inline-flex items-center gap-1 rounded-md border border-primary/30 bg-primary/10 px-2 py-1 text-xs text-primary hover:bg-primary/20 transition-colors"
+                    onclick={() => {
+                      const name =
+                        $activeInstance?.torrent?.name || $activeInstance?.torrentPath || '';
+                      focusWatchQuery(name);
+                      viewMode.set('watch');
+                    }}
+                    title="Open this torrent in watch explorer"
+                  >
+                    <FolderOpen size={12} />
+                    Open in Watch
+                  </button>
+                </div>
               {/if}
-            </div>
-
-            <!-- Stop Conditions & Progress Bars -->
-            {#if $activeInstance}
-              {@const hasActiveStopCondition =
-                $activeInstance.stopAtRatioEnabled ||
-                $activeInstance.stopAtUploadedEnabled ||
-                $activeInstance.stopAtDownloadedEnabled ||
-                $activeInstance.stopAtSeedTimeEnabled}
-              {@const isLeeching = ($activeInstance.completionPercent ?? 100) < 100}
-              {@const showProgressBars =
-                (hasActiveStopCondition || isLeeching) && $activeInstance?.stats}
-
-              <div class="grid grid-cols-1 {showProgressBars ? 'md:grid-cols-2' : ''} gap-3 mb-3">
-                <StopConditions
-                  stopAtRatioEnabled={$activeInstance.stopAtRatioEnabled}
-                  stopAtRatio={$activeInstance.stopAtRatio}
-                  randomizeRatio={$activeInstance.randomizeRatio}
-                  randomRatioRangePercent={$activeInstance.randomRatioRangePercent}
-                  effectiveStopAtRatio={$activeInstance.effectiveStopAtRatio}
-                  stopAtUploadedEnabled={$activeInstance.stopAtUploadedEnabled}
-                  stopAtUploadedGB={$activeInstance.stopAtUploadedGB}
-                  stopAtDownloadedEnabled={$activeInstance.stopAtDownloadedEnabled}
-                  stopAtDownloadedGB={$activeInstance.stopAtDownloadedGB}
-                  stopAtSeedTimeEnabled={$activeInstance.stopAtSeedTimeEnabled}
-                  stopAtSeedTimeHours={$activeInstance.stopAtSeedTimeHours}
-                  idleWhenNoLeechers={$activeInstance.idleWhenNoLeechers}
-                  idleWhenNoSeeders={$activeInstance.idleWhenNoSeeders}
-                  postStopAction={$activeInstance.postStopAction}
-                  completionPercent={$activeInstance.completionPercent}
-                  isRunning={$activeInstance.isRunning || false}
-                  onUpdate={updates => {
-                    // Recompute effective ratio preview when ratio-related settings change
-                    // Only recompute on frontend if the instance is NOT running
-                    // (when running, the backend's effective ratio is authoritative)
-                    if (
-                      !($activeInstance.isRunning || false) &&
-                      ('stopAtRatio' in updates ||
-                        'randomizeRatio' in updates ||
-                        'randomRatioRangePercent' in updates ||
-                        'stopAtRatioEnabled' in updates)
-                    ) {
-                      const inst = $activeInstance;
-                      const merged = { ...inst, ...updates };
-                      updates.effectiveStopAtRatio = merged.stopAtRatioEnabled
-                        ? computeEffectiveRatio(
-                            merged.stopAtRatio,
-                            merged.randomizeRatio,
-                            merged.randomRatioRangePercent
-                          )
-                        : null;
-                    }
-                    instanceActions.updateInstance($activeInstance.id, updates);
-                    // Sync config to server (debounced) so it persists across page refreshes
-                    syncConfigToServer($activeInstance.id);
-                  }}
-                />
-
-                {#if showProgressBars}
-                  <ProgressBars
-                    stats={$activeInstance.stats}
-                    completionPercent={$activeInstance.completionPercent ?? 100}
-                    torrentSize={$activeInstance.torrent?.total_size ?? 0}
-                    stopAtRatioEnabled={$activeInstance.stopAtRatioEnabled}
-                    stopAtRatio={$activeInstance.effectiveStopAtRatio ??
-                      $activeInstance.stopAtRatio}
-                    stopAtUploadedEnabled={$activeInstance.stopAtUploadedEnabled}
-                    stopAtUploadedGB={$activeInstance.stopAtUploadedGB}
-                    stopAtDownloadedEnabled={$activeInstance.stopAtDownloadedEnabled}
-                    stopAtDownloadedGB={$activeInstance.stopAtDownloadedGB}
-                    stopAtSeedTimeEnabled={$activeInstance.stopAtSeedTimeEnabled}
-                    stopAtSeedTimeHours={$activeInstance.stopAtSeedTimeHours}
+              <div class="flex flex-col">
+                <!-- Torrent Selection & Configuration -->
+                <div
+                  class="grid grid-cols-1 gap-3 mb-3 md:grid-cols-2 {$activeInstance?.isRunning
+                    ? 'order-2 opacity-70'
+                    : 'order-1'}"
+                >
+                  <TorrentSelector
+                    torrent={$activeInstance?.torrent}
+                    {selectTorrent}
                     {formatBytes}
-                    {formatDuration}
                   />
+
+                  {#if $activeInstance}
+                    <ConfigurationForm
+                      {clients}
+                      {clientVersions}
+                      selectedClient={$activeInstance.selectedClient}
+                      selectedClientVersion={$activeInstance.selectedClientVersion}
+                      port={$activeInstance.port}
+                      currentForwardedPort={getForwardedPort(networkStatus)}
+                      vpnPortSyncVisible={isServerMode}
+                      networkStatusConfigured={isServerMode
+                        ? isNetworkConfigured(networkStatus)
+                        : true}
+                      vpnPortSyncEnabled={isServerMode
+                        ? getVpnPortSyncEnabled(networkStatus)
+                        : false}
+                      {networkStatusError}
+                      vpnPortSync={$activeInstance.vpnPortSync}
+                      uploadRate={$activeInstance.uploadRate}
+                      downloadRate={$activeInstance.downloadRate}
+                      completionPercent={$activeInstance.completionPercent}
+                      initialUploaded={$activeInstance.initialUploaded}
+                      updateIntervalSeconds={$activeInstance.updateIntervalSeconds}
+                      scrapeInterval={$activeInstance.scrapeInterval}
+                      randomizeRates={$activeInstance.randomizeRates}
+                      randomRangePercent={$activeInstance.randomRangePercent}
+                      progressiveRatesEnabled={$activeInstance.progressiveRatesEnabled}
+                      targetUploadRate={$activeInstance.targetUploadRate}
+                      targetDownloadRate={$activeInstance.targetDownloadRate}
+                      progressiveDurationHours={$activeInstance.progressiveDurationHours}
+                      isRunning={$activeInstance.isRunning || false}
+                      onUpdate={updates => {
+                        // Reset cumulative stats if user changes initial values
+                        if (
+                          updates.initialUploaded !== undefined ||
+                          updates.completionPercent !== undefined
+                        ) {
+                          updates.cumulativeUploaded = 0;
+                          updates.cumulativeDownloaded = 0;
+                        }
+                        instanceActions.updateInstance($activeInstance.id, updates);
+                        // Sync config to server (debounced) so it persists across page refreshes
+                        syncConfigToServer($activeInstance.id);
+                      }}
+                    />
+                  {/if}
+                </div>
+
+                <!-- Stop Conditions & Progress Bars -->
+                {#if $activeInstance}
+                  {@const hasActiveStopCondition =
+                    $activeInstance.stopAtRatioEnabled ||
+                    $activeInstance.stopAtUploadedEnabled ||
+                    $activeInstance.stopAtDownloadedEnabled ||
+                    $activeInstance.stopAtSeedTimeEnabled}
+                  {@const isLeeching = ($activeInstance.completionPercent ?? 100) < 100}
+                  {@const showProgressBars =
+                    (hasActiveStopCondition || isLeeching) && $activeInstance?.stats}
+
+                  <div
+                    class="grid grid-cols-1 {showProgressBars
+                      ? 'md:grid-cols-2'
+                      : ''} order-3 gap-3 mb-3 {$activeInstance?.isRunning ? 'opacity-70' : ''}"
+                  >
+                    <StopConditions
+                      stopAtRatioEnabled={$activeInstance.stopAtRatioEnabled}
+                      stopAtRatio={$activeInstance.stopAtRatio}
+                      randomizeRatio={$activeInstance.randomizeRatio}
+                      randomRatioRangePercent={$activeInstance.randomRatioRangePercent}
+                      effectiveStopAtRatio={$activeInstance.effectiveStopAtRatio}
+                      stopAtUploadedEnabled={$activeInstance.stopAtUploadedEnabled}
+                      stopAtUploadedGB={$activeInstance.stopAtUploadedGB}
+                      stopAtDownloadedEnabled={$activeInstance.stopAtDownloadedEnabled}
+                      stopAtDownloadedGB={$activeInstance.stopAtDownloadedGB}
+                      stopAtSeedTimeEnabled={$activeInstance.stopAtSeedTimeEnabled}
+                      stopAtSeedTimeHours={$activeInstance.stopAtSeedTimeHours}
+                      idleWhenNoLeechers={$activeInstance.idleWhenNoLeechers}
+                      idleWhenNoSeeders={$activeInstance.idleWhenNoSeeders}
+                      postStopAction={$activeInstance.postStopAction}
+                      completionPercent={$activeInstance.completionPercent}
+                      isRunning={$activeInstance.isRunning || false}
+                      onUpdate={updates => {
+                        // Recompute effective ratio preview when ratio-related settings change
+                        // Only recompute on frontend if the instance is NOT running
+                        // (when running, the backend's effective ratio is authoritative)
+                        if (
+                          !($activeInstance.isRunning || false) &&
+                          ('stopAtRatio' in updates ||
+                            'randomizeRatio' in updates ||
+                            'randomRatioRangePercent' in updates ||
+                            'stopAtRatioEnabled' in updates)
+                        ) {
+                          const inst = $activeInstance;
+                          const merged = { ...inst, ...updates };
+                          updates.effectiveStopAtRatio = merged.stopAtRatioEnabled
+                            ? computeEffectiveRatio(
+                                merged.stopAtRatio,
+                                merged.randomizeRatio,
+                                merged.randomRatioRangePercent
+                              )
+                            : null;
+                        }
+                        instanceActions.updateInstance($activeInstance.id, updates);
+                        // Sync config to server (debounced) so it persists across page refreshes
+                        syncConfigToServer($activeInstance.id);
+                      }}
+                    />
+
+                    {#if showProgressBars}
+                      <ProgressBars
+                        stats={$activeInstance.stats}
+                        completionPercent={$activeInstance.completionPercent ?? 100}
+                        torrentSize={$activeInstance.torrent?.total_size ?? 0}
+                        stopAtRatioEnabled={$activeInstance.stopAtRatioEnabled}
+                        stopAtRatio={$activeInstance.effectiveStopAtRatio ??
+                          $activeInstance.stopAtRatio}
+                        stopAtUploadedEnabled={$activeInstance.stopAtUploadedEnabled}
+                        stopAtUploadedGB={$activeInstance.stopAtUploadedGB}
+                        stopAtDownloadedEnabled={$activeInstance.stopAtDownloadedEnabled}
+                        stopAtDownloadedGB={$activeInstance.stopAtDownloadedGB}
+                        stopAtSeedTimeEnabled={$activeInstance.stopAtSeedTimeEnabled}
+                        stopAtSeedTimeHours={$activeInstance.stopAtSeedTimeHours}
+                        {formatBytes}
+                        {formatDuration}
+                      />
+                    {/if}
+                  </div>
                 {/if}
+
+                <!-- Stats -->
+                {#if $activeInstance?.stats && ($activeInstance.isRunning || ($activeInstance.stats.session_uploaded ?? 0) > 0 || ($activeInstance.stats.session_downloaded ?? 0) > 0)}
+                  <!-- Session & Total Stats -->
+                  <div
+                    class="grid grid-cols-1 gap-3 mb-3 md:grid-cols-2 {$activeInstance?.isRunning
+                      ? 'order-1'
+                      : 'order-3'}"
+                  >
+                    <SessionStats stats={$activeInstance.stats} {formatBytes} {formatDuration} />
+                    <TotalStats
+                      stats={$activeInstance.stats}
+                      torrent={$activeInstance.torrent}
+                      {formatBytes}
+                    />
+                  </div>
+
+                  <!-- Performance & Peer Analytics (merged) -->
+                  <div class="mb-3 {$activeInstance?.isRunning ? 'order-1' : 'order-3'}">
+                    <RateGraph stats={$activeInstance.stats} {formatDuration} />
+                  </div>
+                {/if}
+
+                <!-- Logs Section -->
+                <div class="order-4">
+                  <Logs
+                    bind:logs
+                    bind:showLogs
+                    onUpdate={async updates => {
+                      if (updates.showLogs !== undefined) {
+                        showLogs = updates.showLogs;
+                        localStorage.setItem(
+                          'rustatio-show-logs',
+                          JSON.stringify(updates.showLogs)
+                        );
+                      }
+                    }}
+                  />
+                </div>
               </div>
             {/if}
-
-            <!-- Stats -->
-            {#if $activeInstance?.stats}
-              <!-- Session & Total Stats -->
-              <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
-                <SessionStats stats={$activeInstance.stats} {formatBytes} {formatDuration} />
-                <TotalStats
-                  stats={$activeInstance.stats}
-                  torrent={$activeInstance.torrent}
-                  {formatBytes}
-                />
-              </div>
-
-              <!-- Performance & Peer Analytics (merged) -->
-              <div class="mb-3">
-                <RateGraph stats={$activeInstance.stats} {formatDuration} />
-              </div>
-            {/if}
-
-            <!-- Logs Section -->
-            <Logs
-              bind:logs
-              bind:showLogs
-              onUpdate={async updates => {
-                if (updates.showLogs !== undefined) {
-                  showLogs = updates.showLogs;
-                  localStorage.setItem('rustatio-show-logs', JSON.stringify(updates.showLogs));
-                }
-              }}
-            />
           </div>
         </div>
       {/if}

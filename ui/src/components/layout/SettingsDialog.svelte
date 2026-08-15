@@ -22,6 +22,7 @@
   import { THEMES, THEME_CATEGORIES, getTheme, selectTheme } from '$lib/themeStore.svelte.js';
   import { Settings, X, Check, Trash2, Download, Upload, Save } from '@lucide/svelte';
   import PresetIcon from '../config/PresetIcon.svelte';
+  import ProxySettings from '../common/ProxySettings.svelte';
 
   let { isOpen = $bindable(false) } = $props();
 
@@ -439,11 +440,11 @@
     bind:open={isOpen}
     onClose={close}
     titleId="settings-title"
-    maxWidthClass="max-w-2xl"
+    maxWidthClass="max-w-4xl"
     panelClass="max-h-[85vh] flex flex-col animate-in fade-in zoom-in-95 duration-200"
   >
     <!-- Header -->
-    <div class="flex items-start justify-between p-6 border-b border-border flex-shrink-0">
+    <div class="flex items-start justify-between p-4 border-b border-border flex-shrink-0">
       <div class="flex items-center gap-3">
         <div class="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
           <Settings size={20} class="text-primary" />
@@ -473,6 +474,14 @@
         General
       </button>
       <button
+        class="flex-1 px-4 py-3 text-sm font-medium transition-colors {activeTab === 'appearance'
+          ? 'text-primary border-b-2 border-primary bg-primary/5'
+          : 'text-muted-foreground hover:text-foreground'}"
+        onclick={() => (activeTab = 'appearance')}
+      >
+        Appearance
+      </button>
+      <button
         class="flex-1 px-4 py-3 text-sm font-medium transition-colors {activeTab === 'presets'
           ? 'text-primary border-b-2 border-primary bg-primary/5'
           : 'text-muted-foreground hover:text-foreground'}"
@@ -486,12 +495,12 @@
           : 'text-muted-foreground hover:text-foreground'}"
         onclick={() => (activeTab = 'tips')}
       >
-        Detection Tips
+        Help
       </button>
     </div>
 
     <!-- Content -->
-    <div class="flex-1 overflow-y-auto p-6">
+    <div class="compact-scrollbar flex-1 overflow-y-auto p-4 sm:p-5">
       {#if activeTab === 'general'}
         <!-- General Settings Tab -->
         <div class="space-y-6">
@@ -558,6 +567,17 @@
               </div>
             </div>
           {/if}
+
+          <ProxySettings />
+        </div>
+      {:else if activeTab === 'appearance'}
+        <div class="space-y-4">
+          <div>
+            <h3 class="text-base font-semibold text-foreground">Appearance</h3>
+            <p class="mt-1 text-sm text-muted-foreground">
+              Choose a theme. Every option uses the same semantic hierarchy and accessible states.
+            </p>
+          </div>
 
           <!-- Theme Section -->
           <div class="border border-border rounded-lg p-4">

@@ -8,7 +8,10 @@
     "build": "vite build",
     "preview": "vite preview",
     "format": "prettier --write .",
-    "format:check": "prettier --check . || true",
+    "format:check": "prettier --check .",
+    "check": "svelte-check --tsconfig ./jsconfig.json",
+    "test": "node --test src/lib/*.test.js",
+    "test:components": "vitest run src/components/__tests__",
     "lint": "eslint .",
     "lint:fix": "eslint --fix ."
   },
@@ -28,6 +31,7 @@
     "@eslint/js": "^9.39.2",
     "@sveltejs/vite-plugin-svelte": "^6.2.1",
     "@tailwindcss/postcss": "^4.1.18",
+    "@testing-library/svelte": "^5.4.2",
     "@typescript-eslint/eslint-plugin": "^8.50.1",
     "@typescript-eslint/parser": "^8.50.1",
     "autoprefixer": "^10.4.23",
@@ -35,14 +39,17 @@
     "eslint": "^9.39.2",
     "eslint-plugin-svelte": "^3.15.0",
     "globals": "^16.5.0",
+    "jsdom": "^29.1.1",
     "postcss": "^8.5.6",
     "prettier": "^3.2.5",
     "prettier-plugin-svelte": "^3.2.0",
     "svelte": "^5.17.0",
+    "svelte-check": "^4.7.6",
     "svelte-eslint-parser": "^1.4.1",
     "tailwind-merge": "^3.4.0",
     "tailwindcss": "^4.1.18",
     "tailwindcss-animate": "^1.0.7",
-    "vite": "^7.3.2"
+    "vite": "^7.3.2",
+    "vitest": "^4.1.10"
   }
 }

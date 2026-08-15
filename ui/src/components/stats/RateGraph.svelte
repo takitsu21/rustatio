@@ -1,7 +1,6 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
   import * as echarts from 'echarts';
-  import Card from '$lib/components/ui/card.svelte';
   import { Activity, Users, Upload, Download, Percent, Clock, RotateCcw } from '@lucide/svelte';
 
   let { stats, formatDuration } = $props();
@@ -451,7 +450,7 @@
   }
 </script>
 
-<Card class="p-3">
+<section class="workspace-section p-3">
   <div class="flex items-center justify-between mb-3">
     <h2 class="text-primary text-lg font-semibold flex items-center gap-2">
       <Activity size={20} /> Performance
@@ -634,4 +633,4 @@
       {/if}
     </div>
   </div>
-</Card>
+</section>

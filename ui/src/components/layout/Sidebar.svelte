@@ -315,11 +315,32 @@
   async function handleRemoveInstance(event, id) {
     event.stopPropagation();
     event.preventDefault();
+    const instance = $instances.find(item => item.id === id);
+    deleteTarget = { id, name: getInstanceLabel(instance || { id }) };
+    deleteConfirmVisible = true;
+  }
 
+  let deleteTarget = $state(null);
+  let deleteConfirmVisible = $state(false);
+  let deleteBusy = $state(false);
+
+  function cancelRemoveInstance() {
+    if (deleteBusy) return;
+    deleteConfirmVisible = false;
+    deleteTarget = null;
+  }
+
+  async function confirmRemoveInstance() {
+    if (!deleteTarget || deleteBusy) return;
+    deleteBusy = true;
     try {
-      await instanceActions.removeInstance(id);
+      await instanceActions.removeInstance(deleteTarget.id);
     } catch (error) {
       console.error('Failed to remove instance:', error);
+    } finally {
+      deleteBusy = false;
+      deleteConfirmVisible = false;
+      deleteTarget = null;
     }
   }
 
@@ -409,7 +430,7 @@
             isCollapsed && 'lg:opacity-0 lg:w-0 lg:overflow-hidden'
           )}
         >
-          {isGridMode ? 'Grid Mode' : isWatchMode ? 'Watch Mode' : 'Instances'}
+          Rustatio
         </h2>
 
         <!-- Desktop Toggle Button -->
@@ -519,7 +540,7 @@
       {#if !isGridMode && !isWatchMode}
         <!-- Total Stats Summary -->
         {#if !isCompact && (totalStats().uploaded > 0 || totalStats().downloaded > 0)}
-          <div class="mb-3 p-2 bg-muted/50 rounded-lg text-xs">
+          <div class="hidden">
             <div class="flex justify-between text-muted-foreground mb-1">
               <span>Total Uploaded</span>
               <span class="font-semibold text-stat-upload"
@@ -543,67 +564,76 @@
 
         <!-- Bulk Actions -->
         {#if hasMultipleInstancesWithTorrents}
-          <div class={cn('flex flex-wrap gap-2 mb-3', isCollapsed && 'lg:flex-col')}>
-            <Button
-              onclick={handleStartAll}
-              disabled={!hasStoppedInstancesWithTorrents}
-              size="sm"
-              variant="default"
-              class={cn('gap-1 cursor-pointer', isCollapsed ? 'lg:w-full lg:px-2' : 'flex-1')}
-              title="Start all instances"
+          <details
+            class={cn('mb-3 rounded-md border border-border/70', isCollapsed && 'lg:hidden')}
+          >
+            <summary
+              class="cursor-pointer list-none px-2.5 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground"
             >
-              {#snippet children()}
-                <Play size={12} fill="currentColor" />
-                <span class={cn(isCollapsed && 'lg:hidden')}>Start All</span>
-              {/snippet}
-            </Button>
+              Bulk session controls
+            </summary>
+            <div class={cn('grid grid-cols-2 gap-2 border-t border-border/70 p-2')}>
+              <Button
+                onclick={handleStartAll}
+                disabled={!hasStoppedInstancesWithTorrents}
+                size="sm"
+                variant="default"
+                class={cn('gap-1 cursor-pointer', isCollapsed ? 'lg:w-full lg:px-2' : 'flex-1')}
+                title="Start all instances"
+              >
+                {#snippet children()}
+                  <Play size={12} fill="currentColor" />
+                  <span class={cn(isCollapsed && 'lg:hidden')}>Start All</span>
+                {/snippet}
+              </Button>
 
-            <Button
-              onclick={handleStopAll}
-              disabled={!hasRunningInstances}
-              size="sm"
-              class={cn(
-                'gap-1 cursor-pointer bg-stat-danger hover:bg-stat-danger/90 text-white shadow-lg shadow-stat-danger/25',
-                isCollapsed ? 'lg:w-full lg:px-2' : 'flex-1'
-              )}
-              title="Stop all instances"
-            >
-              {#snippet children()}
-                <Square size={12} fill="currentColor" />
-                <span class={cn(isCollapsed && 'lg:hidden')}>Stop All</span>
-              {/snippet}
-            </Button>
+              <Button
+                onclick={handleStopAll}
+                disabled={!hasRunningInstances}
+                size="sm"
+                class={cn(
+                  'gap-1 cursor-pointer bg-stat-danger hover:bg-stat-danger/90 text-white shadow-lg shadow-stat-danger/25',
+                  isCollapsed ? 'lg:w-full lg:px-2' : 'flex-1'
+                )}
+                title="Stop all instances"
+              >
+                {#snippet children()}
+                  <Square size={12} fill="currentColor" />
+                  <span class={cn(isCollapsed && 'lg:hidden')}>Stop All</span>
+                {/snippet}
+              </Button>
 
-            <Button
-              onclick={handlePauseAll}
-              disabled={!hasUnpausedRunningInstances}
-              size="sm"
-              class={cn(
-                'gap-1 cursor-pointer bg-stat-ratio hover:bg-stat-ratio/90 text-white shadow-lg shadow-stat-ratio/25',
-                isCollapsed ? 'lg:w-full lg:px-2' : 'flex-1'
-              )}
-              title="Pause all running instances"
-            >
-              {#snippet children()}
-                <Pause size={12} fill="currentColor" />
-                <span class={cn(isCollapsed && 'lg:hidden')}>Pause All</span>
-              {/snippet}
-            </Button>
+              <Button
+                onclick={handlePauseAll}
+                disabled={!hasUnpausedRunningInstances}
+                size="sm"
+                class={cn(
+                  'gap-1 cursor-pointer bg-stat-ratio hover:bg-stat-ratio/90 text-white shadow-lg shadow-stat-ratio/25',
+                  isCollapsed ? 'lg:w-full lg:px-2' : 'flex-1'
+                )}
+                title="Pause all running instances"
+              >
+                {#snippet children()}
+                  <Pause size={12} fill="currentColor" />
+                  <span class={cn(isCollapsed && 'lg:hidden')}>Pause All</span>
+                {/snippet}
+              </Button>
 
-            <Button
-              onclick={handleResumeAll}
-              disabled={!hasPausedInstances}
-              size="sm"
-              variant="secondary"
-              class={cn('gap-1 cursor-pointer', isCollapsed ? 'lg:w-full lg:px-2' : 'flex-1')}
-              title="Resume all paused instances"
-            >
-              {#snippet children()}
-                <Play size={12} fill="currentColor" />
-                <span class={cn(isCollapsed && 'lg:hidden')}>Resume All</span>
-              {/snippet}
-            </Button>
-          </div>
+              <Button
+                onclick={handleResumeAll}
+                disabled={!hasPausedInstances}
+                size="sm"
+                variant="secondary"
+                class={cn('gap-1 cursor-pointer', isCollapsed ? 'lg:w-full lg:px-2' : 'flex-1')}
+                title="Resume all paused instances"
+              >
+                {#snippet children()}
+                  <Play size={12} fill="currentColor" />
+                  <span class={cn(isCollapsed && 'lg:hidden')}>Resume All</span>
+                {/snippet}
+              </Button>
+            </div>
+          </details>
         {/if}
 
         <!-- Add Instance Button -->
@@ -629,6 +659,13 @@
           'lg:min-h-0 lg:flex-1 lg:overflow-y-auto'
         )}
       >
+        {#if !isCompact}
+          <div
+            class="sticky top-0 z-10 border-b border-border bg-card px-4 py-2 text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground"
+          >
+            Instances
+          </div>
+        {/if}
         {#each $instances as instance (instance.id)}
           {@const status = getInstanceStatus(instance)}
           {@const isActive = $activeInstanceId === instance.id}
@@ -1025,6 +1062,22 @@
     </div>
   {/if}
 </aside>
+
+<ConfirmDialog
+  bind:open={deleteConfirmVisible}
+  title="Delete Instance"
+  message={`Delete "${deleteTarget?.name || 'this instance'}"? Its saved configuration and session state will be removed.`}
+  cancelLabel="Cancel"
+  confirmLabel={deleteBusy ? 'Deleting...' : 'Delete'}
+  kind="danger"
+  titleId="delete-instance-title"
+  onCancel={cancelRemoveInstance}
+  onConfirm={confirmRemoveInstance}
+  disableCancel={deleteBusy}
+  disableConfirm={deleteBusy}
+  closeOnBackdrop={!deleteBusy}
+  closeOnEscape={!deleteBusy}
+/>
 
 <ConfirmDialog
   bind:open={forceDeleteConfirmVisible}

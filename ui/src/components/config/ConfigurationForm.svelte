@@ -1,11 +1,19 @@
 <script>
-  import Card from '$lib/components/ui/card.svelte';
   import Label from '$lib/components/ui/label.svelte';
   import Input from '$lib/components/ui/input.svelte';
   import Checkbox from '$lib/components/ui/checkbox.svelte';
   import InlineHelp from '$lib/components/common/InlineHelp.svelte';
   import { cn } from '$lib/utils.js';
-  import { Settings, ArrowUpDown, Clock, Timer, Upload, Download, Lock } from '@lucide/svelte';
+  import {
+    Settings,
+    ArrowUpDown,
+    Clock,
+    Timer,
+    Upload,
+    Download,
+    Lock,
+    ChevronDown,
+  } from '@lucide/svelte';
   import ClientIcon from './ClientIcon.svelte';
   import ClientSelect from './ClientSelect.svelte';
   import VersionSelect from './VersionSelect.svelte';
@@ -244,10 +252,22 @@
   }
 </script>
 
-<Card class="p-3">
-  <h2 class="mb-4 text-primary text-lg font-semibold flex items-center gap-2">
-    <Settings size={20} /> Configuration
-  </h2>
+<section class="workspace-section p-3.5">
+  <div class="mb-4 flex items-start justify-between gap-3">
+    <div>
+      <div class="workspace-kicker">Step 2</div>
+      <h2 class="mt-1 flex items-center gap-2 text-base font-semibold text-foreground">
+        <Settings size={17} class="text-primary" /> Essential settings
+      </h2>
+    </div>
+    {#if isRunning}
+      <span
+        class="rounded-full border border-border bg-muted px-2 py-1 text-[11px] text-muted-foreground"
+      >
+        Locked while running
+      </span>
+    {/if}
+  </div>
 
   <!-- Client Settings -->
   <div class="mb-4">
@@ -255,8 +275,8 @@
       <ClientIcon clientId={localSelectedClient} size={18} />
       <span class="text-sm font-medium">Client</span>
     </div>
-    <div class="bg-muted/50 rounded-lg border border-border p-3">
-      <div class="grid grid-cols-3 gap-3">
+    <div class="quiet-surface p-3">
+      <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <div>
           <Label for="client" class="text-xs text-muted-foreground mb-1.5 block">Type</Label>
           <ClientSelect
@@ -355,8 +375,8 @@
       <ArrowUpDown size={16} class="text-muted-foreground" />
       <span class="text-sm font-medium">Transfer Rates</span>
     </div>
-    <div class="bg-muted/50 rounded-lg border border-border overflow-hidden">
-      <div class="grid grid-cols-2">
+    <div class="quiet-surface overflow-hidden">
+      <div class="grid grid-cols-1 sm:grid-cols-2">
         <div class="p-3 border-r border-border">
           <div class="flex items-center gap-2 mb-2">
             <Upload size={14} class="text-stat-upload" />
@@ -406,139 +426,158 @@
     </div>
   </div>
 
-  <!-- Initial State -->
-  <div class="mb-4">
-    <div class="flex items-center gap-2 mb-3">
-      <Clock size={16} class="text-muted-foreground" />
-      <span class="text-sm font-medium">Initial State</span>
-    </div>
-    <div class="bg-muted/50 rounded-lg border border-border p-3">
-      <div class="grid grid-cols-2 gap-3">
-        <div>
-          <Label for="completion" class="text-xs text-muted-foreground mb-1.5 block"
-            >Completion</Label
-          >
-          <div class="flex items-center gap-2">
-            <Input
-              id="completion"
-              type="number"
-              bind:value={localCompletionPercent}
-              disabled={isRunning}
-              min="0"
-              max="100"
-              class="flex-1 h-9 text-center"
-              onfocus={handleFocus}
-              onblur={handleCompletionPercentBlur}
-              oninput={handleCompletionPercentInput}
-            />
-            <span class="text-sm text-muted-foreground">%</span>
-          </div>
+  <details class="group mt-3 overflow-hidden rounded-md border border-border/75 bg-background/35">
+    <summary
+      class="flex min-h-11 cursor-pointer list-none items-center gap-3 px-3 py-2.5 text-sm font-semibold text-foreground transition-colors hover:bg-muted/45"
+    >
+      <div class="min-w-0 flex-1">
+        <div>Advanced settings</div>
+        <div class="mt-0.5 text-xs font-normal text-muted-foreground">
+          Initial state, timing, randomization, and progressive rates
         </div>
-        <div>
-          <Label for="initialUp" class="text-xs text-muted-foreground mb-1.5 block"
-            >Already Uploaded</Label
-          >
-          <div class="flex items-center gap-2">
-            <Input
-              id="initialUp"
-              type="number"
-              bind:value={localInitialUploaded}
-              disabled={isRunning}
-              min="0"
-              step="1"
-              class="flex-1 h-9 text-center"
-              onfocus={handleFocus}
-              onblur={handleBlur}
-              oninput={() => updateValue('initialUploaded', Math.round(localInitialUploaded || 0))}
-            />
-            <span class="text-sm text-muted-foreground">MB</span>
+      </div>
+      <ChevronDown
+        size={16}
+        class="text-muted-foreground transition-transform group-open:rotate-180"
+      />
+    </summary>
+    <div class="border-t border-border/70 p-3">
+      <!-- Initial State -->
+      <div class="mb-4">
+        <div class="flex items-center gap-2 mb-3">
+          <Clock size={16} class="text-muted-foreground" />
+          <span class="text-sm font-medium">Initial State</span>
+        </div>
+        <div class="quiet-surface p-3">
+          <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <Label for="completion" class="text-xs text-muted-foreground mb-1.5 block"
+                >Completion</Label
+              >
+              <div class="flex items-center gap-2">
+                <Input
+                  id="completion"
+                  type="number"
+                  bind:value={localCompletionPercent}
+                  disabled={isRunning}
+                  min="0"
+                  max="100"
+                  class="flex-1 h-9 text-center"
+                  onfocus={handleFocus}
+                  onblur={handleCompletionPercentBlur}
+                  oninput={handleCompletionPercentInput}
+                />
+                <span class="text-sm text-muted-foreground">%</span>
+              </div>
+            </div>
+            <div>
+              <Label for="initialUp" class="text-xs text-muted-foreground mb-1.5 block"
+                >Already Uploaded</Label
+              >
+              <div class="flex items-center gap-2">
+                <Input
+                  id="initialUp"
+                  type="number"
+                  bind:value={localInitialUploaded}
+                  disabled={isRunning}
+                  min="0"
+                  step="1"
+                  class="flex-1 h-9 text-center"
+                  onfocus={handleFocus}
+                  onblur={handleBlur}
+                  oninput={() =>
+                    updateValue('initialUploaded', Math.round(localInitialUploaded || 0))}
+                />
+                <span class="text-sm text-muted-foreground">MB</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
-    </div>
-  </div>
 
-  <!-- Timing -->
-  <div class="mb-4">
-    <div class="flex items-center gap-2 mb-3">
-      <Timer size={16} class="text-muted-foreground" />
-      <span class="text-sm font-medium">Timing</span>
-    </div>
-    <div class="bg-muted/50 rounded-lg border border-border p-3">
-      <div class="grid grid-cols-2 gap-3">
-        <div>
-          <Label for="updateInterval" class="text-xs text-muted-foreground mb-1.5 block"
-            >Refresh Interval</Label
-          >
-          <div class="flex items-center gap-2">
-            <Input
-              id="updateInterval"
-              type="number"
-              bind:value={localUpdateIntervalSeconds}
-              disabled={isRunning}
-              min="1"
-              max="300"
-              step="1"
-              class="flex-1 h-9 text-center"
-              onfocus={handleFocus}
-              onblur={handleBlur}
-              oninput={() => updateValue('updateIntervalSeconds', localUpdateIntervalSeconds)}
-            />
-            <span class="text-sm text-muted-foreground">sec</span>
-          </div>
+      <!-- Timing -->
+      <div class="mb-4">
+        <div class="flex items-center gap-2 mb-3">
+          <Timer size={16} class="text-muted-foreground" />
+          <span class="text-sm font-medium">Timing</span>
         </div>
-        <div>
-          <Label for="scrapeInterval" class="text-xs text-muted-foreground mb-1.5 block"
-            >Scrape Interval</Label
-          >
-          <div class="flex items-center gap-2">
-            <Input
-              id="scrapeInterval"
-              type="number"
-              bind:value={localScrapeInterval}
-              disabled={isRunning}
-              min="10"
-              max="3600"
-              step="1"
-              class="flex-1 h-9 text-center"
-              onfocus={handleFocus}
-              onblur={handleScrapeIntervalBlur}
-              oninput={handleScrapeIntervalInput}
-            />
-            <span class="text-sm text-muted-foreground">sec</span>
+        <div class="quiet-surface p-3">
+          <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <Label for="updateInterval" class="text-xs text-muted-foreground mb-1.5 block"
+                >Refresh Interval</Label
+              >
+              <div class="flex items-center gap-2">
+                <Input
+                  id="updateInterval"
+                  type="number"
+                  bind:value={localUpdateIntervalSeconds}
+                  disabled={isRunning}
+                  min="1"
+                  max="300"
+                  step="1"
+                  class="flex-1 h-9 text-center"
+                  onfocus={handleFocus}
+                  onblur={handleBlur}
+                  oninput={() => updateValue('updateIntervalSeconds', localUpdateIntervalSeconds)}
+                />
+                <span class="text-sm text-muted-foreground">sec</span>
+              </div>
+            </div>
+            <div>
+              <Label for="scrapeInterval" class="text-xs text-muted-foreground mb-1.5 block"
+                >Scrape Interval</Label
+              >
+              <div class="flex items-center gap-2">
+                <Input
+                  id="scrapeInterval"
+                  type="number"
+                  bind:value={localScrapeInterval}
+                  disabled={isRunning}
+                  min="10"
+                  max="3600"
+                  step="1"
+                  class="flex-1 h-9 text-center"
+                  onfocus={handleFocus}
+                  onblur={handleScrapeIntervalBlur}
+                  oninput={handleScrapeIntervalInput}
+                />
+                <span class="text-sm text-muted-foreground">sec</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
+
+      <!-- Randomization -->
+      <div class="mb-3">
+        <RandomizationSettings
+          bind:enabled={localRandomizeRates}
+          bind:rangePercent={localRandomRangePercent}
+          uploadRate={localUploadRate}
+          downloadRate={localDownloadRate}
+          disabled={isRunning}
+          onchange={updates => {
+            for (const [key, value] of Object.entries(updates)) updateValue(key, value);
+          }}
+        />
+      </div>
+
+      <!-- Progressive Rates -->
+      <div class="mb-0">
+        <ProgressiveRateSettings
+          bind:enabled={localProgressiveRatesEnabled}
+          bind:durationHours={localProgressiveDurationHours}
+          bind:targetUploadRate={localTargetUploadRate}
+          bind:targetDownloadRate={localTargetDownloadRate}
+          uploadRate={localUploadRate}
+          downloadRate={localDownloadRate}
+          disabled={isRunning}
+          onchange={updates => {
+            for (const [key, value] of Object.entries(updates)) updateValue(key, value);
+          }}
+        />
+      </div>
     </div>
-  </div>
-
-  <!-- Randomization -->
-  <div class="mb-3">
-    <RandomizationSettings
-      bind:enabled={localRandomizeRates}
-      bind:rangePercent={localRandomRangePercent}
-      uploadRate={localUploadRate}
-      downloadRate={localDownloadRate}
-      disabled={isRunning}
-      onchange={updates => {
-        for (const [key, value] of Object.entries(updates)) updateValue(key, value);
-      }}
-    />
-  </div>
-
-  <!-- Progressive Rates -->
-  <div class="mb-0">
-    <ProgressiveRateSettings
-      bind:enabled={localProgressiveRatesEnabled}
-      bind:durationHours={localProgressiveDurationHours}
-      bind:targetUploadRate={localTargetUploadRate}
-      bind:targetDownloadRate={localTargetDownloadRate}
-      uploadRate={localUploadRate}
-      downloadRate={localDownloadRate}
-      disabled={isRunning}
-      onchange={updates => {
-        for (const [key, value] of Object.entries(updates)) updateValue(key, value);
-      }}
-    />
-  </div>
-</Card>
+  </details>
+</section>

@@ -5,6 +5,7 @@ node_modules
 dist
 build
 .svelte-kit
+src/lib/wasm
 
 # Misc
 .DS_Store

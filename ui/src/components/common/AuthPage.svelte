@@ -86,7 +86,7 @@
     <div class="relative theme-selector">
       <button
         onclick={toggleThemeDropdown}
-        class="group bg-secondary text-secondary-foreground border-2 border-border rounded-lg p-2 flex items-center gap-2 cursor-pointer transition-all hover:bg-primary hover:border-primary hover:text-primary-foreground hover:[&_svg]:!text-current active:scale-[0.98] shadow-lg"
+        class="group flex h-9 items-center gap-2 rounded-md border border-border bg-card px-2.5 text-secondary-foreground transition-colors hover:bg-muted hover:text-foreground"
         title="Theme: {getThemeName(getTheme())}"
         aria-label="Toggle theme menu"
       >
@@ -137,34 +137,26 @@
     </div>
   </div>
 
-  <!-- Background gradient decoration -->
-  <div class="absolute inset-0 overflow-hidden pointer-events-none">
-    <div class="absolute -top-40 -right-40 w-80 h-80 bg-primary/10 rounded-full blur-3xl"></div>
-    <div class="absolute -bottom-40 -left-40 w-80 h-80 bg-primary/5 rounded-full blur-3xl"></div>
-  </div>
-
   <div class="relative w-full max-w-md">
     <!-- Logo and Title -->
-    <div class="text-center mb-8">
+    <div class="text-center mb-6">
       <!-- Logo Icon -->
-      <div class="inline-flex items-center justify-center mb-6">
+      <div class="inline-flex items-center justify-center mb-4">
         <img
           src="/android-chrome-512x512.png"
           alt="Rustatio"
-          width="96"
-          height="96"
+          width="64"
+          height="64"
           class="object-contain"
         />
       </div>
 
-      <h1 class="text-3xl font-bold text-foreground tracking-tight mb-2">Rustatio</h1>
-      <p class="text-muted-foreground">Modern BitTorrent Ratio Faker</p>
+      <h1 class="text-2xl font-bold text-foreground tracking-tight mb-1">Rustatio</h1>
+      <p class="text-sm text-muted-foreground">Connect to your self-hosted instance</p>
     </div>
 
     <!-- Auth Card -->
-    <div
-      class="bg-card text-card-foreground rounded-2xl shadow-2xl border border-border/50 overflow-hidden"
-    >
+    <div class="workspace-section overflow-hidden shadow-lg shadow-black/5">
       <!-- Card Header -->
       <div class="px-8 pt-8 pb-4">
         <div class="flex items-center gap-3 mb-2">
@@ -224,6 +216,7 @@
         {#if error}
           <div
             class="p-4 rounded-xl bg-stat-leecher/10 border border-stat-leecher/20 flex items-start gap-3"
+            role="alert"
           >
             <AlertCircle size={20} class="text-stat-leecher flex-shrink-0 mt-0.5" />
             <p class="text-sm text-stat-leecher">{error}</p>

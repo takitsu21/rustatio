@@ -1,5 +1,4 @@
 <script>
-  import Card from '$lib/components/ui/card.svelte';
   import { Target } from '@lucide/svelte';
   import StopConditionSettings from './StopConditionSettings.svelte';
 
@@ -87,11 +86,17 @@
   );
 </script>
 
-<Card class="p-3">
+<section class="workspace-section p-3.5">
   <div class="flex items-center justify-between mb-3">
-    <h2 class="text-primary text-lg font-semibold flex items-center gap-2">
-      <Target size={20} /> Stop Conditions
-    </h2>
+    <div>
+      <div class="workspace-kicker">Step 3</div>
+      <h2 class="mt-1 flex items-center gap-2 text-base font-semibold text-foreground">
+        <Target size={17} class="text-primary" /> Stop policy
+      </h2>
+      <p class="mt-1 text-xs text-muted-foreground">
+        Choose when Rustatio should finish this session.
+      </p>
+    </div>
     {#if activeCount > 0}
       <span class="text-xs bg-primary/10 text-primary px-2 py-1 rounded-full font-medium">
         {activeCount} active
@@ -120,4 +125,4 @@
       for (const [key, value] of Object.entries(updates)) updateValue(key, value);
     }}
   />
-</Card>
+</section>

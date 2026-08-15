@@ -1,5 +1,4 @@
 <script>
-  import Card from '$lib/components/ui/card.svelte';
   import { Trophy, Upload, Download, Percent, Users, ArrowUp, ArrowDown } from '@lucide/svelte';
 
   let { stats, torrent, formatBytes } = $props();
@@ -43,7 +42,7 @@
   });
 </script>
 
-<Card class="p-4 border-2 border-primary/50 bg-gradient-to-br from-primary/5 to-transparent">
+<section class="workspace-section p-3.5">
   <div class="flex items-center justify-between mb-4">
     <h2 class="text-primary text-lg font-semibold flex items-center gap-2">
       <Trophy size={20} /> Total Stats
@@ -131,4 +130,4 @@
       </div>
     </div>
   </div>
-</Card>
+</section>

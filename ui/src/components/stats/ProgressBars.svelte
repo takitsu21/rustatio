@@ -1,5 +1,4 @@
 <script>
-  import Card from '$lib/components/ui/card.svelte';
   import { BarChart3 } from '@lucide/svelte';
 
   let {
@@ -23,7 +22,7 @@
   const torrentDownloaded = $derived(torrentSize > 0 ? torrentSize - (stats?.left ?? 0) : 0);
 </script>
 
-<Card class="p-3">
+<section class="workspace-section p-3">
   <h2 class="mb-3 text-primary text-lg font-semibold flex items-center gap-2">
     <BarChart3 size={20} /> Progress
   </h2>
@@ -158,4 +157,4 @@
       </div>
     {/if}
   </div>
-</Card>
+</section>

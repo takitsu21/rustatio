@@ -796,7 +796,7 @@
 </script>
 
 <div class="flex flex-col gap-2 h-full w-full max-w-none">
-  <div class="rounded-xl border border-border bg-card">
+  <div class="workspace-section overflow-hidden">
     <div
       class="px-3 py-2.5 md:px-3.5 md:py-3 border-b border-border flex flex-wrap items-center gap-2 justify-between"
     >
@@ -869,71 +869,76 @@
             {isReloading ? 'Reloading' : 'Reload All'}
           {/snippet}
         </Button>
-        <Button
-          onclick={handleReloadSelected}
-          disabled={selectedCount === 0 ||
-            reloadingSelected ||
-            deletingSelected ||
-            isLoading ||
-            isReloading ||
-            Boolean(reloadingFile) ||
-            Boolean(deletingFile) ||
-            Boolean(deletingFolder) ||
-            saveConfigBusy}
-          size="sm"
-          variant="outline"
-          class="gap-1.5"
-          title="Reload selected files"
-        >
-          {#snippet children()}
-            {#if reloadingSelected}
-              <RotateCw size={12} class="animate-spin" />
-              Reloading ({selectedCount})
-            {:else}
-              <RotateCw size={12} />
-              Reload Selected ({selectedCount})
-            {/if}
-          {/snippet}
-        </Button>
-        <Button
-          onclick={handleDeleteSelected}
-          disabled={selectedCount === 0 ||
-            deletingSelected ||
-            reloadingSelected ||
-            isLoading ||
-            isReloading ||
-            Boolean(reloadingFile) ||
-            Boolean(deletingFile) ||
-            Boolean(deletingFolder) ||
-            saveConfigBusy}
-          size="sm"
-          variant="outline"
-          class="gap-1.5 text-stat-leecher border-stat-leecher/40 hover:bg-stat-leecher/10"
-          title="Delete selected files"
-        >
-          {#snippet children()}
-            {#if deletingSelected}
-              <RotateCw size={12} class="animate-spin" />
-              Deleting ({selectedCount})
-            {:else}
-              <Trash2 size={12} />
-              Delete Selected ({selectedCount})
-            {/if}
-          {/snippet}
-        </Button>
-        <Button
-          onclick={clearSelection}
-          disabled={selectedCount === 0 || deletingSelected || reloadingSelected}
-          size="sm"
-          variant="outline"
-          class="gap-1"
-          title="Clear selected files"
-        >
-          {#snippet children()}
-            <X size={12} />
-            Clear
-          {/snippet}
-        </Button>
+        {#if selectedCount > 0}
+          <div class="action-bar border-0 bg-primary/5 py-1">
+            <span class="text-xs font-semibold text-foreground">{selectedCount} selected</span>
+            <Button
+              onclick={handleReloadSelected}
+              disabled={selectedCount === 0 ||
+                reloadingSelected ||
+                deletingSelected ||
+                isLoading ||
+                isReloading ||
+                Boolean(reloadingFile) ||
+                Boolean(deletingFile) ||
+                Boolean(deletingFolder) ||
+                saveConfigBusy}
+              size="sm"
+              variant="outline"
+              class="gap-1.5"
+              title="Reload selected files"
+            >
+              {#snippet children()}
+                {#if reloadingSelected}
+                  <RotateCw size={12} class="animate-spin" />
+                  Reloading ({selectedCount})
+                {:else}
+                  <RotateCw size={12} />
+                  Reload Selected ({selectedCount})
+                {/if}
+              {/snippet}
+            </Button>
+            <Button
+              onclick={handleDeleteSelected}
+              disabled={selectedCount === 0 ||
+                deletingSelected ||
+                reloadingSelected ||
+                isLoading ||
+                isReloading ||
+                Boolean(reloadingFile) ||
+                Boolean(deletingFile) ||
+                Boolean(deletingFolder) ||
+                saveConfigBusy}
+              size="sm"
+              variant="outline"
+              class="gap-1.5 text-stat-leecher border-stat-leecher/40 hover:bg-stat-leecher/10"
+              title="Delete selected files"
+            >
+              {#snippet children()}
+                {#if deletingSelected}
+                  <RotateCw size={12} class="animate-spin" />
+                  Deleting ({selectedCount})
+                {:else}
+                  <Trash2 size={12} />
+                  Delete Selected ({selectedCount})
+                {/if}
+              {/snippet}
+            </Button>
+            <Button
+              onclick={clearSelection}
+              disabled={selectedCount === 0 || deletingSelected || reloadingSelected}
+              size="sm"
+              variant="outline"
+              class="gap-1"
+              title="Clear selected files"
+            >
+              {#snippet children()}
+                <X size={12} />
+                Clear
+              {/snippet}
+            </Button>
+          </div>
+        {/if}
         <div class="text-[10px] text-muted-foreground hidden xl:block">Visible selection only</div>
       </div>
     </div>
@@ -944,77 +949,89 @@
       </div>
     {:else}
       <div
-        class="px-2.5 pb-2.5 pt-2.5 md:px-3 md:pb-3 md:pt-3 grid grid-cols-1 xl:grid-cols-[320px_minmax(0,1fr)] gap-3 w-full"
+        class="grid w-full grid-cols-1 gap-3 px-2.5 pb-2.5 pt-2.5 md:px-3 md:pb-3 md:pt-3 lg:grid-cols-[270px_minmax(0,1fr)]"
       >
         <section class="space-y-2">
-          <div class="rounded-lg border border-border px-2.5 py-2 space-y-1.5 bg-muted/20">
-            <div class="text-xs uppercase tracking-wide text-muted-foreground">Watch Directory</div>
-            <div class="flex items-start gap-2">
-              <input
-                bind:value={watchConfig.watch_dir}
-                onchange={handleWatchDirCommit}
-                onkeydown={event => event.key === 'Enter' && event.currentTarget.blur()}
-                class="flex-1 px-2.5 py-2 text-sm rounded-md border border-border bg-background"
-                placeholder="/path/to/watch"
-                disabled={saveConfigBusy}
-              />
-              {#if isTauri}
-                <Button
-                  onclick={pickWatchDirectory}
-                  size="icon"
-                  variant="outline"
-                  disabled={pickingFolder || saveConfigBusy}
-                  title="Choose folder"
-                >
-                  {#snippet children()}
-                    <FolderUp size={14} class={cn(pickingFolder && 'animate-pulse')} />
-                  {/snippet}
-                </Button>
-              {/if}
-            </div>
-            <div class="flex items-center gap-2">
-              <label class="text-[11px] text-muted-foreground" for="watchDepth">Max depth</label>
-              <input
-                id="watchDepth"
-                type="number"
-                min="0"
-                step="1"
-                class="w-18 px-2 py-1 text-xs rounded-md border border-border bg-background"
-                bind:value={watchConfig.max_depth}
-                onchange={handleMaxDepthCommit}
-                disabled={saveConfigBusy}
-              />
-            </div>
-            <div class="text-[10px] text-muted-foreground/80 leading-tight">
-              Use <strong>0</strong> for unlimited depth.
-            </div>
-            <label
-              class="flex items-start gap-2 text-[11px] leading-tight text-muted-foreground cursor-pointer"
+          <details class="group overflow-hidden rounded-md border border-border bg-muted/15">
+            <summary
+              class="flex min-h-10 cursor-pointer list-none items-center justify-between px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted/40"
             >
-              <input
-                type="checkbox"
-                class="mt-0.5"
-                checked={watchConfig.auto_start}
-                onchange={handleAutoStartChange}
-                disabled={saveConfigBusy}
-              />
-              <span>
-                Auto start on application startup and torrent load
-                <span class="block text-[11px] text-muted-foreground/80">
-                  Watch-folder torrents will automatically start when Rustatio starts.
-                </span>
-              </span>
-            </label>
-            {#if watchStatus}
-              <div class="text-[11px] text-muted-foreground pt-0.5 leading-tight">
-                Active path: <span class="text-foreground">{watchStatus.watch_dir}</span>
+              Watch folder setup
+              <span class="text-[10px] font-normal text-muted-foreground"
+                >{watchConfig.watch_dir || 'Not configured'}</span
+              >
+            </summary>
+            <div class="space-y-1.5 border-t border-border px-2.5 py-2">
+              <div class="text-xs uppercase tracking-wide text-muted-foreground">
+                Watch Directory
               </div>
-            {/if}
-            <div class="text-[11px] text-muted-foreground leading-tight">
-              Preset selected:
-              <span class="text-foreground">{watchDefaultPresetName}</span>
+              <div class="flex items-start gap-2">
+                <input
+                  bind:value={watchConfig.watch_dir}
+                  onchange={handleWatchDirCommit}
+                  onkeydown={event => event.key === 'Enter' && event.currentTarget.blur()}
+                  class="flex-1 px-2.5 py-2 text-sm rounded-md border border-border bg-background"
+                  placeholder="/path/to/watch"
+                  disabled={saveConfigBusy}
+                />
+                {#if isTauri}
+                  <Button
+                    onclick={pickWatchDirectory}
+                    size="icon"
+                    variant="outline"
+                    disabled={pickingFolder || saveConfigBusy}
+                    title="Choose folder"
+                  >
+                    {#snippet children()}
+                      <FolderUp size={14} class={cn(pickingFolder && 'animate-pulse')} />
+                    {/snippet}
+                  </Button>
+                {/if}
+              </div>
+              <div class="flex items-center gap-2">
+                <label class="text-[11px] text-muted-foreground" for="watchDepth">Max depth</label>
+                <input
+                  id="watchDepth"
+                  type="number"
+                  min="0"
+                  step="1"
+                  class="w-18 px-2 py-1 text-xs rounded-md border border-border bg-background"
+                  bind:value={watchConfig.max_depth}
+                  onchange={handleMaxDepthCommit}
+                  disabled={saveConfigBusy}
+                />
+              </div>
+              <div class="text-[10px] text-muted-foreground/80 leading-tight">
+                Use <strong>0</strong> for unlimited depth.
+              </div>
+              <label
+                class="flex items-start gap-2 text-[11px] leading-tight text-muted-foreground cursor-pointer"
+              >
+                <input
+                  type="checkbox"
+                  class="mt-0.5"
+                  checked={watchConfig.auto_start}
+                  onchange={handleAutoStartChange}
+                  disabled={saveConfigBusy}
+                />
+                <span>
+                  Auto start on application startup and torrent load
+                  <span class="block text-[11px] text-muted-foreground/80">
+                    Watch-folder torrents will automatically start when Rustatio starts.
+                  </span>
+                </span>
+              </label>
+              {#if watchStatus}
+                <div class="text-[11px] text-muted-foreground pt-0.5 leading-tight">
+                  Active path: <span class="text-foreground">{watchStatus.watch_dir}</span>
+                </div>
+              {/if}
+              <div class="text-[11px] text-muted-foreground leading-tight">
+                Preset selected:
+                <span class="text-foreground">{watchDefaultPresetName}</span>
+              </div>
             </div>
-          </div>
+          </details>
 
           <div class="rounded-lg border border-border px-2.5 py-2 space-y-1.5 bg-muted/20">
             <div
@@ -1046,7 +1063,7 @@
             </div>
           </div>
 
-          <div class="rounded-lg border border-border px-2.5 py-2 bg-muted/20">
+          <div class="hidden">
             <div class="text-xs uppercase tracking-wide text-muted-foreground mb-2">Overview</div>
             <div class="grid grid-cols-2 gap-x-2 gap-y-1 text-[11px] leading-tight">
               <div
@@ -1078,7 +1095,7 @@
           </div>
         </section>
 
-        <section class="rounded-lg border border-border overflow-hidden bg-background/60 min-w-0">
+        <section class="min-w-0 overflow-hidden rounded-md border border-border bg-background/60">
           <div
             class="sticky top-0 z-10 grid grid-cols-[minmax(0,1fr)_96px_78px_84px] gap-2 px-2.5 py-1.5 text-[10px] uppercase tracking-wide text-muted-foreground bg-muted/60 border-b border-border backdrop-blur-sm"
           >
@@ -1110,8 +1127,14 @@
             {/if}
 
             {#if filteredFiles.length === 0 && !isLoading}
-              <div class="py-10 text-center text-sm text-muted-foreground">
-                No files match current filters.
+              <div
+                class="flex min-h-72 flex-col items-center justify-center px-5 py-10 text-center text-sm text-muted-foreground"
+              >
+                <HardDrive size={24} class="mb-3 text-primary" />
+                <div class="font-semibold text-foreground">No watch files to review</div>
+                <div class="mt-1 max-w-sm text-xs leading-5">
+                  Add torrent files to the configured watch directory or change the active filters.
+                </div>
               </div>
             {:else}
               {#each displayRows as row (row.id)}

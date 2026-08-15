@@ -65,7 +65,7 @@
     'h-8 inline-flex items-center gap-1.5 rounded-full border px-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 cursor-pointer';
 
   const embeddedActionBase =
-    'inline-flex h-8 w-8 items-center justify-center rounded-xl border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 cursor-pointer';
+    'inline-flex h-9 items-center justify-center gap-1.5 rounded-md border px-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 cursor-pointer';
 
   function getStatusMeta(type) {
     return statusMeta[type] || statusMeta.idle;
@@ -82,6 +82,7 @@
   role="status"
   aria-live="polite"
 >
+  <span class="sr-only">{getStatusMeta(statusType).label}: {statusMessage}</span>
   <div
     class={cn(
       embedded
@@ -93,7 +94,7 @@
       class={cn(
         'min-w-0',
         embedded
-          ? 'flex flex-1 items-center gap-3'
+          ? 'hidden flex-1 items-center gap-3 sm:flex'
           : 'flex flex-col gap-2 lg:flex-row lg:items-center lg:gap-3'
       )}
     >
@@ -155,7 +156,7 @@
             )}
           >
             <Play size={13} fill="currentColor" />
-            {#if !embedded}<span>Start</span>{/if}
+            <span>Start</span>
           </button>
         {:else}
           {#if !isPaused}
@@ -170,7 +171,7 @@
               )}
             >
               <Pause size={13} fill="currentColor" />
-              {#if !embedded}<span>Pause</span>{/if}
+              <span>Pause</span>
             </button>
           {:else}
             <button
@@ -184,7 +185,7 @@
               )}
             >
               <Play size={13} fill="currentColor" />
-              {#if !embedded}<span>Resume</span>{/if}
+              <span>Resume</span>
             </button>
           {/if}
           <button
@@ -198,7 +199,7 @@
             )}
           >
             <RefreshCw size={13} />
-            {#if !embedded}<span>Update</span>{/if}
+            <span class="hidden xl:inline">Update</span>
           </button>
           <button
             onclick={stopFaking}
@@ -211,7 +212,7 @@
             )}
           >
             <Square size={13} fill="currentColor" />
-            {#if !embedded}<span>Stop</span>{/if}
+            <span>Stop</span>
           </button>
         {/if}
       </div>

@@ -1,5 +1,4 @@
 <script>
-  import Card from '$lib/components/ui/card.svelte';
   import Button from '$lib/components/ui/button.svelte';
   import { getProxyUrl, setProxyUrl, getRunMode } from '$lib/api.js';
   import { Globe, Save, Trash2, AlertTriangle, CheckCircle } from '@lucide/svelte';
@@ -10,26 +9,34 @@
 
   let proxyUrl = $state(getProxyUrl());
   let showHelp = $state(false);
+  let feedback = $state('');
+
+  function announce(message) {
+    feedback = message;
+    setTimeout(() => {
+      if (feedback === message) feedback = '';
+    }, 4000);
+  }
 
   function saveProxy() {
     setProxyUrl(proxyUrl);
-    alert('Proxy URL saved! Reload the page for changes to take effect.');
+    announce('Proxy saved. Reload Rustatio to apply the change.');
   }
 
   function clearProxy() {
     proxyUrl = '';
     setProxyUrl('');
-    alert('Proxy cleared! Reload the page for changes to take effect.');
+    announce('Proxy cleared. Reload Rustatio to apply the change.');
   }
 </script>
 
 <!-- Only show in WASM mode (GitHub Pages) - Desktop and Server don't need CORS proxy -->
 {#if runMode === 'wasm'}
-  <Card class="p-3 mb-3">
+  <section class="workspace-section p-4">
     <div class="flex items-center justify-between mb-3">
-      <h2 class="text-primary text-lg font-semibold flex items-center gap-2">
-        <Globe size={20} /> CORS Proxy (Optional)
-      </h2>
+      <h3 class="flex items-center gap-2 font-semibold text-foreground">
+        <Globe size={17} class="text-primary" /> Web tracker proxy
+      </h3>
       <button
         class="text-muted-foreground hover:text-foreground text-sm"
         onclick={() => (showHelp = !showHelp)}
@@ -116,6 +123,9 @@
           will work
         </p>
       {/if}
+      {#if feedback}
+        <p class="text-xs text-primary" role="status" aria-live="polite">{feedback}</p>
+      {/if}
     </div>
-  </Card>
+  </section>
 {/if}

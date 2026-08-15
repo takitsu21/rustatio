@@ -21,6 +21,7 @@
   let importDialogOpen = $state(false);
   let bulkEditDialogOpen = $state(false);
   let mobileFiltersOpen = $state(false);
+  let desktopFiltersOpen = $state(false);
   let networkStatus = $state(null);
   let networkStatusError = $state(null);
   let clientInfos = $state([]);
@@ -124,7 +125,11 @@
   }
 
   function openMobileFilters() {
-    mobileFiltersOpen = true;
+    if (window.matchMedia('(min-width: 1024px)').matches) {
+      desktopFiltersOpen = !desktopFiltersOpen;
+    } else {
+      mobileFiltersOpen = true;
+    }
   }
 
   function closeMobilePanels() {
@@ -158,11 +163,13 @@
 </script>
 
 <div class="flex h-full min-h-0 flex-col gap-3 lg:flex-row">
-  <div class="hidden lg:block">
-    <GridFiltersPanel />
-  </div>
+  {#if desktopFiltersOpen}
+    <div class="hidden lg:block">
+      <GridFiltersPanel />
+    </div>
+  {/if}
 
-  <div class="flex min-h-0 flex-1 flex-col gap-3 pb-20 lg:pb-0">
+  <div class="flex min-h-0 min-w-0 flex-1 flex-col gap-3 pb-20 lg:pb-0">
     <GridToolbar
       onImport={() => (importDialogOpen = true)}
       onOpenFilters={openMobileFilters}
@@ -171,10 +178,24 @@
 
     {#if $filteredGridInstances.length === 0}
       <div
-        class="flex-1 flex flex-col items-center justify-center gap-2 rounded-xl border border-border bg-card/40 text-muted-foreground"
+        class="workspace-section flex min-h-[24rem] flex-1 flex-col items-center justify-center gap-2 text-muted-foreground"
       >
-        <p class="text-sm">No instances found</p>
-        <p class="text-xs">Import torrents or adjust filters to see instances here.</p>
+        <div
+          class="mb-2 flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary"
+        >
+          <Upload size={20} />
+        </div>
+        <p class="text-base font-semibold text-foreground">No torrents in this view</p>
+        <p class="max-w-sm text-center text-xs leading-5">
+          {activeFiltersCount > 0
+            ? 'Clear or adjust filters to reveal matching instances.'
+            : 'Import torrent files to create and manage multiple instances here.'}
+        </p>
+        {#if activeFiltersCount === 0}
+          <Button onclick={() => (importDialogOpen = true)} size="sm" class="mt-2 gap-1.5">
+            {#snippet children()}<Upload size={14} /> Import torrents{/snippet}
+          </Button>
+        {/if}
       </div>
     {:else}
       <GridTable data={$filteredGridInstances} oncontextaction={handleContextAction} />

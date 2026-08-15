@@ -136,27 +136,27 @@
 
 <svelte:window onclick={handleSelectMenuOutside} />
 
-<div class="flex flex-col gap-3">
+<div class="workspace-section flex min-w-0 flex-col gap-2 p-2.5">
   <!-- Top row: Import + Grid actions -->
   <div class="flex items-center gap-2 flex-wrap">
     <!-- Import button -->
-    <Button onclick={onImport} size="sm" class="hidden sm:inline-flex gap-1.5">
+    <Button onclick={onImport} size="sm" class="hidden h-9 sm:inline-flex gap-1.5">
       {#snippet children()}
         <Upload size={14} />
-        Import
+        Import torrents
       {/snippet}
     </Button>
 
     <Button
       onclick={onOpenFilters}
-      size="icon"
+      size="sm"
       variant="outline"
-      class="hidden sm:inline-flex lg:hidden h-9 w-9"
+      class="hidden h-9 gap-1.5 sm:inline-flex"
       title="Open filters"
       aria-label="Open filters"
     >
       {#snippet children()}
-        <Funnel size={14} />
+        <Funnel size={14} /> Filters
       {/snippet}
     </Button>
 
@@ -244,61 +244,59 @@
 
     <!-- Grid action buttons (only visible when selection exists) -->
     {#if selectionCount > 0}
-      <div class="w-px h-6 bg-border"></div>
-
       <span class="text-xs text-muted-foreground">{selectionCount} selected</span>
 
       <Button
         onclick={handleStart}
-        size="icon"
+        size="sm"
         variant="default"
-        class="h-9 w-9"
+        class="h-9 gap-1.5"
         disabled={!canStart}
         title="Start selected"
         aria-label="Start selected"
       >
         {#snippet children()}
-          <Play size={14} fill="currentColor" />
+          <Play size={14} fill="currentColor" /> Start
         {/snippet}
       </Button>
 
       <Button
         onclick={handleStop}
-        size="icon"
-        class="h-9 w-9 bg-stat-danger hover:bg-stat-danger/90 text-white"
+        size="sm"
+        class="h-9 gap-1.5 bg-stat-danger hover:bg-stat-danger/90 text-white"
         disabled={!canStop}
         title="Stop selected"
         aria-label="Stop selected"
       >
         {#snippet children()}
-          <Square size={14} fill="currentColor" />
+          <Square size={14} fill="currentColor" /> Stop
         {/snippet}
       </Button>
 
       <Button
         onclick={handlePause}
-        size="icon"
-        class="h-9 w-9 bg-stat-ratio hover:bg-stat-ratio/90 text-white"
+        size="sm"
+        class="h-9 gap-1.5 bg-stat-ratio hover:bg-stat-ratio/90 text-white"
         disabled={!canPause}
         title="Pause selected"
         aria-label="Pause selected"
       >
         {#snippet children()}
-          <Pause size={14} fill="currentColor" />
+          <Pause size={14} fill="currentColor" /> Pause
         {/snippet}
       </Button>
 
       <Button
         onclick={handleResume}
-        size="icon"
+        size="sm"
         variant="secondary"
-        class="h-9 w-9"
+        class="h-9 gap-1.5"
         disabled={!canResume}
         title="Resume selected"
         aria-label="Resume selected"
       >
         {#snippet children()}
-          <Play size={14} fill="currentColor" />
+          <Play size={14} fill="currentColor" /> Resume
         {/snippet}
       </Button>
 
@@ -322,14 +320,14 @@
 
       <Button
         onclick={handleDelete}
-        size="icon"
+        size="sm"
         variant="destructive"
-        class="h-9 w-9"
+        class="h-9 gap-1.5"
         title="Delete selected"
         aria-label="Delete selected"
       >
         {#snippet children()}
-          <Trash2 size={14} />
+          <Trash2 size={14} /> Delete
         {/snippet}
       </Button>
     {/if}
@@ -342,7 +340,7 @@
 
   <!-- Bottom row: Search -->
   <div class="flex items-center gap-2">
-    <div class="relative flex-1 max-w-sm">
+    <div class="relative flex-1 max-w-xl">
       <Search size={14} class="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
       <Input
         value={$gridFilters.search}

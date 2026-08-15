@@ -4,6 +4,7 @@
     "target": "ESNext",
     "module": "ESNext",
     "baseUrl": ".",
+    "ignoreDeprecations": "6.0",
     "paths": {
       "$lib": ["./src/lib"],
       "$lib/*": ["./src/lib/*"]

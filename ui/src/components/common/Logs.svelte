@@ -1,5 +1,4 @@
 <script>
-  import Card from '$lib/components/ui/card.svelte';
   import Checkbox from '$lib/components/ui/checkbox.svelte';
   import Label from '$lib/components/ui/label.svelte';
   import {
@@ -83,7 +82,7 @@
   );
 </script>
 
-<Card class="p-3">
+<section class="workspace-section p-3">
   <!-- Header -->
   <div class="flex items-center justify-between">
     <div class="flex items-center gap-3">
@@ -211,4 +210,4 @@
       </div>
     </div>
   {/if}
-</Card>
+</section>
