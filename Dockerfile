@@ -1,5 +1,5 @@
 # Build stage for the Rust server
-FROM rust:1.96-slim-bookworm AS builder
+FROM rust:1.98-slim-bookworm AS builder
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y \
@@ -66,7 +66,7 @@ EXPOSE 8080
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD curl -f "http://localhost:${PORT}/health" || exit 1
+  CMD ["sh", "-c", "curl -f \"http://localhost:${PORT}/health\" || exit 1"]
 
 # Use entrypoint for PUID/PGID handling
 ENTRYPOINT ["/app/entrypoint.sh"]
