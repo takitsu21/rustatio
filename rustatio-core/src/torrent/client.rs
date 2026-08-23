@@ -81,8 +81,10 @@ impl ClientType {
             Self::QBittorrent => ClientInfo {
                 id: "qbittorrent".to_string(),
                 name: "qBittorrent".to_string(),
-                default_version: "5.2.1".to_string(),
+                default_version: "5.2.3".to_string(),
                 versions: vec![
+                    "5.2.3".to_string(),
+                    "5.2.2".to_string(),
                     "5.2.1".to_string(),
                     "5.2.0".to_string(),
                     "5.1.4".to_string(),
@@ -97,8 +99,13 @@ impl ClientType {
             Self::Transmission => ClientInfo {
                 id: "transmission".to_string(),
                 name: "Transmission".to_string(),
-                default_version: "4.0.5".to_string(),
+                default_version: "4.1.3".to_string(),
                 versions: vec![
+                    "4.1.3".to_string(),
+                    "4.1.2".to_string(),
+                    "4.1.1".to_string(),
+                    "4.1.0".to_string(),
+                    "4.0.6".to_string(),
                     "4.0.5".to_string(),
                     "4.0.4".to_string(),
                     "4.0.3".to_string(),
@@ -111,8 +118,9 @@ impl ClientType {
             Self::Deluge => ClientInfo {
                 id: "deluge".to_string(),
                 name: "Deluge".to_string(),
-                default_version: "2.1.1".to_string(),
+                default_version: "2.2.0".to_string(),
                 versions: vec![
+                    "2.2.0".to_string(),
                     "2.1.1".to_string(),
                     "2.0.5".to_string(),
                     "2.0.3".to_string(),
@@ -139,8 +147,16 @@ impl ClientType {
             Self::RTorrent => ClientInfo {
                 id: "rtorrent".to_string(),
                 name: "rTorrent".to_string(),
-                default_version: "0.16.12".to_string(),
+                default_version: "0.16.20".to_string(),
                 versions: vec![
+                    "0.16.20".to_string(),
+                    "0.16.19".to_string(),
+                    "0.16.18".to_string(),
+                    "0.16.17".to_string(),
+                    "0.16.16".to_string(),
+                    "0.16.15".to_string(),
+                    "0.16.14".to_string(),
+                    "0.16.13".to_string(),
                     "0.16.12".to_string(),
                     "0.16.11".to_string(),
                     "0.16.10".to_string(),
@@ -408,6 +424,15 @@ mod tests {
     }
 
     #[test]
+    fn test_qbittorrent_info() {
+        let info = ClientType::QBittorrent.info();
+        assert_eq!(info.id, "qbittorrent");
+        assert_eq!(info.default_version, "5.2.3");
+        assert_eq!(info.versions.first(), Some(&info.default_version));
+        assert!(info.versions.contains(&"5.2.2".to_string()));
+    }
+
+    #[test]
     fn test_peer_id_generation_utorrent() {
         let config = ClientConfig::get(ClientType::UTorrent, None);
         let peer_id = config.generate_peer_id();
@@ -426,6 +451,27 @@ mod tests {
         let peer_id = config.generate_peer_id();
         assert_eq!(peer_id.len(), 20);
         assert!(peer_id.starts_with("-TR"), "Transmission peer ID should start with -TR");
+
+        let config = ClientConfig::get(ClientType::Transmission, Some("4.1.3".to_string()));
+        let peer_id = config.generate_peer_id();
+        assert!(peer_id.starts_with("-TR4100-"), "Peer ID should include version 4.1.3");
+    }
+
+    #[test]
+    fn test_transmission_info() {
+        let info = ClientType::Transmission.info();
+        assert_eq!(info.id, "transmission");
+        assert_eq!(info.default_version, "4.1.3");
+        assert_eq!(info.versions.first(), Some(&info.default_version));
+        assert!(info.versions.contains(&"4.0.6".to_string()));
+    }
+
+    #[test]
+    fn test_deluge_info() {
+        let info = ClientType::Deluge.info();
+        assert_eq!(info.id, "deluge");
+        assert_eq!(info.default_version, "2.2.0");
+        assert_eq!(info.versions.first(), Some(&info.default_version));
     }
 
     #[test]
@@ -575,7 +621,8 @@ mod tests {
         let info = ClientType::RTorrent.info();
         assert_eq!(info.id, "rtorrent");
         assert_eq!(info.name, "rTorrent");
-        assert_eq!(info.default_version, "0.16.12");
+        assert_eq!(info.default_version, "0.16.20");
+        assert_eq!(info.versions.first(), Some(&info.default_version));
         assert_eq!(info.default_port, 6881);
     }
 
