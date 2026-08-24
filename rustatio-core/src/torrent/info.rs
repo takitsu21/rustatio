@@ -175,7 +175,7 @@ impl TorrentInfo {
 
         // Extract announce-list (optional)
         let announce_list = parse_announce_list(dict);
-        
+
         let announce = bencode::get_string(dict, "announce")
             .or_else(|_| first_announce_url(&announce_list))?;
 
