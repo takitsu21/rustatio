@@ -6,7 +6,6 @@ use sha1::{Digest, Sha1};
 use std::fmt::Write;
 use std::path::Path;
 use thiserror::Error;
-
 #[derive(Debug, Error)]
 pub enum TorrentError {
     #[error("Bencode error: {0}")]
@@ -20,6 +19,13 @@ pub enum TorrentError {
 pub type Result<T> = std::result::Result<T, TorrentError>;
 
 type BencodeDict = std::collections::HashMap<Vec<u8>, serde_bencode::value::Value>;
+
+fn first_announce_url(announce_list: Option<&[Vec<String>]>) -> bencode::Result<String> {
+    announce_list
+        .and_then(|tiers| tiers.iter().flat_map(|tier| tier.iter()).find(|url| !url.is_empty()))
+        .cloned()
+        .ok_or_else(|| BencodeError::InvalidStructure("Missing or invalid key: announce".into()))
+}
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TorrentInfo {
@@ -38,7 +44,6 @@ pub struct TorrentInfo {
 
     /// Total size in bytes
     pub total_size: u64,
-
     /// Piece length in bytes
     pub piece_length: u64,
 
@@ -56,7 +61,6 @@ pub struct TorrentInfo {
     /// Created by
     #[serde(skip_serializing_if = "Option::is_none")]
     pub created_by: Option<String>,
-
     /// Is this a single-file or multi-file torrent
     pub is_single_file: bool,
 
@@ -68,7 +72,6 @@ pub struct TorrentInfo {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub files: Vec<TorrentFile>,
 }
-
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TorrentSummary {
     /// SHA1 hash of the info dictionary (20 bytes)
@@ -101,13 +104,11 @@ pub struct TorrentSummary {
     #[serde(default)]
     pub file_count: usize,
 }
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TorrentFile {
     pub path: Vec<String>,
     pub length: u64,
 }
-
 #[allow(clippy::trivially_copy_pass_by_ref)]
 const fn is_zero_usize(value: &usize) -> bool {
     *value == 0
@@ -120,7 +121,6 @@ impl TorrentInfo {
         let data = std::fs::read(path)?;
         Self::from_bytes(&data)
     }
-
     /// Parse a torrent from file without allocating file lists
     pub fn from_file_summary<P: AsRef<Path>>(path: P) -> Result<Self> {
         log_debug!("Loading torrent summary from file: {:?}", path.as_ref());
@@ -133,14 +133,10 @@ impl TorrentInfo {
         log_trace!("Parsing torrent data ({} bytes)", data.len());
 
         let value = bencode::parse(data)?;
-
         let serde_bencode::value::Value::Dict(dict) = &value else {
             log_error!("Invalid torrent: root is not a dictionary");
             return Err(TorrentError::InvalidStructure("Root is not a dictionary".into()));
         };
-
-        // Extract announce URL
-        let announce = bencode::get_string(dict, "announce")?;
 
         // Extract announce-list (optional)
         let announce_list = dict
@@ -168,6 +164,10 @@ impl TorrentInfo {
                     .collect()
             });
 
+        // Extract announce URL, falling back to the first valid announce-list URL
+        let announce = bencode::get_string(dict, "announce")
+            .or_else(|_| first_announce_url(announce_list.as_deref()))?;
+
         // Extract info dictionary
         let info_dict = dict
             .get(b"info".as_ref())
@@ -179,7 +179,6 @@ impl TorrentInfo {
 
         // Calculate info_hash (SHA1 of bencoded info dict)
         let info_hash = calculate_info_hash(data)?;
-
         // Extract name
         let name = bencode::get_string(info_dict, "name")?;
 
@@ -189,7 +188,6 @@ impl TorrentInfo {
         // Extract pieces length only (avoid cloning piece hash data)
         let pieces_len = bencode::get_bytes_len(info_dict, "pieces")?;
         let num_pieces = pieces_len / 20;
-
         // Determine if single-file or multi-file
         let (is_single_file, total_size, files, file_count) = if let Ok(length) =
             bencode::get_int(info_dict, "length")
@@ -209,14 +207,12 @@ impl TorrentInfo {
             let mut files = Vec::new();
             let mut total = 0u64;
             let mut count = 0usize;
-
             for file_val in files_list {
                 let serde_bencode::value::Value::Dict(file_dict) = file_val else {
                     return Err(TorrentError::InvalidStructure("Invalid file entry".into()));
                 };
 
                 let length = bencode::get_int(file_dict, "length")? as u64;
-
                 let path = file_dict
                     .get(b"path".as_ref())
                     .and_then(|v| match v {
@@ -232,7 +228,6 @@ impl TorrentInfo {
                         _ => None,
                     })
                     .collect();
-
                 files.push(TorrentFile { path, length });
                 total += length;
                 count += 1;
@@ -244,7 +239,6 @@ impl TorrentInfo {
                 "Neither 'length' nor 'files' found in info dictionary".into(),
             ));
         };
-
         // Extract optional fields
         let creation_date = dict.get(b"creation date".as_ref()).and_then(|v| match v {
             serde_bencode::value::Value::Int(i) => Some(*i),
@@ -258,7 +252,6 @@ impl TorrentInfo {
             serde_bencode::value::Value::Bytes(b) => Some(String::from_utf8_lossy(b).to_string()),
             _ => None,
         });
-
         log_debug!(
             "Parsed torrent: name='{}', size={} bytes, pieces={}, tracker={}",
             name,
@@ -273,7 +266,6 @@ impl TorrentInfo {
                 acc
             })
         );
-
         Ok(Self {
             info_hash,
             announce,
@@ -290,7 +282,6 @@ impl TorrentInfo {
             files,
         })
     }
-
     /// Parse torrent data without allocating file lists
     pub fn from_bytes_summary(data: &[u8]) -> Result<Self> {
         let summary = TorrentSummary::from_bytes(data)?;
@@ -305,7 +296,6 @@ impl TorrentInfo {
     /// Get all tracker URLs (from announce and announce-list)
     pub fn get_all_tracker_urls(&self) -> Vec<String> {
         let mut urls = vec![self.announce.clone()];
-
         if let Some(ref list) = self.announce_list {
             for tier in list {
                 urls.extend(tier.iter().cloned());
@@ -322,7 +312,6 @@ impl TorrentInfo {
             acc
         })
     }
-
     /// Build a lightweight summary (excludes file list)
     pub fn summary(&self) -> TorrentSummary {
         let file_count = if self.file_count > 0 { self.file_count } else { self.files.len() };
@@ -341,7 +330,6 @@ impl TorrentInfo {
             file_count,
         }
     }
-
     #[must_use]
     /// Drop file list data to reduce memory usage
     pub fn without_files(mut self) -> Self {
@@ -357,16 +345,15 @@ impl TorrentSummary {
         log_trace!("Parsing torrent summary ({} bytes)", data.len());
 
         let value = bencode::parse(data)?;
-
         let dict = Self::root_dict(&value)?;
-        let announce = bencode::get_string(dict, "announce")?;
         let announce_list = Self::announce_list(dict);
+        let announce = bencode::get_string(dict, "announce")
+            .or_else(|_| first_announce_url(announce_list.as_deref()))?;
         let info_dict = Self::info_dict(dict)?;
         let info_hash = calculate_info_hash(data)?;
         let (name, piece_length, num_pieces) = Self::basic_info(info_dict)?;
         let (is_single_file, total_size, file_count) = Self::files_summary(info_dict)?;
         let (creation_date, comment, created_by) = Self::optional_fields(dict);
-
         Ok(Self {
             info_hash,
             announce,
@@ -382,7 +369,6 @@ impl TorrentSummary {
             file_count,
         })
     }
-
     fn root_dict(value: &serde_bencode::value::Value) -> Result<&BencodeDict> {
         let serde_bencode::value::Value::Dict(dict) = value else {
             log_error!("Invalid torrent: root is not a dictionary");
@@ -390,7 +376,6 @@ impl TorrentSummary {
         };
         Ok(dict)
     }
-
     fn info_dict(dict: &BencodeDict) -> Result<&BencodeDict> {
         dict.get(b"info".as_ref())
             .and_then(|v| match v {
@@ -399,7 +384,6 @@ impl TorrentSummary {
             })
             .ok_or_else(|| TorrentError::InvalidStructure("Missing info dictionary".into()))
     }
-
     fn announce_list(dict: &BencodeDict) -> Option<Vec<Vec<String>>> {
         dict.get(b"announce-list".as_ref())
             .and_then(|v| match v {
@@ -425,7 +409,6 @@ impl TorrentSummary {
                     .collect()
             })
     }
-
     fn basic_info(info_dict: &BencodeDict) -> Result<(String, u64, usize)> {
         let name = bencode::get_string(info_dict, "name")?;
         let piece_length = bencode::get_int(info_dict, "piece length")? as u64;
@@ -433,12 +416,10 @@ impl TorrentSummary {
         let num_pieces = pieces_len / 20;
         Ok((name, piece_length, num_pieces))
     }
-
     fn files_summary(info_dict: &BencodeDict) -> Result<(bool, u64, usize)> {
         if let Ok(length) = bencode::get_int(info_dict, "length") {
             return Ok((true, length as u64, 1));
         }
-
         let Some(files_list) = info_dict.get(b"files".as_ref()).and_then(|v| match v {
             serde_bencode::value::Value::List(l) => Some(l),
             _ => None,
@@ -450,7 +431,6 @@ impl TorrentSummary {
 
         let mut total = 0u64;
         let mut count = 0usize;
-
         for file_val in files_list {
             let serde_bencode::value::Value::Dict(file_dict) = file_val else {
                 return Err(TorrentError::InvalidStructure("Invalid file entry".into()));
@@ -463,7 +443,6 @@ impl TorrentSummary {
 
         Ok((false, total, count))
     }
-
     fn optional_fields(dict: &BencodeDict) -> (Option<i64>, Option<String>, Option<String>) {
         let creation_date = dict.get(b"creation date".as_ref()).and_then(|v| match v {
             serde_bencode::value::Value::Int(i) => Some(*i),
@@ -477,10 +456,8 @@ impl TorrentSummary {
             serde_bencode::value::Value::Bytes(b) => Some(String::from_utf8_lossy(b).to_string()),
             _ => None,
         });
-
         (creation_date, comment, created_by)
     }
-
     /// Convert summary to a minimal `TorrentInfo` (empty file list)
     pub fn to_info(&self) -> TorrentInfo {
         TorrentInfo {
@@ -500,7 +477,6 @@ impl TorrentSummary {
         }
     }
 }
-
 /// Calculate the SHA1 `info_hash` from torrent bytes
 fn calculate_info_hash(torrent_data: &[u8]) -> Result<[u8; 20]> {
     // Parse the torrent to find the info dictionary
@@ -508,7 +484,6 @@ fn calculate_info_hash(torrent_data: &[u8]) -> Result<[u8; 20]> {
     let serde_bencode::value::Value::Dict(_dict) = &value else {
         return Err(TorrentError::InvalidStructure("Root is not a dictionary".into()));
     };
-
     // We need to find the raw bytes of the info dictionary in the original data
     // This is a bit tricky because we need the exact bencoded representation
 
@@ -519,7 +494,6 @@ fn calculate_info_hash(torrent_data: &[u8]) -> Result<[u8; 20]> {
         .position(|window| window == info_marker)
         .ok_or_else(|| TorrentError::InvalidStructure("Could not find info dictionary".into()))?
         + info_marker.len();
-
     // Parse just the info dictionary to get its bencoded representation
     let info_value =
         serde_bencode::from_bytes::<serde_bencode::value::Value>(&torrent_data[info_start..])
@@ -532,12 +506,10 @@ fn calculate_info_hash(torrent_data: &[u8]) -> Result<[u8; 20]> {
     let mut hasher = Sha1::new();
     hasher.update(&info_bytes);
     let result = hasher.finalize();
-
     let mut hash = [0u8; 20];
     hash.copy_from_slice(&result);
     Ok(hash)
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -556,7 +528,6 @@ mod tests {
         }
         Value::Dict(map)
     }
-
     fn bytes(value: &str) -> Value {
         Value::Bytes(value.as_bytes().to_vec())
     }
@@ -573,10 +544,30 @@ mod tests {
         let data = vec![0u8; count * 20];
         Value::Bytes(data)
     }
-
     fn sample_single_file() -> Value {
         dict(vec![
             (b"announce".to_vec(), bytes("http://tracker.test/announce")),
+            (
+                b"info".to_vec(),
+                dict(vec![
+                    (b"name".to_vec(), bytes("file.txt")),
+                    (b"piece length".to_vec(), int(16384)),
+                    (b"pieces".to_vec(), pieces(2)),
+                    (b"length".to_vec(), int(123)),
+                ]),
+            ),
+        ])
+    }
+
+    fn sample_without_announce() -> Value {
+        dict(vec![
+            (
+                b"announce-list".to_vec(),
+                list(vec![list(vec![
+                    bytes("http://tracker.first/announce"),
+                    bytes("http://tracker.second/announce"),
+                ])]),
+            ),
             (
                 b"info".to_vec(),
                 dict(vec![
@@ -598,7 +589,6 @@ mod tests {
             (b"length".to_vec(), int(50)),
             (b"path".to_vec(), list(vec![bytes("dir"), bytes("b.bin")])),
         ]);
-
         dict(vec![
             (b"announce".to_vec(), bytes("http://tracker.test/announce")),
             (
@@ -616,7 +606,6 @@ mod tests {
             ),
         ])
     }
-
     fn encode(value: &Value) -> Result<Vec<u8>> {
         bencode::encode(value).map_err(TorrentError::from)
     }
@@ -626,7 +615,6 @@ mod tests {
         path.push(name);
         path
     }
-
     #[test]
     fn test_info_hash_hex() {
         let info = TorrentInfo {
@@ -647,7 +635,6 @@ mod tests {
             file_count: 1,
             files: vec![],
         };
-
         assert_eq!(info.info_hash_hex(), "123456789abcdef0123456789abcdef012345678");
     }
 
@@ -655,7 +642,6 @@ mod tests {
     fn test_from_bytes_single_file() -> Result<()> {
         let data = encode(&sample_single_file())?;
         let torrent = TorrentInfo::from_bytes(&data)?;
-
         assert_eq!(torrent.announce, "http://tracker.test/announce");
         assert_eq!(torrent.name, "file.txt");
         assert_eq!(torrent.total_size, 123);
@@ -681,6 +667,20 @@ mod tests {
     }
 
     #[test]
+    fn test_from_bytes_uses_first_announce_list_url() -> Result<()> {
+        let data = encode(&sample_without_announce())?;
+
+        let torrent = TorrentInfo::from_bytes(&data)?;
+        let summary = TorrentSummary::from_bytes(&data)?;
+        let summary_info = TorrentInfo::from_bytes_summary(&data)?;
+
+        assert_eq!(torrent.announce, "http://tracker.first/announce");
+        assert_eq!(summary.announce, "http://tracker.first/announce");
+        assert_eq!(summary_info.announce, "http://tracker.first/announce");
+        Ok(())
+    }
+
+    #[test]
     fn test_from_bytes_missing_info() -> Result<()> {
         let data = encode(&dict(vec![(b"announce".to_vec(), bytes("x"))]))?;
         let res = TorrentInfo::from_bytes(&data);
@@ -701,7 +701,6 @@ mod tests {
             ]),
         )]))?;
         let res = TorrentInfo::from_bytes(&data);
-
         assert!(matches!(res, Err(TorrentError::BencodeError(_))));
         Ok(())
     }
@@ -720,7 +719,6 @@ mod tests {
             ),
         ]))?;
         let res = TorrentInfo::from_bytes(&data);
-
         assert!(matches!(res, Err(TorrentError::InvalidStructure(_))));
         Ok(())
     }
@@ -740,7 +738,6 @@ mod tests {
             ),
         ]))?;
         let res = TorrentInfo::from_bytes(&data);
-
         assert!(matches!(res, Err(TorrentError::InvalidStructure(_))));
         Ok(())
     }
@@ -761,7 +758,6 @@ mod tests {
             ),
         ]))?;
         let res = TorrentInfo::from_bytes(&data);
-
         assert!(matches!(res, Err(TorrentError::InvalidStructure(_))));
         Ok(())
     }
@@ -803,7 +799,6 @@ mod tests {
     fn test_get_tracker_url() -> Result<()> {
         let data = encode(&sample_single_file())?;
         let torrent = TorrentInfo::from_bytes(&data)?;
-
         assert_eq!(torrent.get_tracker_url(), "http://tracker.test/announce");
         Ok(())
     }
@@ -845,7 +840,6 @@ mod tests {
     fn test_summary_from_bytes_single_file() -> Result<()> {
         let data = encode(&sample_single_file())?;
         let summary = TorrentSummary::from_bytes(&data)?;
-
         assert_eq!(summary.total_size, 123);
         assert_eq!(summary.file_count, 1);
         assert!(summary.is_single_file);
@@ -878,7 +872,6 @@ mod tests {
     fn test_info_hash_from_bytes() -> Result<()> {
         let data = encode(&sample_single_file())?;
         let parsed = info_hash(&data)?;
-
         let info_dict = dict(vec![
             (b"name".to_vec(), bytes("file.txt")),
             (b"piece length".to_vec(), int(16384)),
@@ -890,7 +883,6 @@ mod tests {
         let mut hasher = Sha1::new();
         hasher.update(&info_bytes);
         let result = hasher.finalize();
-
         let mut expected = [0u8; 20];
         expected.copy_from_slice(&result);
         assert_eq!(parsed, expected);
