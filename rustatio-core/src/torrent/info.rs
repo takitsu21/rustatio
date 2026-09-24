@@ -21,6 +21,39 @@ pub type Result<T> = std::result::Result<T, TorrentError>;
 
 type BencodeDict = std::collections::HashMap<Vec<u8>, serde_bencode::value::Value>;
 
+fn parse_announce_list(dict: &BencodeDict) -> Option<Vec<Vec<String>>> {
+    dict.get(b"announce-list".as_ref())
+        .and_then(|v| match v {
+            serde_bencode::value::Value::List(list) => Some(list),
+            _ => None,
+        })
+        .map(|list| {
+            list.iter()
+                .filter_map(|tier| match tier {
+                    serde_bencode::value::Value::List(tier) => Some(tier),
+                    _ => None,
+                })
+                .map(|tier| {
+                    tier.iter()
+                        .filter_map(|url| match url {
+                            serde_bencode::value::Value::Bytes(bytes) => {
+                                Some(String::from_utf8_lossy(bytes).to_string())
+                            }
+                            _ => None,
+                        })
+                        .collect()
+                })
+                .collect()
+        })
+}
+
+fn first_announce_url(announce_list: Option<&Vec<Vec<String>>>) -> bencode::Result<String> {
+    announce_list
+        .and_then(|tiers| tiers.iter().flat_map(|tier| tier.iter()).find(|url| !url.is_empty()))
+        .cloned()
+        .ok_or_else(|| BencodeError::InvalidStructure("Missing or invalid key: announce".into()))
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TorrentInfo {
     /// SHA1 hash of the info dictionary (20 bytes)
@@ -139,34 +172,11 @@ impl TorrentInfo {
             return Err(TorrentError::InvalidStructure("Root is not a dictionary".into()));
         };
 
-        // Extract announce URL
-        let announce = bencode::get_string(dict, "announce")?;
-
         // Extract announce-list (optional)
-        let announce_list = dict
-            .get(b"announce-list".as_ref())
-            .and_then(|v| match v {
-                serde_bencode::value::Value::List(list) => Some(list),
-                _ => None,
-            })
-            .map(|list| {
-                list.iter()
-                    .filter_map(|tier| match tier {
-                        serde_bencode::value::Value::List(t) => Some(t),
-                        _ => None,
-                    })
-                    .map(|tier| {
-                        tier.iter()
-                            .filter_map(|url| match url {
-                                serde_bencode::value::Value::Bytes(b) => {
-                                    Some(String::from_utf8_lossy(b).to_string())
-                                }
-                                _ => None,
-                            })
-                            .collect()
-                    })
-                    .collect()
-            });
+        let announce_list = parse_announce_list(dict);
+
+        let announce = bencode::get_string(dict, "announce")
+            .or_else(|_| first_announce_url(announce_list.as_ref()))?;
 
         // Extract info dictionary
         let info_dict = dict
@@ -359,8 +369,9 @@ impl TorrentSummary {
         let value = bencode::parse(data)?;
 
         let dict = Self::root_dict(&value)?;
-        let announce = bencode::get_string(dict, "announce")?;
-        let announce_list = Self::announce_list(dict);
+        let announce_list = parse_announce_list(dict);
+        let announce = bencode::get_string(dict, "announce")
+            .or_else(|_| first_announce_url(announce_list.as_ref()))?;
         let info_dict = Self::info_dict(dict)?;
         let info_hash = calculate_info_hash(data)?;
         let (name, piece_length, num_pieces) = Self::basic_info(info_dict)?;
@@ -398,32 +409,6 @@ impl TorrentSummary {
                 _ => None,
             })
             .ok_or_else(|| TorrentError::InvalidStructure("Missing info dictionary".into()))
-    }
-
-    fn announce_list(dict: &BencodeDict) -> Option<Vec<Vec<String>>> {
-        dict.get(b"announce-list".as_ref())
-            .and_then(|v| match v {
-                serde_bencode::value::Value::List(list) => Some(list),
-                _ => None,
-            })
-            .map(|list| {
-                list.iter()
-                    .filter_map(|tier| match tier {
-                        serde_bencode::value::Value::List(t) => Some(t),
-                        _ => None,
-                    })
-                    .map(|tier| {
-                        tier.iter()
-                            .filter_map(|url| match url {
-                                serde_bencode::value::Value::Bytes(b) => {
-                                    Some(String::from_utf8_lossy(b).to_string())
-                                }
-                                _ => None,
-                            })
-                            .collect()
-                    })
-                    .collect()
-            })
     }
 
     fn basic_info(info_dict: &BencodeDict) -> Result<(String, u64, usize)> {
@@ -589,6 +574,27 @@ mod tests {
         ])
     }
 
+    fn sample_without_announce() -> Value {
+        dict(vec![
+            (
+                b"announce-list".to_vec(),
+                list(vec![
+                    list(vec![bytes("http://tracker.first/announce")]),
+                    list(vec![bytes("http://tracker.second/announce")]),
+                ]),
+            ),
+            (
+                b"info".to_vec(),
+                dict(vec![
+                    (b"name".to_vec(), bytes("file.txt")),
+                    (b"piece length".to_vec(), int(16384)),
+                    (b"pieces".to_vec(), pieces(1)),
+                    (b"length".to_vec(), int(123)),
+                ]),
+            ),
+        ])
+    }
+
     fn sample_multi_file() -> Value {
         let file_a = dict(vec![
             (b"length".to_vec(), int(100)),
@@ -703,6 +709,18 @@ mod tests {
         let res = TorrentInfo::from_bytes(&data);
 
         assert!(matches!(res, Err(TorrentError::BencodeError(_))));
+        Ok(())
+    }
+
+    #[test]
+    fn test_from_bytes_uses_first_announce_list_url() -> Result<()> {
+        let data = encode(&sample_without_announce())?;
+
+        let torrent = TorrentInfo::from_bytes(&data)?;
+        let summary = TorrentSummary::from_bytes(&data)?;
+
+        assert_eq!(torrent.announce, "http://tracker.first/announce");
+        assert_eq!(summary.announce, "http://tracker.first/announce");
         Ok(())
     }
 
