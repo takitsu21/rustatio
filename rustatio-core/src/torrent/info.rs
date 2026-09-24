@@ -47,9 +47,8 @@ fn parse_announce_list(dict: &BencodeDict) -> Option<Vec<Vec<String>>> {
         })
 }
 
-fn first_announce_url(announce_list: &Option<Vec<Vec<String>>>) -> bencode::Result<String> {
+fn first_announce_url(announce_list: Option<&Vec<Vec<String>>>) -> bencode::Result<String> {
     announce_list
-        .as_ref()
         .and_then(|tiers| tiers.iter().flat_map(|tier| tier.iter()).find(|url| !url.is_empty()))
         .cloned()
         .ok_or_else(|| BencodeError::InvalidStructure("Missing or invalid key: announce".into()))
@@ -177,7 +176,7 @@ impl TorrentInfo {
         let announce_list = parse_announce_list(dict);
 
         let announce = bencode::get_string(dict, "announce")
-            .or_else(|_| first_announce_url(&announce_list))?;
+            .or_else(|_| first_announce_url(announce_list.as_ref()))?;
 
         // Extract info dictionary
         let info_dict = dict
@@ -372,7 +371,7 @@ impl TorrentSummary {
         let dict = Self::root_dict(&value)?;
         let announce_list = parse_announce_list(dict);
         let announce = bencode::get_string(dict, "announce")
-            .or_else(|_| first_announce_url(&announce_list))?;
+            .or_else(|_| first_announce_url(announce_list.as_ref()))?;
         let info_dict = Self::info_dict(dict)?;
         let info_hash = calculate_info_hash(data)?;
         let (name, piece_length, num_pieces) = Self::basic_info(info_dict)?;
