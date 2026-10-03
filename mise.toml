@@ -16,7 +16,7 @@ rust = { version = "latest", components = "rustfmt,clippy" }
 "github:WebAssembly/binaryen" = "latest"
 
 # Git hooks manager + config language
-hk = "latest"
+hk = "2.4.0"
 pkl = "latest"
 
 # Linters for infrastructure files
@@ -290,7 +290,7 @@ run = "grep '^version' Cargo.toml | head -1"
 
 [tasks.fix]
 description = "Auto-fix lint and formatting issues"
-run = "hk fix --all"
+run = "hk fix --all --stage"
 
 # Convenience aliases
 [tasks.b]

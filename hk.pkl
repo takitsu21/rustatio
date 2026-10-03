@@ -1,5 +1,5 @@
-amends "package://github.com/jdx/hk/releases/download/v1.56.0/hk@1.56.0#/Config.pkl"
-import "package://github.com/jdx/hk/releases/download/v1.56.0/hk@1.56.0#/Builtins.pkl"
+amends "package://github.com/jdx/hk/releases/download/v2.4.0/hk@2.4.0#/Config.pkl"
+import "package://github.com/jdx/hk/releases/download/v2.4.0/hk@2.4.0#/Builtins.pkl"
 
 exclude =
   List(
@@ -18,6 +18,10 @@ exclude =
 local rust_linters = new Mapping<String, Step> {
   ["cargo-fmt"] = (Builtins.cargo_fmt) {
     workspace_indicator = "Cargo.toml"
+    check = "cargo fmt --all --check --manifest-path {{workspace_indicator}}"
+    check_list_files =
+      "cargo fmt --all --check --manifest-path {{workspace_indicator}} -- --files-with-diff"
+    fix = "cargo fmt --all --manifest-path {{workspace_indicator}}"
   }
   // rustatio-wasm excluded: requires wasm32 target, can't compile natively
   ["cargo-clippy"] {
