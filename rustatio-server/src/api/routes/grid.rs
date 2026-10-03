@@ -381,7 +381,8 @@ pub async fn grid_delete(
     State(state): State<ServerState>,
     Json(request): Json<GridIdsRequest>,
 ) -> Response {
-    let (succeeded, failed) = grid_action_concurrent(&state, request.ids, GridAction::Delete).await;
+    let (succeeded, failed) = state.app.delete_instances(&request.ids, true).await;
+    let failed = failed.into_iter().map(|(id, error)| GridActionError { id, error }).collect();
     ApiSuccess::response(GridActionResponse { succeeded, failed })
 }
 
@@ -451,7 +452,6 @@ pub async fn grid_bulk_update_configs(
 enum GridAction {
     Pause,
     Resume,
-    Delete,
 }
 
 async fn grid_action_concurrent(
@@ -459,20 +459,16 @@ async fn grid_action_concurrent(
     ids: Vec<String>,
     action: GridAction,
 ) -> (Vec<String>, Vec<GridActionError>) {
+    let pause = matches!(action, GridAction::Pause);
     let mut set = JoinSet::new();
 
     for id in ids {
         let state = state.clone();
-        let action_kind = match action {
-            GridAction::Pause => 0u8,
-            GridAction::Resume => 1,
-            GridAction::Delete => 2,
-        };
         set.spawn(async move {
-            let result = match action_kind {
-                0 => state.app.pause_instance(&id).await,
-                1 => state.app.resume_instance(&id).await,
-                _ => state.app.delete_instance(&id, true).await,
+            let result = if pause {
+                state.app.pause_instance(&id).await
+            } else {
+                state.app.resume_instance(&id).await
             };
             (id, result)
         });

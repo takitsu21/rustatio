@@ -2,6 +2,7 @@ use rustatio_core::{FakerConfig, FakerState, TorrentSummary};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::fs;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
@@ -140,11 +141,19 @@ impl PersistedState {
 
 pub struct Persistence {
     state_file: String,
+    /// Serializes writes so concurrent callers can never share or clobber a
+    /// temp file. Before this lock, a bulk delete persisted once per instance
+    /// and the interleaved writes could corrupt `state.json`, wiping every
+    /// instance on the next load (#166).
+    write_lock: tokio::sync::Mutex<()>,
 }
 
 impl Persistence {
     pub fn new(data_dir: &str) -> Self {
-        Self { state_file: format!("{data_dir}/state.json") }
+        Self {
+            state_file: format!("{data_dir}/state.json"),
+            write_lock: tokio::sync::Mutex::new(()),
+        }
     }
 
     pub async fn load(&self) -> PersistedState {
@@ -169,10 +178,24 @@ impl Persistence {
                         state
                     }
                     Err(e) => {
-                        tracing::error!("Failed to parse state file: {}", e);
-                        let backup = format!("{}.corrupted", self.state_file);
-                        let _ = fs::rename(path, &backup).await;
-                        tracing::warn!("Backed up corrupted state to {}", backup);
+                        tracing::error!(
+                            "Failed to parse state file {}: {}. Starting with an empty state; \
+                             instances will look deleted until the file is repaired.",
+                            self.state_file,
+                            e
+                        );
+                        let backup = format!("{}.corrupted.{}", self.state_file, now_timestamp());
+                        match fs::rename(path, &backup).await {
+                            Ok(()) => tracing::error!(
+                                "Corrupted state backed up to {}. Move it back after repairing it to restore instances.",
+                                backup
+                            ),
+                            Err(rename_err) => tracing::error!(
+                                "Failed to back up corrupted state to {}: {}",
+                                backup,
+                                rename_err
+                            ),
+                        }
                         PersistedState::new()
                     }
                 }
@@ -185,15 +208,38 @@ impl Persistence {
     }
 
     pub async fn save(&self, state: &PersistedState) -> Result<(), String> {
+        // Hold the lock for the whole write+rename so two callers can never
+        // share the temp file or rename each other's partial output (#166).
+        let _guard = self.write_lock.lock().await;
+
         if let Some(parent) = Path::new(&self.state_file).parent() {
             if let Err(e) = fs::create_dir_all(parent).await {
                 return Err(format!("Failed to create data directory: {e}"));
             }
         }
 
-        let temp_file = format!("{}.tmp", self.state_file);
+        // A unique temp name is defense in depth on top of the lock: even if a
+        // future caller bypasses the lock, writers never touch the same path.
+        let temp_file = Self::temp_path(&self.state_file);
 
-        let mut file = fs::File::create(&temp_file)
+        if let Err(e) = Self::write_state(&temp_file, state).await {
+            if let Err(cleanup_err) = fs::remove_file(&temp_file).await {
+                tracing::debug!("Failed to remove temp state file {}: {}", temp_file, cleanup_err);
+            }
+            return Err(e);
+        }
+
+        if let Err(e) = fs::rename(&temp_file, &self.state_file).await {
+            let _ = fs::remove_file(&temp_file).await;
+            return Err(format!("Failed to rename state file: {e}"));
+        }
+
+        tracing::debug!("State saved to {}", self.state_file);
+        Ok(())
+    }
+
+    async fn write_state(temp_file: &str, state: &PersistedState) -> Result<(), String> {
+        let mut file = fs::File::create(temp_file)
             .await
             .map_err(|e| format!("Failed to create temp file: {e}"))?;
 
@@ -204,12 +250,13 @@ impl Persistence {
 
         file.sync_all().await.map_err(|e| format!("Failed to sync state file: {e}"))?;
 
-        fs::rename(&temp_file, &self.state_file)
-            .await
-            .map_err(|e| format!("Failed to rename state file: {e}"))?;
-
-        tracing::debug!("State saved to {}", self.state_file);
         Ok(())
+    }
+
+    fn temp_path(state_file: &str) -> String {
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let seq = COUNTER.fetch_add(1, Ordering::Relaxed);
+        format!("{state_file}.{}.{}.tmp", std::process::id(), seq)
     }
 }
 
@@ -219,8 +266,10 @@ pub fn now_timestamp() -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use super::WatchSettings;
-    use std::sync::{Mutex, OnceLock};
+    use super::{InstanceSource, PersistedInstance, PersistedState, Persistence, WatchSettings};
+    use rustatio_core::{FakerConfig, FakerState, TorrentInfo};
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex, OnceLock};
 
     fn env_lock() -> &'static Mutex<()> {
         static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -241,5 +290,81 @@ mod tests {
         assert!(!settings.auto_start);
 
         std::env::remove_var("WATCH_AUTO_START");
+    }
+
+    fn sample_state(count: usize) -> PersistedState {
+        let mut instances = HashMap::new();
+        for i in 0..count {
+            let id = format!("inst-{i}");
+            let torrent = TorrentInfo {
+                info_hash: [u8::try_from(i % 256).unwrap_or(0); 20],
+                announce: "https://tracker.test/announce".to_string(),
+                announce_list: None,
+                name: format!("sample-{i}"),
+                total_size: 1024,
+                piece_length: 256,
+                num_pieces: 4,
+                creation_date: None,
+                comment: None,
+                created_by: None,
+                is_single_file: true,
+                file_count: 1,
+                files: Vec::new(),
+            };
+            instances.insert(
+                id.clone(),
+                PersistedInstance {
+                    id,
+                    torrent: torrent.summary(),
+                    config: FakerConfig::default(),
+                    cumulative_uploaded: 0,
+                    cumulative_downloaded: 0,
+                    state: FakerState::Stopped,
+                    created_at: 0,
+                    updated_at: 0,
+                    source: InstanceSource::Manual,
+                    tags: Vec::new(),
+                    runtime: None,
+                },
+            );
+        }
+
+        PersistedState {
+            instances,
+            default_config: None,
+            default_preset: None,
+            watch_settings: None,
+            custom_presets: Vec::new(),
+            version: 1,
+        }
+    }
+
+    #[tokio::test]
+    async fn concurrent_saves_never_corrupt_state_file() {
+        let temp = tempfile::tempdir();
+        assert!(temp.is_ok(), "failed to create tempdir");
+        let Ok(temp) = temp else {
+            return;
+        };
+        let persistence = Arc::new(Persistence::new(&temp.path().to_string_lossy()));
+        let state = sample_state(200);
+
+        let mut handles = Vec::new();
+        for _ in 0..50 {
+            let persistence = Arc::clone(&persistence);
+            let state = state.clone();
+            handles.push(tokio::spawn(async move { persistence.save(&state).await }));
+        }
+
+        for handle in handles {
+            let joined = handle.await;
+            assert!(joined.is_ok(), "save task should not panic");
+            if let Ok(saved) = joined {
+                assert!(saved.is_ok(), "every save should succeed");
+            }
+        }
+
+        let loaded = persistence.load().await;
+        assert_eq!(loaded.instances.len(), 200, "state file must never parse as empty/partial");
     }
 }
