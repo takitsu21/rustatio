@@ -11,7 +11,7 @@ use std::sync::Arc;
 use tokio::signal;
 use tokio::sync::{oneshot, RwLock};
 use tower_http::cors::{Any, CorsLayer};
-use tower_http::trace::TraceLayer;
+use tower_http::trace::{MakeSpan, TraceLayer};
 use tracing_subscriber::layer::SubscriberExt;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
@@ -23,6 +23,22 @@ use crate::services::{
 };
 use crate::util::BroadcastLayer;
 use rustatio_core::PeerListenerService;
+
+/// Logs only the request path, never the query string, so secrets passed as
+/// `?token=` (SSE endpoints) are not written to access logs.
+#[derive(Clone, Copy)]
+struct PathOnlyMakeSpan;
+
+impl<B> MakeSpan<B> for PathOnlyMakeSpan {
+    fn make_span(&mut self, request: &axum::http::Request<B>) -> tracing::Span {
+        tracing::debug_span!(
+            "request",
+            method = %request.method(),
+            path = %request.uri().path(),
+            version = ?request.version(),
+        )
+    }
+}
 
 #[tokio::main]
 async fn main() {
@@ -129,7 +145,7 @@ async fn main() {
         .nest("/api", api::router().layer(middleware::from_fn(api::middleware::auth_middleware)))
         .fallback(util::static_handler)
         .layer(cors)
-        .layer(TraceLayer::new_for_http())
+        .layer(TraceLayer::new_for_http().make_span_with(PathOnlyMakeSpan))
         .with_state(server_state);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
