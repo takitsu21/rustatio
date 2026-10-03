@@ -639,6 +639,54 @@ impl AppState {
     }
 
     pub async fn delete_instance(&self, id: &str, force: bool) -> Result<(), String> {
+        self.remove_instance_inner(id, force).await?;
+
+        if let Err(e) = self.save_state().await {
+            tracing::warn!("Failed to save state after deleting instance: {}", e);
+        }
+
+        self.refresh_peer_listener_port().await;
+
+        Ok(())
+    }
+
+    /// Delete several instances and persist once, after all removals.
+    ///
+    /// A bulk delete used to call [`Self::delete_instance`] per id, which
+    /// persisted on every removal and produced hundreds of concurrent writes to
+    /// the same file. Removing first and saving once keeps the write cost
+    /// constant and avoids the `#166` state-file corruption.
+    pub async fn delete_instances(
+        &self,
+        ids: &[String],
+        force: bool,
+    ) -> (Vec<String>, Vec<(String, String)>) {
+        let mut succeeded = Vec::new();
+        let mut failed = Vec::new();
+
+        for id in ids {
+            match self.remove_instance_inner(id, force).await {
+                Ok(true) => succeeded.push(id.clone()),
+                Ok(false) => failed.push((id.clone(), format!("Instance {id} not found"))),
+                Err(e) => failed.push((id.clone(), e)),
+            }
+        }
+
+        if !succeeded.is_empty() {
+            if let Err(e) = self.save_state().await {
+                tracing::warn!("Failed to save state after bulk deleting instances: {}", e);
+            }
+        }
+
+        self.refresh_peer_listener_port().await;
+
+        (succeeded, failed)
+    }
+
+    /// Remove one instance from memory without persisting. Returns whether it
+    /// was present. Callers that need durability must call `save_state` once
+    /// after their batch.
+    async fn remove_instance_inner(&self, id: &str, force: bool) -> Result<bool, String> {
         if !force {
             let instances = self.instances.read().await;
             if let Some(instance) = instances.get(id) {
@@ -659,19 +707,13 @@ impl AppState {
             }
         }
 
-        let removed = self.instances.write().await.remove(id);
+        let removed = self.instances.write().await.remove(id).is_some();
 
-        if removed.is_some() {
+        if removed {
             self.emit_instance_event(InstanceEvent::Deleted { id: id.to_string() });
         }
 
-        if let Err(e) = self.save_state().await {
-            tracing::warn!("Failed to save state after deleting instance: {}", e);
-        }
-
-        self.refresh_peer_listener_port().await;
-
-        Ok(())
+        Ok(removed)
     }
 
     pub async fn list_instances(&self) -> Vec<InstanceInfo> {
@@ -1546,5 +1588,42 @@ mod tests {
         assert_eq!(saved.config.upload_rate, updated.upload_rate);
         assert_eq!(saved.config.port, updated.port);
         assert_eq!(saved.config.stop_at_ratio, updated.stop_at_ratio);
+    }
+
+    #[tokio::test]
+    async fn bulk_delete_only_removes_selected_instances_after_reload() {
+        let temp = tempfile::tempdir();
+        assert!(temp.is_ok(), "failed to create tempdir");
+        let Ok(temp) = temp else {
+            return;
+        };
+        let path = temp.path().to_string_lossy().to_string();
+        let state = AppState::new(&path);
+
+        for i in 0..10u8 {
+            let created = state
+                .create_instance(
+                    &format!("inst-{i}"),
+                    torrent_with_hash(i + 1),
+                    FakerConfig::default(),
+                )
+                .await;
+            assert!(created.is_ok());
+        }
+
+        let ids: Vec<String> = (0..5u8).map(|i| format!("inst-{i}")).collect();
+        let (succeeded, failed) = state.delete_instances(&ids, true).await;
+        assert_eq!(succeeded.len(), 5, "every selected instance should be deleted");
+        assert!(failed.is_empty(), "no delete should fail");
+
+        let restored = AppState::new(&path);
+        let loaded = restored.load_saved_state().await;
+        assert!(loaded.is_ok());
+        assert_eq!(loaded.unwrap_or(0), 5, "only the unselected instances must remain");
+
+        let remaining: BTreeSet<String> =
+            restored.list_instances().await.into_iter().map(|inst| inst.id).collect();
+        let expected: BTreeSet<String> = (5..10u8).map(|i| format!("inst-{i}")).collect();
+        assert_eq!(remaining, expected, "bulk delete must not touch unselected instances");
     }
 }
