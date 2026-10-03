@@ -2,7 +2,7 @@
 
 use axum::{
     extract::Request,
-    http::{header::AUTHORIZATION, StatusCode},
+    http::{header::AUTHORIZATION, Method, StatusCode},
     middleware::Next,
     response::{IntoResponse, Response},
     Json,
@@ -72,20 +72,30 @@ pub async fn auth_middleware(request: Request, next: Next) -> Response {
         }
     }
 
-    if let Some(query) = request.uri().query() {
-        for param in query.split('&') {
-            if let Some(token_value) = param.strip_prefix("token=") {
-                // URL decode the token
-                let decoded_token = urlencoding::decode(token_value).unwrap_or_default();
-                if constant_time_eq(decoded_token.as_bytes(), expected_token.as_bytes()) {
-                    return next.run(request).await;
+    if allows_query_token(request.method(), request.uri().path()) {
+        if let Some(query) = request.uri().query() {
+            for param in query.split('&') {
+                if let Some(token_value) = param.strip_prefix("token=") {
+                    // URL decode the token
+                    let decoded_token = urlencoding::decode(token_value).unwrap_or_default();
+                    if constant_time_eq(decoded_token.as_bytes(), expected_token.as_bytes()) {
+                        return next.run(request).await;
+                    }
+                    return AuthError::forbidden();
                 }
-                return AuthError::forbidden();
             }
         }
     }
 
     AuthError::unauthorized()
+}
+
+/// Query-string tokens are only accepted for the SSE endpoints, because
+/// `EventSource` cannot set an `Authorization` header. All other routes must
+/// use the header so the secret is never placed in a URL (and therefore never
+/// written to access logs, reverse proxies, or browser history).
+fn allows_query_token(method: &Method, path: &str) -> bool {
+    *method == Method::GET && matches!(path, "/logs" | "/events" | "/api/logs" | "/api/events")
 }
 
 fn constant_time_eq(expected: &[u8], actual: &[u8]) -> bool {
@@ -111,5 +121,18 @@ mod tests {
         assert!(!constant_time_eq(b"hello", b"hell"));
         assert!(!constant_time_eq(b"", b"a"));
         assert!(constant_time_eq(b"", b""));
+    }
+
+    #[test]
+    fn test_query_token_allowed_only_for_sse_get() {
+        assert!(allows_query_token(&Method::GET, "/logs"));
+        assert!(allows_query_token(&Method::GET, "/events"));
+        assert!(allows_query_token(&Method::GET, "/api/logs"));
+        assert!(allows_query_token(&Method::GET, "/api/events"));
+
+        assert!(!allows_query_token(&Method::POST, "/logs"));
+        assert!(!allows_query_token(&Method::GET, "/instances"));
+        assert!(!allows_query_token(&Method::GET, "/api/instances"));
+        assert!(!allows_query_token(&Method::GET, "/auth/verify"));
     }
 }
