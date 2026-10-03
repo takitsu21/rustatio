@@ -351,10 +351,11 @@ dark_mode = true
 ## Supported Clients
 
 - **uTorrent** (default: 3.5.5)
-- **qBittorrent** (default: 5.2.1)
-- **Transmission** (default: 4.0.5)
-- **Deluge** (default: 2.1.1)
-- **BitTorrent** (default: 7.10.5)
+- **qBittorrent** (default: 5.2.4)
+- **Transmission** (default: 4.1.3)
+- **Deluge** (default: 2.2.0)
+- **BitTorrent** (default: 7.11.0)
+- **rTorrent** (default: 0.16.24)
 
 Each client is accurately emulated with proper:
 
