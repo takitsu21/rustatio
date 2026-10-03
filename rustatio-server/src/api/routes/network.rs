@@ -163,7 +163,7 @@ mod tests {
         );
 
         assert!(!status.configured);
-        assert!(status.ip.is_empty());
+        assert!(status.ip.is_empty(), "network status ip should be empty when not configured");
         assert!(!status.is_vpn);
         assert_eq!(status.forwarded_port, None);
         assert_eq!(status.peer_listener_port, Some(51413));

@@ -139,7 +139,7 @@ mod tests {
     #[test]
     fn test_grid_import_settings_default() {
         let settings = GridImportSettings::default();
-        assert!(settings.tags.is_empty());
+        assert!(settings.tags.is_empty(), "default grid import settings should have no tags");
         assert!(!settings.auto_start);
         assert!(settings.stagger_start_secs.is_none());
     }

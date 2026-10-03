@@ -1537,7 +1537,7 @@ mod tests {
             state.bulk_update_configs(vec![("bulk".to_string(), updated.clone())]).await;
 
         assert_eq!(succeeded, vec!["bulk".to_string()]);
-        assert!(failed.is_empty());
+        assert!(failed.is_empty(), "no config updates should fail");
 
         let persisted = state.persistence.load().await;
         let saved = persisted.instances.get("bulk");
