@@ -1,6 +1,6 @@
 services:
   gluetun:
-    image: qmcgaw/gluetun
+    image: qmcgaw/gluetun@sha256:2733bb22b27e3efa7a9f2cef9057ec12791b8b225793fcd3dbfd0508404dfc25
     cap_add:
       - NET_ADMIN
     devices:
@@ -21,7 +21,7 @@ services:
     restart: unless-stopped
 
   rustatio:
-    image: ghcr.io/takitsu21/rustatio:latest
+    image: ghcr.io/takitsu21/rustatio:latest@sha256:ff2dcd43c7699d5504eab2ef1876d90236142304620f94802240ef68f006652a
     container_name: rustatio
     environment:
       - PORT=8080
