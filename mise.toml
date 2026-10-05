@@ -16,7 +16,7 @@ rust = { version = "latest", components = "rustfmt,clippy" }
 "github:WebAssembly/binaryen" = "latest"
 
 # Git hooks manager + config language
-hk = "2.4.0"
+hk = "2.5.0"
 pkl = "latest"
 
 # Linters for infrastructure files
