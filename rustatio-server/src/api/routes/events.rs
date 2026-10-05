@@ -12,7 +12,18 @@ use tokio_stream::wrappers::BroadcastStream;
 use tokio_stream::StreamExt;
 
 use crate::api::ServerState;
-use crate::services::EventBroadcaster;
+use crate::services::{EventBroadcaster, InstanceEvent};
+
+fn to_sse_event(instance_event: &InstanceEvent) -> Event {
+    // Keep the existing `instance` event name for lifecycle events (created/deleted)
+    // so existing custom scripts are unaffected; summaries get their own event name.
+    let name = match instance_event {
+        InstanceEvent::Summaries { .. } => "summaries",
+        _ => "instance",
+    };
+
+    Event::default().event(name).json_data(instance_event).unwrap_or_else(|_| Event::default())
+}
 
 #[utoipa::path(
     get,
@@ -48,7 +59,7 @@ pub async fn logs_sse(
     path = "/events",
     tag = "events",
     summary = "Stream instance events via SSE",
-    description = "Server-Sent Events stream for real-time instance updates. Events are of type 'instance' with InstanceEvent data (created/deleted).",
+    description = "Server-Sent Events stream for real-time instance updates. Lifecycle events use the 'instance' event name with InstanceEvent data (created/deleted). Stats batches use the 'summaries' event name with a Summaries payload; existing 'instance' listeners are unaffected.",
     security(("bearer_auth" = [])),
     responses(
         (status = 200, description = "SSE stream established", content_type = "text/event-stream"),
@@ -60,16 +71,17 @@ pub async fn instances_sse(
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
     let rx = state.app.subscribe_instance_events();
 
-    let stream = BroadcastStream::new(rx).filter_map(|result| {
-        result.ok().map(|instance_event| {
-            Ok(Event::default()
-                .event("instance")
-                .json_data(&instance_event)
-                .unwrap_or_else(|_| Event::default()))
-        })
-    });
+    // Send a full snapshot on connect so clients start consistent before live updates arrive.
+    let summaries = state.app.list_instance_summaries().await;
+    let initial =
+        futures::stream::iter([Ok::<Event, Infallible>(to_sse_event(&InstanceEvent::Summaries {
+            instances: summaries,
+        }))]);
 
-    Sse::new(stream).keep_alive(KeepAlive::default())
+    let live = BroadcastStream::new(rx)
+        .filter_map(|result| result.ok().map(|event| Ok(to_sse_event(&event))));
+
+    Sse::new(initial.chain(live)).keep_alive(KeepAlive::default())
 }
 
 pub fn router() -> Router<ServerState> {

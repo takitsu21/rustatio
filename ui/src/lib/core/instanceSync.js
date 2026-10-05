@@ -10,7 +10,28 @@ const STAT_KEYS = [
   'leechers',
   'left',
   'torrent_completion',
+  'state',
+  'is_idling',
+  'idling_reason',
+  'stop_condition_met',
+  'post_stop_action',
+  'effective_stop_at_ratio',
 ];
+
+const SUMMARY_STATES = {
+  running: 'Running',
+  starting: 'Starting',
+  stopping: 'Stopping',
+  paused: 'Paused',
+  stopped: 'Stopped',
+  idle: 'Idle',
+};
+
+// Map a summary state back to the backend FakerState casing used in stats.
+function getSummaryState(summary) {
+  if (summary.isIdling) return 'Running';
+  return SUMMARY_STATES[summary.state?.toLowerCase()] ?? summary.state;
+}
 
 function sameStats(left, right) {
   const a = left || {};
@@ -43,9 +64,10 @@ export function mergeSummary(instance, summary) {
     next.statusType = 'paused';
     next.statusIcon = 'pause';
   } else if (state === 'idle') {
-    const status = instance.stats?.is_idling
-      ? getStatusFromStats(instance.stats)
-      : getIdlingStatus();
+    const status =
+      (summary.isIdling ?? instance.stats?.is_idling)
+        ? getStatusFromStats(instance.stats)
+        : getIdlingStatus();
     next.statusMessage = status.statusMessage;
     next.statusType = status.statusType;
     next.statusIcon = status.statusIcon;
@@ -74,6 +96,12 @@ export function mergeSummary(instance, summary) {
     leechers: summary.leechers,
     left: summary.left,
     torrent_completion: summary.torrentCompletion,
+    state: getSummaryState(summary),
+    is_idling: summary.isIdling ?? false,
+    idling_reason: summary.idlingReason ?? null,
+    stop_condition_met: summary.stopConditionMet ?? false,
+    post_stop_action: summary.postStopAction ?? null,
+    effective_stop_at_ratio: summary.effectiveStopAtRatio ?? null,
   };
   next.completionPercent = summary.torrentCompletion;
 

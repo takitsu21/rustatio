@@ -1734,6 +1734,12 @@ impl RatioFakerHandle {
         self.stats_rx.borrow().clone()
     }
 
+    /// Read the latest stats without cloning the full snapshot (histories included).
+    pub fn with_stats<R>(&self, f: impl FnOnce(&FakerStats) -> R) -> R {
+        let stats = self.stats_rx.borrow();
+        f(&stats)
+    }
+
     pub async fn start(&self) -> Result<()> {
         let plan = {
             let mut guard = self.inner.lock().await;

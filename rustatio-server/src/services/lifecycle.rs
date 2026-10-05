@@ -56,6 +56,7 @@ impl InstanceLifecycle for AppState {
         }
 
         self.refresh_peer_listener_port().await;
+        self.emit_instance_summaries(&[id.to_string()]).await;
 
         Ok(())
     }
@@ -89,6 +90,7 @@ impl InstanceLifecycle for AppState {
         }
 
         self.refresh_peer_listener_port().await;
+        self.emit_instance_summaries(&[id.to_string()]).await;
 
         Ok(stats)
     }
@@ -123,6 +125,7 @@ impl InstanceLifecycle for AppState {
         }
 
         self.refresh_peer_listener_port().await;
+        self.emit_instance_summaries(&[id.to_string()]).await;
 
         Ok(stats)
     }
@@ -146,6 +149,7 @@ impl InstanceLifecycle for AppState {
         }
 
         self.refresh_peer_listener_port().await;
+        self.emit_instance_summaries(&[id.to_string()]).await;
 
         Ok(())
     }
@@ -169,6 +173,7 @@ impl InstanceLifecycle for AppState {
         }
 
         self.refresh_peer_listener_port().await;
+        self.emit_instance_summaries(&[id.to_string()]).await;
 
         Ok(())
     }

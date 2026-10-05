@@ -65,7 +65,11 @@ async fn scheduler_loop(
                 break;
             }
             () = tokio::time::sleep(update_interval) => {
-                let dirty = update_instances(&state, &instances).await;
+                let (dirty, updated) = update_instances(&state, &instances).await;
+
+                if !updated.is_empty() {
+                    state.emit_instance_summaries(&updated).await;
+                }
 
                 if dirty {
                     if let Err(e) = state.save_state().await {
@@ -89,13 +93,14 @@ async fn scheduler_loop(
 async fn update_instances(
     state: &AppState,
     instances: &Arc<RwLock<HashMap<String, FakerInstance>>>,
-) -> bool {
+) -> (bool, Vec<String>) {
     let items: Vec<(String, Arc<RatioFakerHandle>)> = {
         let guard = instances.read().await;
         guard.iter().map(|(id, inst)| (id.clone(), Arc::clone(&inst.faker))).collect()
     };
 
     let mut dirty = false;
+    let mut updated = Vec::new();
 
     for (id, faker) in items {
         let before = faker.stats_snapshot();
@@ -147,7 +152,9 @@ async fn update_instances(
         {
             dirty = true;
         }
+
+        updated.push(id);
     }
 
-    dirty
+    (dirty, updated)
 }

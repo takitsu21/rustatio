@@ -5,6 +5,7 @@ import { normalizePreset } from '$lib/presets/customPreset.js';
 import { getRunMode } from '$lib/api.js';
 import { getIdlingStatus, getStatusFromStats, getTrackerIssue } from '$lib/core/status.js';
 import { mergeSummary } from '$lib/core/instanceSync.js';
+import { hydrateInstances } from '$lib/core/instanceHydration.js';
 import {
   getActiveInstanceIndex,
   getBackendInstanceStateFlags,
@@ -798,12 +799,14 @@ export const instanceActions = {
       }
 
       // Ensure all backend instances exist in the standard store.
+      // Build the missing list first so a single backend read hydrates all of them.
       const knownIds = new Set(get(instances).map(inst => String(inst.id)));
-      for (const summary of summaries) {
-        const key = String(summary.id);
-        if (knownIds.has(key)) continue;
-        await instanceActions.ensureInstance(summary.id, summary);
-        knownIds.add(key);
+      const missing = summaries.filter(summary => !knownIds.has(String(summary.id)));
+      if (missing.length > 0) {
+        await instanceActions.ensureInstances(
+          missing.map(summary => summary.id),
+          missing
+        );
       }
 
       // Defensive dedupe in case overlapping UI actions inserted same id twice.
@@ -848,69 +851,74 @@ export const instanceActions = {
 
   // Ensure an instance exists in the standard store (used when switching from grid to standard view)
   // If the instance doesn't exist, fetch it from the server or create a default entry.
+  // Pass a pre-fetched serverInstance to avoid one backend read per instance.
   // Returns the instance ID if successfully ensured.
-  ensureInstance: async (id, gridSummary = null) => {
+  ensureInstance: async (id, gridSummary = null, serverInstance) => {
     const normalizedId = String(id);
     const currentInstances = get(instances);
     const existing = currentInstances.find(inst => String(inst.id) === normalizedId);
 
-    // Try to fetch actual config from backend and update or create the instance
-    try {
-      const serverInstances = await api.listInstances();
-      if (serverInstances && serverInstances.length > 0) {
-        const serverInst = serverInstances.find(inst => String(inst.id) === normalizedId);
-        if (serverInst) {
-          if (existing) {
-            // Update existing instance with actual backend config
-            const serverDefaults = buildInstanceDefaultsFromServer(serverInst);
-            instanceActions.updateInstance(normalizedId, {
-              selectedClient: serverDefaults.selectedClient,
-              selectedClientVersion: serverDefaults.selectedClientVersion,
-              uploadRate: serverDefaults.uploadRate,
-              downloadRate: serverDefaults.downloadRate,
-              port: serverDefaults.port,
-              vpnPortSync: serverDefaults.vpnPortSync,
-              completionPercent: serverDefaults.completionPercent,
-              initialUploaded: serverDefaults.initialUploaded,
-              initialDownloaded: serverDefaults.initialDownloaded,
-              randomizeRates: serverDefaults.randomizeRates,
-              randomRangePercent: serverDefaults.randomRangePercent,
-              progressiveRatesEnabled: serverDefaults.progressiveRatesEnabled,
-              targetUploadRate: serverDefaults.targetUploadRate,
-              targetDownloadRate: serverDefaults.targetDownloadRate,
-              progressiveDurationHours: serverDefaults.progressiveDurationHours,
-              stopAtRatioEnabled: serverDefaults.stopAtRatioEnabled,
-              stopAtRatio: serverDefaults.stopAtRatio,
-              randomizeRatio: serverDefaults.randomizeRatio,
-              randomRatioRangePercent: serverDefaults.randomRatioRangePercent,
-              effectiveStopAtRatio: serverDefaults.effectiveStopAtRatio,
-              stopAtUploadedEnabled: serverDefaults.stopAtUploadedEnabled,
-              stopAtUploadedGB: serverDefaults.stopAtUploadedGB,
-              stopAtDownloadedEnabled: serverDefaults.stopAtDownloadedEnabled,
-              stopAtDownloadedGB: serverDefaults.stopAtDownloadedGB,
-              stopAtSeedTimeEnabled: serverDefaults.stopAtSeedTimeEnabled,
-              stopAtSeedTimeHours: serverDefaults.stopAtSeedTimeHours,
-              idleWhenNoLeechers: serverDefaults.idleWhenNoLeechers,
-              idleWhenNoSeeders: serverDefaults.idleWhenNoSeeders,
-              postStopAction: serverDefaults.postStopAction,
-              scrapeInterval: serverDefaults.scrapeInterval,
-            });
-            if (
-              gridSummary?.source &&
-              (gridSummary.source === 'watch_folder' || gridSummary.source === 'manual')
-            ) {
-              instanceActions.updateInstance(existing.id, {
-                source: gridSummary.source,
-              });
-            }
-            return String(existing.id);
-          }
-          instanceActions.mergeServerInstance(serverInst);
-          return normalizedId;
-        }
+    // Use the caller-provided server instance when available (bulk paths read once).
+    // undefined means "read the backend once"; null means "known absent".
+    let serverInst = serverInstance;
+    if (serverInst === undefined) {
+      try {
+        const serverInstances = await api.listInstances();
+        serverInst = (serverInstances || []).find(inst => String(inst.id) === normalizedId) ?? null;
+      } catch {
+        // listInstances may not be available or may return [] (Tauri/WASM)
+        serverInst = null;
       }
-    } catch {
-      // listInstances may not be available or may return [] (Tauri/WASM)
+    }
+
+    if (serverInst) {
+      if (existing) {
+        // Update existing instance with actual backend config
+        const serverDefaults = buildInstanceDefaultsFromServer(serverInst);
+        instanceActions.updateInstance(normalizedId, {
+          selectedClient: serverDefaults.selectedClient,
+          selectedClientVersion: serverDefaults.selectedClientVersion,
+          uploadRate: serverDefaults.uploadRate,
+          downloadRate: serverDefaults.downloadRate,
+          port: serverDefaults.port,
+          vpnPortSync: serverDefaults.vpnPortSync,
+          completionPercent: serverDefaults.completionPercent,
+          initialUploaded: serverDefaults.initialUploaded,
+          initialDownloaded: serverDefaults.initialDownloaded,
+          randomizeRates: serverDefaults.randomizeRates,
+          randomRangePercent: serverDefaults.randomRangePercent,
+          progressiveRatesEnabled: serverDefaults.progressiveRatesEnabled,
+          targetUploadRate: serverDefaults.targetUploadRate,
+          targetDownloadRate: serverDefaults.targetDownloadRate,
+          progressiveDurationHours: serverDefaults.progressiveDurationHours,
+          stopAtRatioEnabled: serverDefaults.stopAtRatioEnabled,
+          stopAtRatio: serverDefaults.stopAtRatio,
+          randomizeRatio: serverDefaults.randomizeRatio,
+          randomRatioRangePercent: serverDefaults.randomRatioRangePercent,
+          effectiveStopAtRatio: serverDefaults.effectiveStopAtRatio,
+          stopAtUploadedEnabled: serverDefaults.stopAtUploadedEnabled,
+          stopAtUploadedGB: serverDefaults.stopAtUploadedGB,
+          stopAtDownloadedEnabled: serverDefaults.stopAtDownloadedEnabled,
+          stopAtDownloadedGB: serverDefaults.stopAtDownloadedGB,
+          stopAtSeedTimeEnabled: serverDefaults.stopAtSeedTimeEnabled,
+          stopAtSeedTimeHours: serverDefaults.stopAtSeedTimeHours,
+          idleWhenNoLeechers: serverDefaults.idleWhenNoLeechers,
+          idleWhenNoSeeders: serverDefaults.idleWhenNoSeeders,
+          postStopAction: serverDefaults.postStopAction,
+          scrapeInterval: serverDefaults.scrapeInterval,
+        });
+        if (
+          gridSummary?.source &&
+          (gridSummary.source === 'watch_folder' || gridSummary.source === 'manual')
+        ) {
+          instanceActions.updateInstance(existing.id, {
+            source: gridSummary.source,
+          });
+        }
+        return String(existing.id);
+      }
+      instanceActions.mergeServerInstance(serverInst);
+      return normalizedId;
     }
 
     if (existing) {
@@ -984,6 +992,18 @@ export const instanceActions = {
     }
 
     return null;
+  },
+
+  // Ensure multiple instances exist in the standard store with a single backend read.
+  // Used by grid bulk edit and reconciliation so N instances don't trigger N list calls.
+  ensureInstances: async (ids, summaries = []) => {
+    return hydrateInstances(
+      ids,
+      summaries,
+      () => api.listInstances(),
+      (normalizedId, summary, serverInst) =>
+        instanceActions.ensureInstance(normalizedId, summary, serverInst)
+    );
   },
 
   // Add an instance to the standard store from grid import data
@@ -1089,6 +1109,37 @@ export const instanceActions = {
     } catch (error) {
       console.warn('Failed to sync instance states:', error);
     }
+  },
+
+  // Apply pushed summaries (SSE) to the standard store.
+  // Returns the summaries that actually changed their instance.
+  applySummaries: (summaries = []) => {
+    const currentInstances = get(instances);
+    if (currentInstances.length === 0 || !Array.isArray(summaries) || summaries.length === 0) {
+      return [];
+    }
+
+    const summaryMap = new Map(
+      summaries.filter(s => s && s.id != null).map(s => [String(s.id), s])
+    );
+    if (summaryMap.size === 0) return [];
+
+    const changed = [];
+    const updatedInstances = currentInstances.map(inst => {
+      const summary = summaryMap.get(String(inst.id));
+      if (!summary) return inst;
+
+      const next = mergeSummary(inst, summary);
+      if (next === inst) return inst;
+      changed.push(summary);
+      return next;
+    });
+
+    if (changed.length > 0) {
+      instances.set(updatedInstances);
+      updateActiveInstanceStore();
+    }
+    return changed;
   },
 
   // Remove instance from frontend (used when server sends delete event)

@@ -114,6 +114,29 @@ let isFetching = false;
 const PENDING_TTL_MS = 30000;
 const pendingStateIds = new Map();
 
+// Preserve optimistic start/stop states until the backend catches up or the TTL expires.
+function reconcileSummary(summary) {
+  const pending = pendingStateIds.get(summary.id);
+  if (!pending) return summary;
+
+  const backendState = summary.state?.toLowerCase();
+
+  // Backend caught up to target state — clear pending
+  if (backendState === pending.target) {
+    pendingStateIds.delete(summary.id);
+    return summary;
+  }
+
+  // TTL expired — clear pending, use backend state
+  if (Date.now() - pending.ts > PENDING_TTL_MS) {
+    pendingStateIds.delete(summary.id);
+    return summary;
+  }
+
+  // Still pending — preserve optimistic state
+  return { ...summary, state: pending.optimistic };
+}
+
 // After grid import, fetch actual backend configs so the standard view shows
 // the real per-instance rates (randomized from range) instead of default preset values.
 async function syncImportedInstances(imported, importConfig = {}) {
@@ -161,35 +184,33 @@ export const gridActions = {
       if (!summaries) return;
 
       // Reconcile pending optimistic states with backend reality
-      const now = Date.now();
-      const reconciled = summaries.map(s => {
-        const pending = pendingStateIds.get(s.id);
-        if (!pending) return s;
-
-        const backendState = s.state?.toLowerCase();
-
-        // Backend caught up to target state — clear pending
-        if (backendState === pending.target) {
-          pendingStateIds.delete(s.id);
-          return s;
-        }
-
-        // TTL expired — clear pending, use backend state
-        if (now - pending.ts > PENDING_TTL_MS) {
-          pendingStateIds.delete(s.id);
-          return s;
-        }
-
-        // Still pending — preserve optimistic state
-        return { ...s, state: pending.optimistic };
-      });
-
-      gridInstances.set(reconciled);
+      gridInstances.set(summaries.map(reconcileSummary));
     } catch (error) {
       console.error('Failed to fetch summaries:', error);
     } finally {
       isFetching = false;
     }
+  },
+
+  // Apply pushed summaries (SSE) to the grid without an extra fetch.
+  applySummaries: (summaries = []) => {
+    const current = get(gridInstances);
+    if (current.length === 0 || !Array.isArray(summaries) || summaries.length === 0) return;
+
+    const byId = new Map(
+      summaries.filter(s => s && s.id != null).map(s => [String(s.id), reconcileSummary(s)])
+    );
+    if (byId.size === 0) return;
+
+    let matched = false;
+    const next = current.map(inst => {
+      const summary = byId.get(String(inst.id));
+      if (!summary) return inst;
+      matched = true;
+      return { ...inst, ...summary };
+    });
+
+    if (matched) gridInstances.set(next);
   },
 
   startPolling: (intervalMs = 1000) => {
