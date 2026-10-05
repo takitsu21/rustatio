@@ -89,42 +89,10 @@ export function getTheme() {
 }
 
 /**
- * Get the effective theme (what's actually applied)
- */
-export function getEffectiveTheme() {
-  return effectiveTheme;
-}
-
-/**
- * Check if the current effective theme is dark
- */
-export function isDarkTheme() {
-  const themeInfo = THEMES[effectiveTheme];
-  if (themeInfo && themeInfo.isDark !== null) {
-    return themeInfo.isDark;
-  }
-  // For system theme, check the effective theme
-  if (effectiveTheme === 'dark') return true;
-  if (effectiveTheme === 'light') return false;
-  // Check actual applied class
-  if (typeof document !== 'undefined') {
-    return document.documentElement.classList.contains('dark');
-  }
-  return false;
-}
-
-/**
  * Get the theme dropdown visibility state
  */
 export function getShowThemeDropdown() {
   return showThemeDropdown;
-}
-
-/**
- * Set the theme dropdown visibility
- */
-export function setShowThemeDropdown(value) {
-  showThemeDropdown = value;
 }
 
 /**
@@ -143,14 +111,6 @@ export function toggleThemeDropdown(event) {
 export function getThemeName(themeValue) {
   const themeInfo = THEMES[themeValue];
   return themeInfo ? themeInfo.name : 'System';
-}
-
-/**
- * Get theme description
- */
-export function getThemeDescription(themeValue) {
-  const themeInfo = THEMES[themeValue];
-  return themeInfo ? themeInfo.description : '';
 }
 
 /**

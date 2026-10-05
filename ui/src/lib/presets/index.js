@@ -1,4 +1,4 @@
-import { normalizePreset } from '$lib/customPreset.js';
+import { normalizePreset } from '$lib/presets/customPreset.js';
 
 // Auto-import all preset JSON files from this folder
 // To add a new preset, just create a new .json file here - no code changes needed!

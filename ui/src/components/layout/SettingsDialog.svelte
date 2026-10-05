@@ -1,5 +1,5 @@
 <script>
-  import { instances, activeInstanceId, instanceActions } from '$lib/instanceStore.js';
+  import { instances, activeInstanceId, instanceActions } from '$lib/core/instanceStore.js';
   import { get } from 'svelte/store';
   import { api } from '$lib/api.js';
   import Button from '$lib/components/ui/button.svelte';
@@ -11,22 +11,47 @@
     setDefaultPreset,
     clearDefaultPreset,
     refreshDefaultPreset,
-  } from '$lib/defaultPreset.js';
+  } from '$lib/presets/defaultPreset.js';
   import {
     buildCustomPreset,
     buildPresetExportData,
     normalizePreset,
     normalizePresets,
     normalizePresetSettings,
-  } from '$lib/customPreset.js';
-  import { THEMES, THEME_CATEGORIES, getTheme, selectTheme } from '$lib/themeStore.svelte.js';
-  import { Settings, X, Check, Trash2, Download, Upload, Save } from '@lucide/svelte';
+  } from '$lib/presets/customPreset.js';
+  import {
+    THEMES,
+    THEME_CATEGORIES,
+    getTheme,
+    selectTheme,
+  } from '$lib/themes/themeStore.svelte.js';
+  import { ZOOM_MAX, ZOOM_MIN, zoomPercent } from '$lib/core/zoom.js';
+  import { getZoom, resetZoom, zoomIn, zoomOut } from '$lib/core/zoomStore.svelte.js';
+  import {
+    Settings,
+    X,
+    Check,
+    Trash2,
+    Download,
+    Upload,
+    Save,
+    Monitor,
+    ZoomIn,
+    ZoomOut,
+  } from '@lucide/svelte';
   import PresetIcon from '../config/PresetIcon.svelte';
 
   let { isOpen = $bindable(false) } = $props();
 
   // Check if running in Tauri
   const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+
+  // Interface zoom (global app preference)
+  const isMac =
+    typeof navigator !== 'undefined' && /mac/i.test(navigator.platform || navigator.userAgent);
+  const modifierLabel = isMac ? '⌘' : 'Ctrl';
+  let zoomValue = $derived(getZoom());
+  let zoomPct = $derived(zoomPercent(zoomValue));
 
   // Subscribe to stores for reactivity
   let currentInstances = $state([]);
@@ -440,77 +465,93 @@
     onClose={close}
     titleId="settings-title"
     maxWidthClass="max-w-2xl"
-    panelClass="max-h-[85vh] flex flex-col animate-in fade-in zoom-in-95 duration-200"
+    panelClass="max-h-[85vh] flex flex-col"
   >
     <!-- Header -->
-    <div class="flex items-start justify-between p-6 border-b border-border flex-shrink-0">
-      <div class="flex items-center gap-3">
-        <div class="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
-          <Settings size={20} class="text-primary" />
-        </div>
+    <div class="flex flex-shrink-0 items-center justify-between border-b border-border px-3 py-2">
+      <div class="flex items-center gap-2">
+        <span class="flex h-6 w-6 items-center justify-center border border-border bg-muted">
+          <Settings size={12} class="text-muted-foreground" />
+        </span>
         <div>
-          <h2 id="settings-title" class="text-xl font-bold text-foreground">Settings</h2>
-          <p class="text-sm text-muted-foreground">Presets and configuration</p>
+          <h2
+            id="settings-title"
+            class="text-xs font-semibold uppercase tracking-wider text-foreground"
+          >
+            Settings
+          </h2>
+          <p class="text-[0.625rem] text-muted-foreground">Presets and configuration</p>
         </div>
       </div>
       <button
         onclick={close}
-        class="p-1 rounded hover:bg-muted transition-colors"
+        class="flex h-6 w-6 cursor-pointer items-center justify-center text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         aria-label="Close dialog"
       >
-        <X size={20} />
+        <X size={14} />
       </button>
     </div>
 
     <!-- Tabs -->
-    <div class="flex border-b border-border flex-shrink-0">
+    <div class="flex flex-shrink-0 border-b border-border">
       <button
-        class="flex-1 px-4 py-3 text-sm font-medium transition-colors {activeTab === 'general'
-          ? 'text-primary border-b-2 border-primary bg-primary/5'
+        class="flex-1 cursor-pointer px-3 py-1.5 text-[0.6875rem] font-medium transition-colors {activeTab ===
+        'general'
+          ? 'border-b-2 border-primary bg-primary/5 text-primary'
           : 'text-muted-foreground hover:text-foreground'}"
         onclick={() => (activeTab = 'general')}
       >
         General
       </button>
       <button
-        class="flex-1 px-4 py-3 text-sm font-medium transition-colors {activeTab === 'presets'
-          ? 'text-primary border-b-2 border-primary bg-primary/5'
+        class="flex-1 cursor-pointer px-3 py-1.5 text-[0.6875rem] font-medium transition-colors {activeTab ===
+        'presets'
+          ? 'border-b-2 border-primary bg-primary/5 text-primary'
           : 'text-muted-foreground hover:text-foreground'}"
         onclick={() => (activeTab = 'presets')}
       >
         Presets
       </button>
       <button
-        class="flex-1 px-4 py-3 text-sm font-medium transition-colors {activeTab === 'tips'
-          ? 'text-primary border-b-2 border-primary bg-primary/5'
+        class="flex-1 cursor-pointer px-3 py-1.5 text-[0.6875rem] font-medium transition-colors {activeTab ===
+        'tips'
+          ? 'border-b-2 border-primary bg-primary/5 text-primary'
           : 'text-muted-foreground hover:text-foreground'}"
         onclick={() => (activeTab = 'tips')}
       >
-        Detection Tips
+        Detection tips
       </button>
     </div>
 
     <!-- Content -->
-    <div class="flex-1 overflow-y-auto p-6">
+    <div class="flex-1 overflow-y-auto p-3">
       {#if activeTab === 'general'}
         <!-- General Settings Tab -->
-        <div class="space-y-6">
-          <p class="text-sm text-muted-foreground mb-4">Configure general application settings.</p>
+        <div class="space-y-3">
+          <p class="text-[0.6875rem] text-muted-foreground">
+            Configure general application settings.
+          </p>
 
           <!-- Log Level Section -->
-          <div class="border border-border rounded-lg p-4">
-            <h3 class="font-semibold text-foreground mb-2">Log Level</h3>
-            <p class="text-sm text-muted-foreground mb-4">
+          <div class="border border-border p-3">
+            <h3
+              class="mb-1.5 text-[0.625rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground"
+            >
+              Log level
+            </h3>
+            <p class="mb-2.5 text-[0.6875rem] text-muted-foreground">
               Set the verbosity of logs displayed in the console. Higher levels show more detailed
               information for debugging.
             </p>
             <div class="flex items-center gap-4">
-              <label for="logLevel" class="text-sm font-medium min-w-[60px]">Level</label>
+              <label for="logLevel" class="min-w-[3.75rem] text-[0.6875rem] text-muted-foreground"
+                >Level</label
+              >
               <select
                 id="logLevel"
                 value={logLevel}
                 onchange={e => saveLogLevel(e.target.value)}
-                class="px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-primary/50 w-40"
+                class="h-8 w-40 border border-input bg-background px-2.5 text-xs text-foreground focus:border-ring focus:outline-none"
               >
                 <option value="error">Error</option>
                 <option value="warn">Warning</option>
@@ -533,18 +574,25 @@
 
           <!-- Window Behavior Section (Tauri only) -->
           {#if isTauri}
-            <div class="border border-border rounded-lg p-4">
-              <h3 class="font-semibold text-foreground mb-2">Window Behavior</h3>
-              <p class="text-sm text-muted-foreground mb-4">
+            <div class="border border-border p-3">
+              <h3
+                class="mb-1.5 text-[0.625rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground"
+              >
+                Window Behavior
+              </h3>
+              <p class="mb-2.5 text-[0.6875rem] text-muted-foreground">
                 Choose the action that occurs when you click the window close button.
               </p>
               <div class="flex items-center gap-4">
-                <label for="closeBehavior" class="text-sm font-medium min-w-[60px]">On Close</label>
+                <label
+                  for="closeBehavior"
+                  class="min-w-[3.75rem] text-[0.6875rem] text-muted-foreground">On Close</label
+                >
                 <select
                   id="closeBehavior"
                   value={closeBehavior}
                   onchange={e => saveCloseBehavior(e.target.value)}
-                  class="px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-primary/50 w-56"
+                  class="h-8 border border-input bg-background px-2.5 text-xs text-foreground focus:border-ring focus:outline-none w-56"
                 >
                   <option value="prompt">Ask every time</option>
                   <option value="tray">Minimize to tray</option>
@@ -560,16 +608,25 @@
           {/if}
 
           <!-- Theme Section -->
-          <div class="border border-border rounded-lg p-4">
-            <h3 class="font-semibold text-foreground mb-2">Theme</h3>
-            <p class="text-sm text-muted-foreground mb-4">Choose your preferred color theme.</p>
+          <div class="border border-border p-3">
+            <h3
+              class="mb-1.5 text-[0.625rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground"
+            >
+              Theme
+            </h3>
+            <p class="mb-2.5 text-[0.6875rem] text-muted-foreground">
+              Choose your preferred color theme.
+            </p>
             <div class="flex items-center gap-4">
-              <label for="themeSelect" class="text-sm font-medium min-w-[60px]">Theme</label>
+              <label
+                for="themeSelect"
+                class="min-w-[3.75rem] text-[0.6875rem] text-muted-foreground">Theme</label
+              >
               <select
                 id="themeSelect"
                 value={getTheme()}
                 onchange={e => selectTheme(e.target.value)}
-                class="px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-primary/50 w-56"
+                class="h-8 border border-input bg-background px-2.5 text-xs text-foreground focus:border-ring focus:outline-none w-56"
               >
                 {#each Object.entries(THEME_CATEGORIES) as [categoryId, category] (categoryId)}
                   <optgroup label={category.name}>
@@ -585,13 +642,74 @@
               {THEMES[getTheme()]?.description || ''}
             </p>
           </div>
+
+          <!-- Interface Section -->
+          <div class="border border-border p-3">
+            <h3
+              class="mb-1.5 text-[0.625rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground"
+            >
+              Interface
+            </h3>
+            <p class="mb-2.5 text-[0.6875rem] text-muted-foreground">
+              Scale the whole interface up or down.
+            </p>
+            <div class="flex items-center gap-4">
+              <span
+                class="flex min-w-[3.75rem] items-center gap-1.5 text-[0.6875rem] text-muted-foreground"
+              >
+                <Monitor size={12} />
+                Zoom
+              </span>
+              <div class="flex items-center gap-1">
+                <button
+                  type="button"
+                  class="flex h-6 w-6 cursor-pointer items-center justify-center border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
+                  onclick={zoomOut}
+                  disabled={zoomValue <= ZOOM_MIN}
+                  title="Zoom out"
+                  aria-label="Zoom out"
+                >
+                  <ZoomOut size={12} />
+                </button>
+                <span
+                  class="w-10 text-center text-xs font-semibold tabular-nums text-foreground"
+                  title="Interface zoom"
+                >
+                  {zoomPct}%
+                </span>
+                <button
+                  type="button"
+                  class="flex h-6 w-6 cursor-pointer items-center justify-center border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
+                  onclick={zoomIn}
+                  disabled={zoomValue >= ZOOM_MAX}
+                  title="Zoom in"
+                  aria-label="Zoom in"
+                >
+                  <ZoomIn size={12} />
+                </button>
+                <button
+                  type="button"
+                  class="ml-1 h-6 cursor-pointer border border-border px-2 text-[0.625rem] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
+                  onclick={resetZoom}
+                  disabled={zoomPct === 100}
+                  title="Reset zoom to 100%"
+                >
+                  Reset
+                </button>
+              </div>
+            </div>
+            <p class="mt-2 text-[0.625rem] leading-4 text-muted-foreground">
+              Shortcuts: {modifierLabel} + / {modifierLabel} − · {modifierLabel} + wheel ·
+              {modifierLabel} 0 resets.
+            </p>
+          </div>
         </div>
       {:else if activeTab === 'presets'}
         <!-- Presets Tab -->
         <div class="space-y-6">
           <!-- Info box about Apply vs Default -->
-          <div class="bg-muted/50 border border-border rounded-lg p-4">
-            <p class="text-sm text-muted-foreground">
+          <div class="border border-border bg-background p-3">
+            <p class="text-[0.6875rem] text-muted-foreground">
               <span class="font-semibold text-foreground">Apply</span> applies a preset to the
               current instance only.
               <span class="font-semibold text-foreground">Set Default</span> makes new instances/torrents
@@ -605,13 +723,15 @@
 
           <!-- Built-in Presets -->
           <div>
-            <h3 class="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+            <h3
+              class="mb-2 text-[0.625rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground"
+            >
               Built-in Presets
             </h3>
             <div class="space-y-3">
               {#each builtInPresets as preset (preset.id)}
                 <div
-                  class="border border-border rounded-lg p-4 hover:border-primary/50 transition-colors {preset.recommended
+                  class="border border-border p-3 transition-colors hover:border-primary/40 {preset.recommended
                     ? 'ring-1 ring-primary/30'
                     : ''}"
                 >
@@ -622,7 +742,7 @@
                       <h3 class="font-semibold text-foreground">{preset.name}</h3>
                       {#if preset.recommended}
                         <span
-                          class="text-xs px-2 py-0.5 rounded-full bg-primary/20 text-primary font-medium"
+                          class="border border-primary/40 bg-primary/10 px-1.5 py-px text-[0.5625rem] font-semibold uppercase tracking-wider text-primary"
                         >
                           Recommended
                         </span>
@@ -632,7 +752,7 @@
                     <div class="flex items-center gap-1 flex-shrink-0">
                       {#if appliedPresetId === preset.id}
                         <span
-                          class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold rounded-lg bg-stat-upload/20 text-stat-upload"
+                          class="inline-flex items-center gap-1 border border-stat-upload/40 bg-stat-upload/10 px-1.5 py-0.5 text-[0.625rem] font-semibold text-stat-upload"
                         >
                           <Check size={14} strokeWidth={2.5} />
                           Applied
@@ -643,7 +763,7 @@
                       {#if defaultPresetId === preset.id}
                         <button
                           onclick={() => clearDefault()}
-                          class="ml-1 px-2 py-1.5 text-xs font-medium rounded-lg bg-primary/20 text-primary hover:bg-primary/30 transition-colors"
+                          class="ml-1 cursor-pointer border border-primary/40 bg-primary/10 px-1.5 py-0.5 text-[0.625rem] font-medium text-primary transition-colors hover:bg-primary/20"
                           title="Click to clear default"
                         >
                           ★ Default
@@ -651,7 +771,7 @@
                       {:else}
                         <button
                           onclick={() => setAsDefault(preset)}
-                          class="ml-1 px-2 py-1.5 text-xs font-medium rounded-lg border border-border hover:bg-muted transition-colors"
+                          class="ml-1 cursor-pointer border border-border px-1.5 py-0.5 text-[0.625rem] font-medium transition-colors hover:bg-muted"
                           title="Set as default for new instances"
                         >
                           Set Default
@@ -660,7 +780,7 @@
                     </div>
                   </div>
 
-                  <p class="text-sm text-muted-foreground mb-3">{preset.description}</p>
+                  <p class="mb-2 text-[0.6875rem] text-muted-foreground">{preset.description}</p>
 
                   <!-- Settings preview -->
                   <div class="flex flex-wrap gap-2 text-xs mb-2">
@@ -738,16 +858,16 @@
 
           <!-- Custom Presets -->
           <div>
-            <h3 class="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+            <h3
+              class="mb-2 text-[0.625rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground"
+            >
               Custom Presets
             </h3>
 
             {#if customPresets.length > 0}
               <div class="space-y-3 mb-4">
                 {#each customPresets as preset (preset.id)}
-                  <div
-                    class="border border-border rounded-lg p-4 hover:border-primary/50 transition-colors"
-                  >
+                  <div class="border border-border p-3 transition-colors hover:border-primary/40">
                     <!-- Header row with title and action buttons -->
                     <div class="flex items-start justify-between gap-3 mb-2">
                       <div class="flex items-center gap-2 flex-wrap flex-1 min-w-0">
@@ -758,7 +878,7 @@
                         />
                         <h3 class="font-semibold text-foreground">{preset.name}</h3>
                         <span
-                          class="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground"
+                          class="border border-border bg-muted px-1.5 py-px text-[0.5625rem] uppercase tracking-wider text-muted-foreground"
                         >
                           Custom
                         </span>
@@ -767,7 +887,7 @@
                       <div class="flex items-center gap-1 flex-shrink-0">
                         {#if appliedPresetId === preset.id}
                           <span
-                            class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold rounded-lg bg-stat-upload/20 text-stat-upload"
+                            class="inline-flex items-center gap-1 border border-stat-upload/40 bg-stat-upload/10 px-1.5 py-0.5 text-[0.625rem] font-semibold text-stat-upload"
                           >
                             <Check size={14} strokeWidth={2.5} />
                             Applied
@@ -778,7 +898,7 @@
                         {#if defaultPresetId === preset.id}
                           <button
                             onclick={() => clearDefault()}
-                            class="px-2 py-1.5 text-xs font-medium rounded-lg bg-primary/20 text-primary hover:bg-primary/30 transition-colors"
+                            class="cursor-pointer border border-primary/40 bg-primary/10 px-1.5 py-0.5 text-[0.625rem] font-medium text-primary transition-colors hover:bg-primary/20"
                             title="Click to clear default"
                           >
                             ★ Default
@@ -786,7 +906,7 @@
                         {:else}
                           <button
                             onclick={() => setAsDefault(preset)}
-                            class="px-2 py-1.5 text-xs font-medium rounded-lg border border-border hover:bg-muted transition-colors"
+                            class="cursor-pointer border border-border px-1.5 py-0.5 text-[0.625rem] font-medium transition-colors hover:bg-muted"
                             title="Set as default for new instances"
                           >
                             Set Default
@@ -802,7 +922,7 @@
                       </div>
                     </div>
 
-                    <p class="text-sm text-muted-foreground mb-3">{preset.description}</p>
+                    <p class="mb-2 text-[0.6875rem] text-muted-foreground">{preset.description}</p>
 
                     <!-- Settings preview -->
                     <div class="flex flex-wrap gap-2 text-xs">
@@ -863,43 +983,43 @@
                 {/each}
               </div>
             {:else}
-              <p class="text-sm text-muted-foreground mb-4">
+              <p class="mb-2.5 text-[0.6875rem] text-muted-foreground">
                 No custom presets yet. Save the current instance as a preset or import a preset
                 file.
               </p>
             {/if}
 
             <!-- Import/Export Section -->
-            <div class="border border-dashed border-border rounded-lg p-4 space-y-4">
+            <div class="space-y-3 border border-dashed border-border p-3">
               <!-- Save current config -->
               <div>
                 <h4 class="font-medium text-foreground mb-2">Save Current as Preset</h4>
-                <p class="text-sm text-muted-foreground mb-3">
+                <p class="mb-2 text-[0.6875rem] text-muted-foreground">
                   Save the active instance configuration directly into your custom presets.
                 </p>
                 <button
                   type="button"
                   onclick={openSaveDialog}
-                  class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg font-semibold ring-offset-background transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 bg-primary text-primary-foreground shadow-lg shadow-primary/25 hover:bg-primary/90 hover:shadow-xl hover:shadow-primary/30 hover:-translate-y-0.5 active:scale-95 px-4 py-2 text-sm"
+                  class="cursor-pointer bg-primary px-2.5 py-1 text-[0.6875rem] font-medium text-primary-foreground transition-colors hover:bg-primary/90"
                 >
                   <Save size={16} />
                   Save Preset
                 </button>
                 {#if exportSuccess}
-                  <p class="mt-2 text-sm text-stat-upload">{exportSuccess}</p>
+                  <p class="text-[0.6875rem] text-stat-upload">{exportSuccess}</p>
                 {/if}
               </div>
 
               <!-- Export current config -->
               <div class="border-t border-border pt-4">
                 <h4 class="font-medium text-foreground mb-2">Export Current Config</h4>
-                <p class="text-sm text-muted-foreground mb-3">
+                <p class="mb-2 text-[0.6875rem] text-muted-foreground">
                   Save your current configuration as a JSON file that can be shared and imported.
                 </p>
                 <button
                   type="button"
                   onclick={openExportDialog}
-                  class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg font-semibold ring-offset-background transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 bg-primary text-primary-foreground shadow-lg shadow-primary/25 hover:bg-primary/90 hover:shadow-xl hover:shadow-primary/30 hover:-translate-y-0.5 active:scale-95 px-4 py-2 text-sm"
+                  class="cursor-pointer bg-primary px-2.5 py-1 text-[0.6875rem] font-medium text-primary-foreground transition-colors hover:bg-primary/90"
                 >
                   <Download size={16} />
                   Export Config
@@ -919,16 +1039,16 @@
                 <button
                   type="button"
                   onclick={triggerImport}
-                  class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg font-semibold ring-offset-background transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 border-2 border-primary/20 bg-background hover:bg-primary/5 hover:border-primary/40 hover:-translate-y-0.5 active:scale-95 px-4 py-2 text-sm"
+                  class="cursor-pointer border border-border px-2.5 py-1 text-[0.6875rem] font-medium transition-colors hover:bg-muted"
                 >
                   <Upload size={16} />
                   Import Preset
                 </button>
                 {#if importError}
-                  <p class="mt-2 text-sm text-stat-leecher">{importError}</p>
+                  <p class="text-[0.6875rem] text-stat-leecher">{importError}</p>
                 {/if}
                 {#if importSuccess}
-                  <p class="mt-2 text-sm text-stat-upload">{importSuccess}</p>
+                  <p class="text-[0.6875rem] text-stat-upload">{importSuccess}</p>
                 {/if}
               </div>
             </div>
@@ -937,12 +1057,12 @@
       {:else if activeTab === 'tips'}
         <!-- Detection Tips Tab -->
         <div class="space-y-4">
-          <p class="text-sm text-muted-foreground mb-4">
+          <p class="mb-2.5 text-[0.6875rem] text-muted-foreground">
             Follow these guidelines to minimize the risk of detection by private trackers.
           </p>
 
           {#each detectionTips as tip, index (index)}
-            <div class="border border-border rounded-lg p-4">
+            <div class="border border-border p-3">
               <div class="flex flex-col gap-2">
                 <div class="flex items-center justify-between gap-3">
                   <h3 class="font-semibold text-foreground">{tip.title}</h3>
@@ -954,7 +1074,7 @@
                     {getImportanceLabel(tip.importance)}
                   </span>
                 </div>
-                <p class="text-sm text-muted-foreground">{tip.description}</p>
+                <p class="text-[0.6875rem] text-muted-foreground">{tip.description}</p>
               </div>
             </div>
           {/each}
@@ -971,13 +1091,18 @@
     onClose={() => (showSaveDialog = false)}
     titleId="save-dialog-title"
     maxWidthClass="max-w-md"
-    panelClass="animate-in fade-in zoom-in-95 duration-200"
+    panelClass="max-h-[85vh] flex flex-col"
   >
     <div class="flex items-center justify-between p-4 border-b border-border">
-      <h3 id="save-dialog-title" class="text-lg font-semibold text-foreground">Save Preset</h3>
+      <h3
+        id="save-dialog-title"
+        class="text-xs font-semibold uppercase tracking-wider text-foreground"
+      >
+        Save preset
+      </h3>
       <button
         onclick={() => (showSaveDialog = false)}
-        class="p-1 rounded hover:bg-muted transition-colors"
+        class="p-1 flex h-6 w-6 items-center justify-center text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         aria-label="Close dialog"
       >
         <X size={18} />
@@ -986,7 +1111,10 @@
 
     <div class="p-4 space-y-4">
       <div>
-        <label for="save-preset-name" class="block text-sm font-medium text-foreground mb-1">
+        <label
+          for="save-preset-name"
+          class="mb-1 block text-[0.625rem] uppercase tracking-wider text-muted-foreground"
+        >
           Preset Name <span class="text-stat-leecher">*</span>
         </label>
         <input
@@ -994,12 +1122,15 @@
           type="text"
           bind:value={exportPresetName}
           placeholder="e.g., My Tracker Config"
-          class="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-primary/50"
+          class="w-full h-8 border border-input bg-background px-2.5 text-xs text-foreground focus:border-ring focus:outline-none"
         />
       </div>
 
       <div>
-        <label for="save-preset-description" class="block text-sm font-medium text-foreground mb-1">
+        <label
+          for="save-preset-description"
+          class="mb-1 block text-[0.625rem] uppercase tracking-wider text-muted-foreground"
+        >
           Description <span class="text-muted-foreground text-xs">(optional)</span>
         </label>
         <textarea
@@ -1007,7 +1138,7 @@
           bind:value={exportPresetDescription}
           placeholder="Describe what this preset is for..."
           rows="2"
-          class="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-primary/50 resize-none"
+          class="w-full h-8 border border-input bg-background px-2.5 text-xs text-foreground focus:border-ring focus:outline-none resize-none"
         ></textarea>
       </div>
 
@@ -1020,21 +1151,21 @@
       <button
         type="button"
         onclick={() => (showSaveDialog = false)}
-        class="px-4 py-2 text-sm font-medium rounded-lg border border-border hover:bg-muted transition-colors"
+        class="cursor-pointer border border-border px-2.5 py-1 text-[0.6875rem] font-medium transition-colors hover:bg-muted"
       >
         Cancel
       </button>
       <button
         type="button"
         onclick={() => savePreset(false)}
-        class="px-4 py-2 text-sm font-medium rounded-lg border border-border hover:bg-muted transition-colors"
+        class="cursor-pointer border border-border px-2.5 py-1 text-[0.6875rem] font-medium transition-colors hover:bg-muted"
       >
         Save
       </button>
       <button
         type="button"
         onclick={() => savePreset(true)}
-        class="px-4 py-2 text-sm font-semibold rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+        class="cursor-pointer bg-primary px-2.5 py-1 text-[0.6875rem] font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
       >
         Save and Set Default
       </button>
@@ -1049,14 +1180,19 @@
     onClose={() => (showExportDialog = false)}
     titleId="export-dialog-title"
     maxWidthClass="max-w-md"
-    panelClass="animate-in fade-in zoom-in-95 duration-200"
+    panelClass="max-h-[85vh] flex flex-col"
   >
     <!-- Header -->
     <div class="flex items-center justify-between p-4 border-b border-border">
-      <h3 id="export-dialog-title" class="text-lg font-semibold text-foreground">Export Preset</h3>
+      <h3
+        id="export-dialog-title"
+        class="text-xs font-semibold uppercase tracking-wider text-foreground"
+      >
+        Export preset
+      </h3>
       <button
         onclick={() => (showExportDialog = false)}
-        class="p-1 rounded hover:bg-muted transition-colors"
+        class="p-1 flex h-6 w-6 items-center justify-center text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         aria-label="Close dialog"
       >
         <X size={18} />
@@ -1066,7 +1202,10 @@
     <!-- Content -->
     <div class="p-4 space-y-4">
       <div>
-        <label for="preset-name" class="block text-sm font-medium text-foreground mb-1">
+        <label
+          for="preset-name"
+          class="mb-1 block text-[0.625rem] uppercase tracking-wider text-muted-foreground"
+        >
           Preset Name <span class="text-stat-leecher">*</span>
         </label>
         <input
@@ -1074,12 +1213,15 @@
           type="text"
           bind:value={exportPresetName}
           placeholder="e.g., My Tracker Config"
-          class="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-primary/50"
+          class="w-full h-8 border border-input bg-background px-2.5 text-xs text-foreground focus:border-ring focus:outline-none"
         />
       </div>
 
       <div>
-        <label for="preset-description" class="block text-sm font-medium text-foreground mb-1">
+        <label
+          for="preset-description"
+          class="mb-1 block text-[0.625rem] uppercase tracking-wider text-muted-foreground"
+        >
           Description <span class="text-muted-foreground text-xs">(optional)</span>
         </label>
         <textarea
@@ -1087,7 +1229,7 @@
           bind:value={exportPresetDescription}
           placeholder="Describe what this preset is for..."
           rows="2"
-          class="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-primary/50 resize-none"
+          class="w-full h-8 border border-input bg-background px-2.5 text-xs text-foreground focus:border-ring focus:outline-none resize-none"
         ></textarea>
       </div>
 
@@ -1101,14 +1243,14 @@
       <button
         type="button"
         onclick={() => (showExportDialog = false)}
-        class="px-4 py-2 text-sm font-medium rounded-lg border border-border hover:bg-muted transition-colors"
+        class="cursor-pointer border border-border px-2.5 py-1 text-[0.6875rem] font-medium transition-colors hover:bg-muted"
       >
         Cancel
       </button>
       <button
         type="button"
         onclick={exportPreset}
-        class="px-4 py-2 text-sm font-semibold rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+        class="cursor-pointer bg-primary px-2.5 py-1 text-[0.6875rem] font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
       >
         Export
       </button>

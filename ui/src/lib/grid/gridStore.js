@@ -1,7 +1,7 @@
 import { writable, derived, get } from 'svelte/store';
 import { api, getRunMode } from '$lib/api';
-import { normalizeViewMode } from '$lib/viewMode.js';
-import { instanceActions } from '$lib/instanceStore.js';
+import { normalizeViewMode } from '$lib/core/viewMode.js';
+import { instanceActions } from '$lib/core/instanceStore.js';
 import {
   applyAllGridFilters,
   applyBaseGridFilters,
@@ -10,7 +10,7 @@ import {
   buildStateFilterEntries,
   buildTagFilterEntries,
   buildTrackerFilterEntries,
-} from '$lib/gridFilters.js';
+} from '$lib/grid/gridFilters.js';
 
 const VIEW_MODE_KEY = 'rustatio-view-mode';
 

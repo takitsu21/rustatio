@@ -1,7 +1,7 @@
 <script>
   import { onMount } from 'svelte';
   import Button from '$lib/components/ui/button.svelte';
-  import { detectOS, getDownloadType } from '$lib/utils.js';
+  import { detectOS, getDownloadType } from '$lib/core/utils.js';
   import { Download, ChevronDown, ExternalLink, Github } from '@lucide/svelte';
   import OSIcon from './OSIcon.svelte';
 
@@ -169,13 +169,13 @@
 
   {#if showDropdown}
     <div
-      class="absolute top-[calc(100%+0.5rem)] right-0 bg-card text-card-foreground border border-border/50 rounded-xl shadow-2xl p-1.5 min-w-[220px] z-50 backdrop-blur-xl animate-in fade-in slide-in-from-top-2 duration-200"
+      class="absolute right-0 top-[calc(100%+0.25rem)] z-50 max-h-[26.25rem] min-w-[13.75rem] overflow-y-auto border border-border bg-popover p-1 text-popover-foreground"
     >
       {#each downloadOptions.filter(opt => opt.os !== getCurrentDownloadOS()) as option (option.url)}
         <a
           href={option.url}
           download
-          class="w-full flex items-center gap-3 px-3 py-2 border-none cursor-pointer rounded-lg transition-all bg-transparent text-card-foreground hover:bg-secondary/80 no-underline"
+          class="flex w-full items-center gap-3 bg-transparent px-2 py-1.5 text-card-foreground no-underline transition-colors hover:bg-muted cursor-pointer"
           onclick={() => {
             showDropdown = false;
           }}
@@ -190,7 +190,7 @@
           href={GITHUB_REPO}
           target="_blank"
           rel="noopener noreferrer"
-          class="w-full flex items-center gap-3 px-3 py-2 border-none cursor-pointer rounded-lg transition-all bg-transparent text-card-foreground hover:bg-secondary/80 no-underline"
+          class="flex w-full items-center gap-3 bg-transparent px-2 py-1.5 text-card-foreground no-underline transition-colors hover:bg-muted cursor-pointer"
           onclick={() => {
             showDropdown = false;
           }}

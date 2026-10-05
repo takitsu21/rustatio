@@ -1,5 +1,5 @@
 <script>
-  import { cn } from '$lib/utils.js';
+  import { cn } from '$lib/core/utils.js';
   import { X } from '@lucide/svelte';
 
   let {
@@ -34,8 +34,8 @@
 
 <span
   class={cn(
-    'inline-flex items-center gap-1 rounded-full font-medium border',
-    compact ? 'px-1.5 py-0 text-[10px]' : 'px-2 py-0.5 text-xs',
+    'inline-flex items-center gap-1 rounded-sm border font-medium',
+    compact ? 'px-1.5 py-0 text-[0.625rem]' : 'px-2 py-0.5 text-xs',
     colorClass,
     className
   )}

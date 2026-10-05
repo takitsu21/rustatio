@@ -1,7 +1,8 @@
 <script>
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount, onDestroy, untrack } from 'svelte';
   import * as echarts from 'echarts';
   import Card from '$lib/components/ui/card.svelte';
+  import { getZoom } from '$lib/core/zoomStore.svelte.js';
   import { Activity, Users, Upload, Download, Percent, Clock, RotateCcw } from '@lucide/svelte';
 
   let { stats, formatDuration } = $props();
@@ -345,28 +346,45 @@
     }
   });
 
+  function createChart() {
+    if (!chartContainer) return;
+
+    chart = echarts.init(chartContainer, null, {
+      devicePixelRatio: Math.min(window.devicePixelRatio || 1, 2),
+    });
+
+    chart.on('dataZoom', params => {
+      const option = chart.getOption();
+      if (option.dataZoom && option.dataZoom[0]) {
+        currentZoom = {
+          start: option.dataZoom[0].start,
+          end: option.dataZoom[0].end,
+        };
+        if (params.batch && params.batch.length > 0) {
+          userHasZoomed = true;
+        }
+      }
+    });
+
+    updateChart();
+  }
+
   onMount(() => {
     setTimeout(() => {
-      if (chartContainer) {
-        chart = echarts.init(chartContainer);
-
-        chart.on('dataZoom', params => {
-          const option = chart.getOption();
-          if (option.dataZoom && option.dataZoom[0]) {
-            currentZoom = {
-              start: option.dataZoom[0].start,
-              end: option.dataZoom[0].end,
-            };
-            if (params.batch && params.batch.length > 0) {
-              userHasZoomed = true;
-            }
-          }
-        });
-
-        updateChart();
-        window.addEventListener('resize', handleResize);
-      }
+      createChart();
+      window.addEventListener('resize', handleResize);
     }, 100);
+  });
+
+  // The chart container is sized in rem, so the canvas re-renders when zoom changes
+  $effect(() => {
+    getZoom(); // tracked
+
+    untrack(() => {
+      if (chart) {
+        chart.resize();
+      }
+    });
   });
 
   onDestroy(() => {
@@ -451,187 +469,200 @@
   }
 </script>
 
-<Card class="p-3">
-  <div class="flex items-center justify-between mb-3">
-    <h2 class="text-primary text-lg font-semibold flex items-center gap-2">
-      <Activity size={20} /> Performance
-    </h2>
-    <div class="flex items-center gap-2">
-      {#if userHasZoomed}
-        <button
-          onclick={resetZoom}
-          class="flex items-center gap-1.5 px-2 py-1 text-xs bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground rounded border border-border transition-colors cursor-pointer"
-          title="Reset zoom to show all data"
-        >
-          <RotateCcw size={12} />
-          Reset
-        </button>
-      {/if}
-    </div>
+<Card>
+  <div class="flex h-8 items-center gap-2 border-b border-border px-2.5">
+    <Activity size={13} class="text-muted-foreground" />
+    <span
+      class="flex-1 text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground"
+    >
+      Performance
+    </span>
+    {#if userHasZoomed}
+      <button
+        onclick={resetZoom}
+        class="flex cursor-pointer items-center gap-1 border border-border px-1.5 py-0.5 text-[0.625rem] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        title="Reset zoom to show all data"
+      >
+        <RotateCcw size={11} />
+        Reset
+      </button>
+    {/if}
   </div>
 
-  <!-- Live Stats Bar -->
-  {#if stats}
-    <div class="bg-muted/50 rounded-lg border border-border overflow-hidden mb-3">
-      <div class="grid grid-cols-4">
-        <div class="p-3 border-r border-border">
-          <div class="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
-            <Upload size={12} class="text-stat-upload" />
+  <div class="space-y-2.5 p-2.5">
+    <!-- Live Stats Bar -->
+    {#if stats}
+      <div class="grid grid-cols-2 border border-border bg-background sm:grid-cols-4">
+        <div class="border-b border-r border-border p-2 sm:border-b-0">
+          <div
+            class="mb-0.5 flex items-center gap-1.5 text-[0.5625rem] uppercase tracking-wider text-muted-foreground"
+          >
+            <Upload size={10} class="text-stat-upload" />
             Upload
           </div>
-          <div class="text-lg font-bold text-stat-upload">
+          <div class="text-sm font-semibold tabular-nums text-stat-upload">
             {stats.current_upload_rate.toFixed(1)}
-            <span class="text-xs font-normal text-muted-foreground">KB/s</span>
+            <span class="text-[0.5625rem] font-normal text-muted-foreground">KB/s</span>
           </div>
         </div>
-        <div class="p-3 border-r border-border">
-          <div class="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
-            <Download size={12} class="text-stat-download" />
+        <div class="border-b border-border p-2 sm:border-b-0 sm:border-r">
+          <div
+            class="mb-0.5 flex items-center gap-1.5 text-[0.5625rem] uppercase tracking-wider text-muted-foreground"
+          >
+            <Download size={10} class="text-stat-download" />
             Download
           </div>
-          <div class="text-lg font-bold text-stat-download">
+          <div class="text-sm font-semibold tabular-nums text-stat-download">
             {stats.current_download_rate.toFixed(1)}
-            <span class="text-xs font-normal text-muted-foreground">KB/s</span>
+            <span class="text-[0.5625rem] font-normal text-muted-foreground">KB/s</span>
           </div>
         </div>
-        <div class="p-3 border-r border-border">
-          <div class="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
-            <Percent size={12} class="text-stat-ratio" />
+        <div class="border-r border-border p-2">
+          <div
+            class="mb-0.5 flex items-center gap-1.5 text-[0.5625rem] uppercase tracking-wider text-muted-foreground"
+          >
+            <Percent size={10} class="text-stat-ratio" />
             Ratio
           </div>
-          <div class="text-lg font-bold text-stat-ratio">
+          <div class="text-sm font-semibold tabular-nums text-stat-ratio">
             {stats.ratio.toFixed(2)}
           </div>
         </div>
-        <div class="p-3">
-          <div class="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
-            <Clock size={12} />
+        <div class="p-2">
+          <div
+            class="mb-0.5 flex items-center gap-1.5 text-[0.5625rem] uppercase tracking-wider text-muted-foreground"
+          >
+            <Clock size={10} />
             Elapsed
           </div>
-          <div class="text-lg font-bold">
+          <div class="text-sm font-semibold tabular-nums text-foreground">
             {formatDuration(stats.elapsed_time?.secs || 0)}
           </div>
         </div>
       </div>
-    </div>
-  {/if}
+    {/if}
 
-  <div class="grid grid-cols-1 lg:grid-cols-4 gap-3">
-    <!-- Performance Chart -->
-    <div
-      class="lg:col-span-3 bg-muted/50 rounded-lg border border-border p-3 flex flex-col h-[220px]"
-    >
-      <!-- Custom Legend -->
-      {#if stats && stats.upload_rate_history && stats.upload_rate_history.length > 0}
-        <div class="flex items-center gap-4 mb-2 px-1">
-          <div class="flex items-center gap-1.5">
-            <span class="w-3 h-0.5 rounded-full bg-emerald-500"></span>
-            <span class="text-xs text-muted-foreground">Upload</span>
-            <span class="text-xs font-medium text-emerald-500 tabular-nums">
-              avg {uploadStats.avg.toFixed(1)} KB/s
-            </span>
+    <div class="grid grid-cols-1 gap-2.5 lg:grid-cols-4">
+      <!-- Performance Chart -->
+      <div class="flex h-[13.75rem] flex-col border border-border bg-background p-2 lg:col-span-3">
+        <!-- Custom Legend -->
+        {#if stats && stats.upload_rate_history && stats.upload_rate_history.length > 0}
+          <div class="mb-1.5 flex items-center gap-4 px-1">
+            <div class="flex items-center gap-1.5">
+              <span class="h-0.5 w-3 bg-stat-upload"></span>
+              <span class="text-[0.625rem] text-muted-foreground">Upload</span>
+              <span class="tabular-nums text-[0.625rem] font-medium text-stat-upload">
+                avg {uploadStats.avg.toFixed(1)} KB/s
+              </span>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <span class="h-0.5 w-3 bg-stat-download"></span>
+              <span class="text-[0.625rem] text-muted-foreground">Download</span>
+              <span class="tabular-nums text-[0.625rem] font-medium text-stat-download">
+                avg {downloadStats.avg.toFixed(1)} KB/s
+              </span>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <span class="h-0.5 w-3 bg-stat-ratio"></span>
+              <span class="text-[0.625rem] text-muted-foreground">Ratio</span>
+            </div>
           </div>
-          <div class="flex items-center gap-1.5">
-            <span class="w-3 h-0.5 rounded-full bg-blue-500"></span>
-            <span class="text-xs text-muted-foreground">Download</span>
-            <span class="text-xs font-medium text-blue-500 tabular-nums">
-              avg {downloadStats.avg.toFixed(1)} KB/s
-            </span>
-          </div>
-          <div class="flex items-center gap-1.5">
-            <span class="w-3 h-0.5 rounded-full bg-amber-500" style="border-style: dashed;"></span>
-            <span class="text-xs text-muted-foreground">Ratio</span>
-          </div>
+        {:else}
+          <!-- Placeholder to maintain consistent height when no data -->
+          <div class="mb-1.5 h-[1.25rem]"></div>
+        {/if}
+
+        <div bind:this={chartContainer} class="min-h-0 w-full flex-1">
+          {#if !stats || !stats.upload_rate_history || stats.upload_rate_history.length === 0}
+            <div class="flex h-full w-full items-center justify-center">
+              <div class="text-center">
+                <Activity size={24} class="mx-auto mb-1.5 text-muted-foreground opacity-50" />
+                <p class="text-[0.6875rem] text-muted-foreground">Waiting for data…</p>
+              </div>
+            </div>
+          {/if}
         </div>
-      {:else}
-        <!-- Placeholder to maintain consistent height when no data -->
-        <div class="h-[22px] mb-2"></div>
-      {/if}
+      </div>
 
-      <div bind:this={chartContainer} class="w-full flex-1 min-h-0">
-        {#if !stats || !stats.upload_rate_history || stats.upload_rate_history.length === 0}
-          <div class="w-full h-full flex items-center justify-center">
+      <!-- Peer Distribution -->
+      <div class="lg:col-span-1">
+        {#if stats}
+          {@const total = stats.seeders + stats.leechers}
+          {@const seederPercent = total > 0 ? (stats.seeders / total) * 100 : 50}
+          {@const leecherPercent = total > 0 ? (stats.leechers / total) * 100 : 50}
+
+          <div class="flex h-[13.75rem] flex-col border border-border bg-background p-2">
+            <div
+              class="mb-2 flex items-center gap-1.5 text-[0.5625rem] uppercase tracking-wider text-muted-foreground"
+            >
+              <Users size={10} />
+              Peers
+            </div>
+
+            <!-- Total count -->
+            <div class="mb-2 text-center">
+              <div class="text-2xl font-bold tabular-nums text-foreground">{total}</div>
+              <div class="text-[0.625rem] text-muted-foreground">connected</div>
+            </div>
+
+            <!-- Peer bars -->
+            <div class="flex flex-1 flex-col justify-center gap-2.5">
+              <!-- Seeders -->
+              <div>
+                <div class="mb-1 flex items-center justify-between">
+                  <span class="text-[0.6875rem] text-muted-foreground">Seeders</span>
+                  <span class="tabular-nums text-[0.6875rem] font-semibold text-stat-upload"
+                    >{stats.seeders}</span
+                  >
+                </div>
+                <div class="h-1 w-full bg-muted">
+                  <div
+                    class="h-full bg-stat-upload transition-[width] duration-300"
+                    style="width: {seederPercent}%"
+                  ></div>
+                </div>
+              </div>
+
+              <!-- Leechers -->
+              <div>
+                <div class="mb-1 flex items-center justify-between">
+                  <span class="text-[0.6875rem] text-muted-foreground">Leechers</span>
+                  <span class="tabular-nums text-[0.6875rem] font-semibold text-stat-leecher"
+                    >{stats.leechers}</span
+                  >
+                </div>
+                <div class="h-1 w-full bg-muted">
+                  <div
+                    class="h-full bg-stat-leecher transition-[width] duration-300"
+                    style="width: {leecherPercent}%"
+                  ></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Ratio indicator -->
+            <div class="mt-1.5 border-t border-border pt-1.5 text-center">
+              <span class="text-[0.625rem] text-muted-foreground">S/L ratio: </span>
+              <span
+                class="tabular-nums text-[0.625rem] font-semibold {stats.leechers > 0
+                  ? 'text-foreground'
+                  : 'text-muted-foreground'}"
+              >
+                {stats.leechers > 0 ? (stats.seeders / stats.leechers).toFixed(1) : '∞'}
+              </span>
+            </div>
+          </div>
+        {:else}
+          <div
+            class="flex h-[13.75rem] items-center justify-center border border-border bg-background p-2"
+          >
             <div class="text-center">
-              <Activity size={32} class="text-muted-foreground mx-auto mb-2 opacity-50" />
-              <p class="text-sm text-muted-foreground">Waiting for data...</p>
+              <Users size={20} class="mx-auto mb-1.5 text-muted-foreground opacity-50" />
+              <p class="text-[0.6875rem] text-muted-foreground">No peer data</p>
             </div>
           </div>
         {/if}
       </div>
-    </div>
-
-    <!-- Peer Distribution -->
-    <div class="lg:col-span-1">
-      {#if stats}
-        {@const total = stats.seeders + stats.leechers}
-        {@const seederPercent = total > 0 ? (stats.seeders / total) * 100 : 50}
-        {@const leecherPercent = total > 0 ? (stats.leechers / total) * 100 : 50}
-
-        <div class="bg-muted/50 rounded-lg border border-border p-3 h-[220px] flex flex-col">
-          <div class="flex items-center gap-1.5 text-xs text-muted-foreground mb-3">
-            <Users size={12} />
-            Peers
-          </div>
-
-          <!-- Total count -->
-          <div class="text-center mb-3">
-            <div class="text-3xl font-bold">{total}</div>
-            <div class="text-xs text-muted-foreground">connected</div>
-          </div>
-
-          <!-- Peer bars -->
-          <div class="flex-1 flex flex-col justify-center gap-3">
-            <!-- Seeders -->
-            <div>
-              <div class="flex items-center justify-between mb-1">
-                <span class="text-xs text-muted-foreground">Seeders</span>
-                <span class="text-xs font-bold text-stat-upload">{stats.seeders}</span>
-              </div>
-              <div class="w-full h-2 bg-background rounded-full overflow-hidden">
-                <div
-                  class="h-full bg-stat-upload rounded-full transition-all duration-300"
-                  style="width: {seederPercent}%"
-                ></div>
-              </div>
-            </div>
-
-            <!-- Leechers -->
-            <div>
-              <div class="flex items-center justify-between mb-1">
-                <span class="text-xs text-muted-foreground">Leechers</span>
-                <span class="text-xs font-bold text-stat-danger">{stats.leechers}</span>
-              </div>
-              <div class="w-full h-2 bg-background rounded-full overflow-hidden">
-                <div
-                  class="h-full bg-stat-danger rounded-full transition-all duration-300"
-                  style="width: {leecherPercent}%"
-                ></div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Ratio indicator -->
-          <div class="pt-2 mt-2 border-t border-border text-center">
-            <span class="text-xs text-muted-foreground">S/L Ratio: </span>
-            <span
-              class="text-xs font-bold {stats.leechers > 0
-                ? 'text-primary'
-                : 'text-muted-foreground'}"
-            >
-              {stats.leechers > 0 ? (stats.seeders / stats.leechers).toFixed(1) : '∞'}
-            </span>
-          </div>
-        </div>
-      {:else}
-        <div
-          class="bg-muted/50 rounded-lg border border-border p-3 h-[220px] flex items-center justify-center"
-        >
-          <div class="text-center">
-            <Users size={24} class="text-muted-foreground mx-auto mb-2 opacity-50" />
-            <p class="text-xs text-muted-foreground">No peer data</p>
-          </div>
-        </div>
-      {/if}
     </div>
   </div>
 </Card>

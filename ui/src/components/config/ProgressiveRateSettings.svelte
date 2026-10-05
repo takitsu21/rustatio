@@ -17,7 +17,7 @@
 </script>
 
 <div>
-  <div class="flex items-center gap-3 mb-3">
+  <div class="mb-2 flex items-center gap-2">
     <Checkbox
       id="progressive-enabled"
       checked={enabled}
@@ -27,16 +27,22 @@
         onchange?.({ progressiveRatesEnabled: checked });
       }}
     />
-    <Label for="progressive-enabled" class="cursor-pointer font-medium flex items-center gap-2">
-      <TrendingUp size={16} class="text-muted-foreground" />
+    <Label
+      for="progressive-enabled"
+      class="flex cursor-pointer items-center gap-1.5 text-[0.6875rem] font-medium"
+    >
+      <TrendingUp size={13} class="text-muted-foreground" />
       Progressive rate adjustment
     </Label>
   </div>
 
   {#if enabled}
-    <div class="bg-muted/50 rounded-lg border border-border overflow-hidden">
-      <div class="p-4 flex items-center gap-4">
-        <span class="text-sm text-muted-foreground whitespace-nowrap">Duration</span>
+    <div class="overflow-hidden border border-border bg-background">
+      <div class="flex items-center gap-3 p-2.5">
+        <span
+          class="whitespace-nowrap text-[0.625rem] uppercase tracking-wider text-muted-foreground"
+          >Duration</span
+        >
         <input
           id="progressiveDuration"
           type="range"
@@ -45,33 +51,42 @@
           min="0.5"
           max="24"
           step="0.5"
-          class="flex-1 h-2 rounded-lg cursor-pointer accent-primary"
-          style="background: linear-gradient(to right, hsl(var(--primary)) {((durationHours - 0.5) /
+          class="h-1.5 flex-1 cursor-pointer appearance-none accent-primary"
+          style="background: linear-gradient(to right, var(--color-primary) {((durationHours -
+            0.5) /
             23.5) *
-            100}%, hsl(var(--muted)) {((durationHours - 0.5) / 23.5) * 100}%);"
+            100}%, var(--color-border) {((durationHours - 0.5) / 23.5) * 100}%);"
           oninput={() => onchange?.({ progressiveDurationHours: durationHours })}
         />
-        <div class="flex items-center gap-1 min-w-[5ch]">
-          <span class="text-lg font-bold text-primary">{durationHours}</span>
-          <span class="text-sm text-muted-foreground">hrs</span>
+        <div class="flex min-w-[5ch] items-center gap-1">
+          <span class="text-[0.6875rem] font-semibold tabular-nums text-foreground"
+            >{durationHours}</span
+          >
+          <span class="text-[0.625rem] text-muted-foreground">hrs</span>
         </div>
       </div>
 
       <div class="grid grid-cols-2 border-t border-border">
-        <div class="p-3 border-r border-border">
-          <div class="text-xs text-muted-foreground mb-2">↑ Upload</div>
+        <div class="border-r border-border p-2">
+          <div class="mb-1.5 text-[0.5625rem] uppercase tracking-wider text-stat-upload">
+            ↑ Upload
+          </div>
           <div class="flex items-center gap-2">
             <div class="text-center">
-              <div class="text-xs text-muted-foreground mb-0.5">Start</div>
-              <div class="font-medium text-muted-foreground">{uploadRate}</div>
+              <div class="mb-0.5 text-[0.5625rem] uppercase tracking-wider text-muted-foreground">
+                Start
+              </div>
+              <div class="text-[0.6875rem] tabular-nums text-muted-foreground">{uploadRate}</div>
             </div>
-            <div class="flex-1 flex items-center gap-1 px-2">
+            <div class="flex flex-1 items-center gap-1 px-1">
               <div class="h-px flex-1 bg-border"></div>
-              <TrendingUp size={14} class="text-primary" />
+              <TrendingUp size={12} class="text-muted-foreground" />
               <div class="h-px flex-1 bg-border"></div>
             </div>
             <div class="text-center">
-              <div class="text-xs text-muted-foreground mb-0.5">Target</div>
+              <div class="mb-0.5 text-[0.5625rem] uppercase tracking-wider text-muted-foreground">
+                Target
+              </div>
               <Input
                 id="targetUpload"
                 type="number"
@@ -79,27 +94,33 @@
                 {disabled}
                 min="0"
                 step="0.1"
-                class="w-20 h-8 text-center font-medium"
+                class="h-7 w-16 text-center tabular-nums"
                 oninput={() => onchange?.({ targetUploadRate })}
               />
             </div>
           </div>
         </div>
 
-        <div class="p-3">
-          <div class="text-xs text-muted-foreground mb-2">↓ Download</div>
+        <div class="p-2">
+          <div class="mb-1.5 text-[0.5625rem] uppercase tracking-wider text-stat-download">
+            ↓ Download
+          </div>
           <div class="flex items-center gap-2">
             <div class="text-center">
-              <div class="text-xs text-muted-foreground mb-0.5">Start</div>
-              <div class="font-medium text-muted-foreground">{downloadRate}</div>
+              <div class="mb-0.5 text-[0.5625rem] uppercase tracking-wider text-muted-foreground">
+                Start
+              </div>
+              <div class="text-[0.6875rem] tabular-nums text-muted-foreground">{downloadRate}</div>
             </div>
-            <div class="flex-1 flex items-center gap-1 px-2">
+            <div class="flex flex-1 items-center gap-1 px-1">
               <div class="h-px flex-1 bg-border"></div>
-              <TrendingUp size={14} class="text-primary" />
+              <TrendingUp size={12} class="text-muted-foreground" />
               <div class="h-px flex-1 bg-border"></div>
             </div>
             <div class="text-center">
-              <div class="text-xs text-muted-foreground mb-0.5">Target</div>
+              <div class="mb-0.5 text-[0.5625rem] uppercase tracking-wider text-muted-foreground">
+                Target
+              </div>
               <Input
                 id="targetDownload"
                 type="number"
@@ -107,7 +128,7 @@
                 {disabled}
                 min="0"
                 step="0.1"
-                class="w-20 h-8 text-center font-medium"
+                class="h-7 w-16 text-center tabular-nums"
                 oninput={() => onchange?.({ targetDownloadRate })}
               />
             </div>
@@ -116,9 +137,9 @@
       </div>
 
       <div
-        class="px-4 py-2 bg-muted/50 border-t border-border text-xs text-muted-foreground text-center"
+        class="border-t border-border bg-muted/30 px-3 py-1.5 text-center text-[0.625rem] text-muted-foreground"
       >
-        Rates will gradually adjust from starting values to targets over {durationHours}
+        Rates gradually adjust from starting values to targets over {durationHours}
         hour{durationHours !== 1 ? 's' : ''}
       </div>
     </div>

@@ -1,6 +1,6 @@
 <script>
   import Card from '$lib/components/ui/card.svelte';
-  import { Trophy, Upload, Download, Percent, Users, ArrowUp, ArrowDown } from '@lucide/svelte';
+  import { Trophy, Upload, Download, Users, ArrowUp, ArrowDown } from '@lucide/svelte';
 
   let { stats, torrent, formatBytes } = $props();
 
@@ -43,90 +43,100 @@
   });
 </script>
 
-<Card class="p-4 border-2 border-primary/50 bg-gradient-to-br from-primary/5 to-transparent">
-  <div class="flex items-center justify-between mb-4">
-    <h2 class="text-primary text-lg font-semibold flex items-center gap-2">
-      <Trophy size={20} /> Total Stats
-    </h2>
-    <div
-      class="flex items-center gap-1 text-xs bg-primary/10 text-primary px-2 py-1 rounded-md font-medium"
+<Card>
+  <div class="flex h-8 items-center gap-2 border-b border-border px-2.5">
+    <Trophy size={13} class="text-muted-foreground" />
+    <span
+      class="flex-1 text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground"
     >
-      <Percent size={12} />
-      {cumulativeRatio().toFixed(2)}
-    </div>
+      Total
+    </span>
+    <span class="tabular-nums text-[0.625rem] font-semibold {ratioColor()}">
+      {cumulativeRatio().toFixed(2)}x
+    </span>
   </div>
 
   <!-- Main Ratio Display -->
-  <div class="bg-muted/50 rounded-lg border border-border p-4 mb-3 text-center">
-    <div class="text-xs text-muted-foreground mb-1">Cumulative Ratio</div>
-    <div class="text-4xl font-bold {ratioColor()}">
+  <div class="border-b border-border p-2.5 text-center">
+    <div class="text-[0.5625rem] uppercase tracking-wider text-muted-foreground">
+      Cumulative ratio
+    </div>
+    <div class="mt-0.5 text-2xl font-bold tabular-nums {ratioColor()}">
       {cumulativeRatio().toFixed(2)}
     </div>
     <!-- Visual ratio bar -->
-    <div class="mt-3 max-w-48 mx-auto">
-      <div class="w-full h-2 bg-background rounded-full overflow-hidden">
+    <div class="mx-auto mt-2 max-w-48">
+      <div class="h-1.5 w-full bg-muted">
         <div
-          class="h-full {ratioBgColor()} rounded-full transition-all duration-300"
+          class="h-full {ratioBgColor()} transition-[width] duration-300"
           style="width: {Math.min(cumulativeRatio() * 50, 100)}%"
         ></div>
       </div>
-      <div class="flex justify-between mt-1">
-        <span class="text-[10px] text-muted-foreground">0</span>
-        <span class="text-[10px] text-muted-foreground">1.0</span>
-        <span class="text-[10px] text-muted-foreground">2.0+</span>
+      <div class="mt-0.5 flex justify-between">
+        <span class="text-[0.5625rem] tabular-nums text-muted-foreground">0</span>
+        <span class="text-[0.5625rem] tabular-nums text-muted-foreground">1.0</span>
+        <span class="text-[0.5625rem] tabular-nums text-muted-foreground">2.0+</span>
       </div>
     </div>
   </div>
 
   <!-- Transfer Stats -->
-  <div class="bg-muted/50 rounded-lg border border-border overflow-hidden mb-3">
-    <div class="grid grid-cols-2 divide-x divide-border">
-      <!-- Total Uploaded -->
-      <div class="p-3">
-        <div class="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
-          <Upload size={12} class="text-stat-upload" />
-          Total Uploaded
-        </div>
-        <div class="text-xl font-bold text-stat-upload">
-          {formatBytes(totalUploaded())}
-        </div>
+  <div class="grid grid-cols-2 border-b border-border">
+    <div class="border-r border-border p-2">
+      <div
+        class="mb-0.5 flex items-center gap-1.5 text-[0.5625rem] uppercase tracking-wider text-muted-foreground"
+      >
+        <Upload size={10} class="text-stat-upload" />
+        Uploaded
       </div>
-      <!-- Total Downloaded -->
-      <div class="p-3">
-        <div class="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
-          <Download size={12} class="text-stat-download" />
-          Total Downloaded
-        </div>
-        <div class="text-xl font-bold text-stat-download">
-          {formatBytes(totalDownloaded())}
-        </div>
+      <div class="text-sm font-semibold tabular-nums text-stat-upload">
+        {formatBytes(totalUploaded())}
+      </div>
+    </div>
+    <div class="p-2">
+      <div
+        class="mb-0.5 flex items-center gap-1.5 text-[0.5625rem] uppercase tracking-wider text-muted-foreground"
+      >
+        <Download size={10} class="text-stat-download" />
+        Downloaded
+      </div>
+      <div class="text-sm font-semibold tabular-nums text-stat-download">
+        {formatBytes(totalDownloaded())}
       </div>
     </div>
   </div>
 
   <!-- Peers -->
-  <div class="bg-muted/50 rounded-lg border border-border p-3">
-    <div class="flex items-center gap-1.5 text-xs text-muted-foreground mb-2">
-      <Users size={12} />
-      Connected Peers
+  <div class="p-2">
+    <div
+      class="mb-1.5 flex items-center gap-1.5 text-[0.5625rem] uppercase tracking-wider text-muted-foreground"
+    >
+      <Users size={10} />
+      Connected peers
     </div>
-    <div class="grid grid-cols-2 gap-3">
+    <div class="grid grid-cols-2 gap-2">
       <div class="flex items-center gap-2">
-        <div class="w-8 h-8 rounded-full bg-stat-upload/10 flex items-center justify-center">
-          <ArrowUp size={14} class="text-stat-upload" />
-        </div>
+        <span
+          class="flex h-6 w-6 items-center justify-center border border-stat-upload/40 bg-stat-upload/10"
+        >
+          <ArrowUp size={11} class="text-stat-upload" />
+        </span>
         <div>
-          <div class="text-lg font-bold">{stats.seeders ?? 0}</div>
-          <div class="text-[10px] text-muted-foreground">Seeders</div>
+          <div class="text-sm font-semibold tabular-nums text-foreground">{stats.seeders ?? 0}</div>
+          <div class="text-[0.5625rem] text-muted-foreground">Seeders</div>
         </div>
       </div>
       <div class="flex items-center gap-2">
-        <div class="w-8 h-8 rounded-full bg-stat-danger/10 flex items-center justify-center">
-          <ArrowDown size={14} class="text-stat-danger" />
-        </div>
+        <span
+          class="flex h-6 w-6 items-center justify-center border border-stat-leecher/40 bg-stat-leecher/10"
+        >
+          <ArrowDown size={11} class="text-stat-leecher" />
+        </span>
         <div>
-          <div class="text-lg font-bold">{stats.leechers ?? 0}</div>
-          <div class="text-[10px] text-muted-foreground">Leechers</div>
+          <div class="text-sm font-semibold tabular-nums text-foreground">
+            {stats.leechers ?? 0}
+          </div>
+          <div class="text-[0.5625rem] text-muted-foreground">Leechers</div>
         </div>
       </div>
     </div>

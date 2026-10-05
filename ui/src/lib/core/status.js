@@ -14,14 +14,6 @@ export function getIdlingReasonText(reason) {
   return null;
 }
 
-export function getReadyStatus(message = 'Ready to start faking') {
-  return {
-    statusMessage: message,
-    statusType: 'idle',
-    statusIcon: null,
-  };
-}
-
 export function getRunningStatus(message = 'Actively faking ratio...') {
   return {
     statusMessage: message,
@@ -35,14 +27,6 @@ export function getPausedStatus(message = 'Paused') {
     statusMessage: message,
     statusType: 'paused',
     statusIcon: 'pause',
-  };
-}
-
-export function getTrackerInvalidStatus(message = 'Torrent not found on tracker') {
-  return {
-    statusMessage: message,
-    statusType: 'warning',
-    statusIcon: null,
   };
 }
 
@@ -99,4 +83,17 @@ export function getStatusFromStats(stats) {
   }
 
   return getRunningStatus();
+}
+
+/**
+ * Canonical presentation state for an instance object (frontend store shape).
+ */
+export function getInstanceState(instance) {
+  if (!instance) return 'stopped';
+  if (instance.isRunning) {
+    if (instance.isPaused) return 'paused';
+    if (instance.stats?.is_idling) return 'idle';
+    return 'running';
+  }
+  return 'stopped';
 }

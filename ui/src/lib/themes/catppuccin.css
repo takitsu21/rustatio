@@ -1,0 +1,138 @@
+/**
+ * Catppuccin Color Themes for Rustatio
+ * https://catppuccin.com/
+ *
+ * Flavors:
+ * - Latte: Light theme with warm tones
+ * - Frappé: Muted dark theme with subdued colors
+ * - Macchiato: Medium contrast dark theme
+ * - Mocha: The original darkest variant
+ */
+
+/* ========================================
+   Catppuccin Latte (Light)
+   ======================================== */
+:root.latte,
+.latte {
+  /* Tailwind 4 color variables */
+  --color-background: #eff1f5;
+  --color-foreground: #4c4f69;
+  --color-card: #e6e9ef;
+  --color-card-foreground: #4c4f69;
+  --color-popover: #e6e9ef;
+  --color-popover-foreground: #4c4f69;
+  --color-primary: #8839ef;
+  --color-primary-foreground: #eff1f5;
+  --color-secondary: #ccd0da;
+  --color-secondary-foreground: #4c4f69;
+  --color-muted: #bcc0cc;
+  --color-muted-foreground: #6c6f85;
+  --color-accent: #ea76cb;
+  --color-accent-foreground: #eff1f5;
+  --color-destructive: #d20f39;
+  --color-destructive-foreground: #eff1f5;
+  --color-border: #acb0be;
+  --color-input: #ccd0da;
+  --color-ring: #8839ef;
+  --color-stat-upload: #40a02b;
+  --color-stat-download: #1e66f5;
+  --color-stat-ratio: #df8e1d;
+  --color-stat-leecher: #d20f39;
+  --color-stat-danger: #d20f39;
+}
+
+/* ========================================
+   Catppuccin Frappé (Dark - Muted)
+   ======================================== */
+:root.frappe,
+.frappe {
+  /* Tailwind 4 color variables */
+  --color-background: #303446;
+  --color-foreground: #c6d0f5;
+  --color-card: #292c3c;
+  --color-card-foreground: #c6d0f5;
+  --color-popover: #292c3c;
+  --color-popover-foreground: #c6d0f5;
+  --color-primary: #ca9ee6;
+  --color-primary-foreground: #303446;
+  --color-secondary: #414559;
+  --color-secondary-foreground: #c6d0f5;
+  --color-muted: #51576d;
+  --color-muted-foreground: #a5adce;
+  --color-accent: #f4b8e4;
+  --color-accent-foreground: #303446;
+  --color-destructive: #e78284;
+  --color-destructive-foreground: #303446;
+  --color-border: #626880;
+  --color-input: #414559;
+  --color-ring: #ca9ee6;
+  --color-stat-upload: #a6d189;
+  --color-stat-download: #8caaee;
+  --color-stat-ratio: #e5c890;
+  --color-stat-leecher: #e78284;
+  --color-stat-danger: #e78284;
+}
+
+/* ========================================
+   Catppuccin Macchiato (Dark - Medium)
+   ======================================== */
+:root.macchiato,
+.macchiato {
+  /* Tailwind 4 color variables */
+  --color-background: #24273a;
+  --color-foreground: #cad3f5;
+  --color-card: #1e2030;
+  --color-card-foreground: #cad3f5;
+  --color-popover: #1e2030;
+  --color-popover-foreground: #cad3f5;
+  --color-primary: #c6a0f6;
+  --color-primary-foreground: #24273a;
+  --color-secondary: #363a4f;
+  --color-secondary-foreground: #cad3f5;
+  --color-muted: #494d64;
+  --color-muted-foreground: #a5adcb;
+  --color-accent: #f5bde6;
+  --color-accent-foreground: #24273a;
+  --color-destructive: #ed8796;
+  --color-destructive-foreground: #24273a;
+  --color-border: #5b6078;
+  --color-input: #363a4f;
+  --color-ring: #c6a0f6;
+  --color-stat-upload: #a6da95;
+  --color-stat-download: #8aadf4;
+  --color-stat-ratio: #eed49f;
+  --color-stat-leecher: #ed8796;
+  --color-stat-danger: #ed8796;
+}
+
+/* ========================================
+   Catppuccin Mocha (Dark - Original)
+   ======================================== */
+:root.mocha,
+.mocha {
+  /* Tailwind 4 color variables */
+  --color-background: #1e1e2e;
+  --color-foreground: #cdd6f4;
+  --color-card: #181825;
+  --color-card-foreground: #cdd6f4;
+  --color-popover: #181825;
+  --color-popover-foreground: #cdd6f4;
+  --color-primary: #cba6f7;
+  --color-primary-foreground: #1e1e2e;
+  --color-secondary: #313244;
+  --color-secondary-foreground: #cdd6f4;
+  --color-muted: #45475a;
+  --color-muted-foreground: #a6adc8;
+  --color-accent: #f5c2e7;
+  --color-accent-foreground: #1e1e2e;
+  --color-destructive: #f38ba8;
+  --color-destructive-foreground: #1e1e2e;
+  --color-border: #585b70;
+  --color-input: #313244;
+  --color-ring: #cba6f7;
+  --color-stat-upload: #a6e3a1;
+  --color-stat-download: #89b4fa;
+  --color-stat-ratio: #f9e2af;
+  --color-stat-leecher: #f38ba8;
+  --color-stat-danger: #f38ba8;
+}

@@ -14,7 +14,7 @@
 </script>
 
 <div>
-  <div class="flex items-center gap-3 mb-3">
+  <div class="mb-2 flex items-center gap-2">
     <Checkbox
       id="randomize"
       checked={enabled}
@@ -24,16 +24,22 @@
         onchange?.({ randomizeRates: checked });
       }}
     />
-    <Label for="randomize" class="cursor-pointer font-medium flex items-center gap-2">
-      <Shuffle size={16} class="text-muted-foreground" />
+    <Label
+      for="randomize"
+      class="flex cursor-pointer items-center gap-1.5 text-[0.6875rem] font-medium"
+    >
+      <Shuffle size={13} class="text-muted-foreground" />
       Randomize rates for realistic behavior
     </Label>
   </div>
 
   {#if enabled}
-    <div class="bg-muted/50 rounded-lg border border-border overflow-hidden">
-      <div class="p-4 flex items-center gap-4">
-        <span class="text-sm text-muted-foreground whitespace-nowrap">Variance</span>
+    <div class="overflow-hidden border border-border bg-background">
+      <div class="flex items-center gap-3 p-2.5">
+        <span
+          class="whitespace-nowrap text-[0.625rem] uppercase tracking-wider text-muted-foreground"
+          >Variance</span
+        >
         <input
           id="randomRange"
           type="range"
@@ -42,36 +48,47 @@
           min="1"
           max="50"
           step="1"
-          class="flex-1 h-2 rounded-lg cursor-pointer accent-primary"
-          style="background: linear-gradient(to right, hsl(var(--primary)) {((rangePercent - 1) /
+          class="h-1.5 flex-1 cursor-pointer appearance-none accent-primary"
+          style="background: linear-gradient(to right, var(--color-primary) {((rangePercent - 1) /
             49) *
-            100}%, hsl(var(--muted)) {((rangePercent - 1) / 49) * 100}%);"
+            100}%, var(--color-border) {((rangePercent - 1) / 49) * 100}%);"
           oninput={() => onchange?.({ randomRangePercent: rangePercent })}
         />
-        <span class="text-lg font-bold text-primary min-w-[4ch] text-right">±{rangePercent}%</span>
+        <span
+          class="min-w-[4ch] text-right text-[0.6875rem] font-semibold tabular-nums text-foreground"
+          >±{rangePercent}%</span
+        >
       </div>
 
       <div class="grid grid-cols-2 border-t border-border">
-        <div class="p-3 border-r border-border">
-          <div class="text-xs text-muted-foreground mb-1">↑ Upload Range</div>
-          <div class="font-medium">
-            <span class="text-muted-foreground"
+        <div class="border-r border-border p-2">
+          <div class="mb-0.5 text-[0.5625rem] uppercase tracking-wider text-muted-foreground">
+            ↑ Upload range
+          </div>
+          <div class="text-[0.6875rem] tabular-nums">
+            <span class="text-stat-upload"
               >{(uploadRate * (1 - rangePercent / 100)).toFixed(0)}</span
             >
-            <span class="text-muted-foreground mx-1">—</span>
-            <span class="text-primary">{(uploadRate * (1 + rangePercent / 100)).toFixed(0)}</span>
-            <span class="text-xs text-muted-foreground ml-1">KB/s</span>
+            <span class="mx-1 text-muted-foreground">–</span>
+            <span class="text-stat-upload"
+              >{(uploadRate * (1 + rangePercent / 100)).toFixed(0)}</span
+            >
+            <span class="ml-1 text-[0.5625rem] text-muted-foreground">KB/s</span>
           </div>
         </div>
-        <div class="p-3">
-          <div class="text-xs text-muted-foreground mb-1">↓ Download Range</div>
-          <div class="font-medium">
-            <span class="text-muted-foreground"
+        <div class="p-2">
+          <div class="mb-0.5 text-[0.5625rem] uppercase tracking-wider text-muted-foreground">
+            ↓ Download range
+          </div>
+          <div class="text-[0.6875rem] tabular-nums">
+            <span class="text-stat-download"
               >{(downloadRate * (1 - rangePercent / 100)).toFixed(0)}</span
             >
-            <span class="text-muted-foreground mx-1">—</span>
-            <span class="text-primary">{(downloadRate * (1 + rangePercent / 100)).toFixed(0)}</span>
-            <span class="text-xs text-muted-foreground ml-1">KB/s</span>
+            <span class="mx-1 text-muted-foreground">–</span>
+            <span class="text-stat-download"
+              >{(downloadRate * (1 + rangePercent / 100)).toFixed(0)}</span
+            >
+            <span class="ml-1 text-[0.5625rem] text-muted-foreground">KB/s</span>
           </div>
         </div>
       </div>

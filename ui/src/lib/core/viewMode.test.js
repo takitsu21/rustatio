@@ -9,7 +9,7 @@ test('normalizeViewMode accepts known modes', () => {
 });
 
 test('normalizeViewMode falls back on invalid values', () => {
-  assert.equal(normalizeViewMode('unknown'), 'standard');
-  assert.equal(normalizeViewMode(null), 'standard');
-  assert.equal(normalizeViewMode(undefined, 'grid'), 'grid');
+  assert.equal(normalizeViewMode('unknown'), 'grid');
+  assert.equal(normalizeViewMode(null), 'grid');
+  assert.equal(normalizeViewMode(undefined, 'standard'), 'standard');
 });

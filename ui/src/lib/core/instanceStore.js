@@ -1,16 +1,17 @@
 import { writable, get } from 'svelte/store';
 import { api } from '$lib/api';
-import { getDefaultPreset } from '$lib/defaultPreset.js';
-import { normalizePreset } from '$lib/customPreset.js';
+import { getDefaultPreset } from '$lib/presets/defaultPreset.js';
+import { normalizePreset } from '$lib/presets/customPreset.js';
 import { getRunMode } from '$lib/api.js';
-import { getIdlingStatus, getStatusFromStats, getTrackerIssue } from '$lib/status.js';
+import { getIdlingStatus, getStatusFromStats, getTrackerIssue } from '$lib/core/status.js';
+import { mergeSummary } from '$lib/core/instanceSync.js';
 import {
   getActiveInstanceIndex,
   getBackendInstanceStateFlags,
   selectActiveInstanceId,
   serializeSessionInstances,
   shouldRetryDesktopRestore,
-} from '$lib/utils.js';
+} from '$lib/core/utils.js';
 
 // Check if running in Tauri
 const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
@@ -551,7 +552,8 @@ export const instanceActions = {
 
       const newInstance = createDefaultInstance(instanceId, effectiveDefaults);
 
-      instances.update(insts => [...insts, newInstance]);
+      // Newest first so freshly created instances stay visible at the top
+      instances.update(insts => [newInstance, ...insts]);
       activeInstanceId.set(instanceId);
       updateActiveInstanceStore();
 
@@ -614,7 +616,7 @@ export const instanceActions = {
 
         // Add new instance in the same update to avoid flicker
         if (newInstance) {
-          return [...filtered, newInstance];
+          return [newInstance, ...filtered];
         }
         return filtered;
       });
@@ -734,8 +736,8 @@ export const instanceActions = {
       instance.statusIcon = null;
     }
 
-    // Add to instances store
-    instances.update(insts => [...insts, instance]);
+    // Add to instances store (newest first)
+    instances.update(insts => [instance, ...insts]);
     updateActiveInstanceStore();
 
     return true;
@@ -796,11 +798,12 @@ export const instanceActions = {
       }
 
       // Ensure all backend instances exist in the standard store.
+      const knownIds = new Set(get(instances).map(inst => String(inst.id)));
       for (const summary of summaries) {
-        const exists = get(instances).some(inst => String(inst.id) === String(summary.id));
-        if (!exists) {
-          await instanceActions.ensureInstance(summary.id, summary);
-        }
+        const key = String(summary.id);
+        if (knownIds.has(key)) continue;
+        await instanceActions.ensureInstance(summary.id, summary);
+        knownIds.add(key);
       }
 
       // Defensive dedupe in case overlapping UI actions inserted same id twice.
@@ -1019,7 +1022,7 @@ export const instanceActions = {
       instance.statusType = 'running';
     }
 
-    instances.update(insts => [...insts, instance]);
+    instances.update(insts => [instance, ...insts]);
     updateActiveInstanceStore();
   },
 
@@ -1067,75 +1070,19 @@ export const instanceActions = {
       const summaryMap = new Map(summaries.map(s => [String(s.id), s]));
       const currentInstances = get(instances);
 
-      let hasAnyChanges = false;
+      let changedAny = false;
       const updatedInstances = currentInstances.map(inst => {
         const summary = summaryMap.get(String(inst.id));
         if (!summary) return inst;
 
-        const state = summary.state?.toLowerCase();
-        const isRunning =
-          state === 'running' || state === 'starting' || state === 'paused' || state === 'idle';
-        const isPaused = state === 'paused';
-
-        const updates = { isRunning, isPaused };
-
-        const trackerIssue = getTrackerIssue(summary);
-        if (trackerIssue) {
-          updates.statusMessage = trackerIssue.statusMessage;
-          updates.statusType = trackerIssue.statusType;
-          updates.statusIcon = trackerIssue.statusIcon;
-        } else if (summary.source === 'watch_folder' || summary.source === 'manual') {
-          updates.source = summary.source;
-        }
-
-        if (trackerIssue) {
-          if (summary.source === 'watch_folder' || summary.source === 'manual') {
-            updates.source = summary.source;
-          }
-        } else if (isPaused) {
-          updates.statusMessage = 'Paused';
-          updates.statusType = 'paused';
-          updates.statusIcon = 'pause';
-        } else if (state === 'idle') {
-          const status = inst.stats?.is_idling ? getStatusFromStats(inst.stats) : getIdlingStatus();
-          updates.statusMessage = status.statusMessage;
-          updates.statusType = status.statusType;
-          updates.statusIcon = status.statusIcon;
-        } else if (isRunning) {
-          updates.statusMessage = 'Actively faking ratio...';
-          updates.statusType = 'running';
-          updates.statusIcon = 'rocket';
-        } else {
-          updates.statusMessage = 'Ready to start faking';
-          updates.statusType = 'idle';
-          updates.statusIcon = null;
-        }
-
-        if (summary.source === 'watch_folder' || summary.source === 'manual') {
-          updates.source = summary.source;
-        }
-
-        // Merge available stats from summary into the existing stats object
-        // Session-specific fields are preserved and refreshed by polling intervals
-        updates.stats = {
-          ...(inst.stats || {}),
-          uploaded: summary.uploaded,
-          downloaded: summary.downloaded,
-          ratio: summary.ratio,
-          current_upload_rate: summary.currentUploadRate,
-          current_download_rate: summary.currentDownloadRate,
-          seeders: summary.seeders,
-          leechers: summary.leechers,
-          left: summary.left,
-          torrent_completion: summary.torrentCompletion,
-        };
-        updates.completionPercent = summary.torrentCompletion;
-
-        hasAnyChanges = true;
-        return { ...inst, ...updates };
+        const next = mergeSummary(inst, summary);
+        if (next !== inst) changedAny = true;
+        return next;
       });
 
-      if (hasAnyChanges) {
+      // Only notify subscribers when at least one instance actually changed,
+      // so idle polls stay free for large instance lists.
+      if (changedAny) {
         instances.set(updatedInstances);
         updateActiveInstanceStore();
       }

@@ -1,5 +1,5 @@
 <script>
-  import { cn } from '$lib/utils.js';
+  import { cn } from '$lib/core/utils.js';
 
   let {
     open = $bindable(false),
@@ -47,7 +47,7 @@
   >
     <div
       class={cn(
-        'bg-card text-card-foreground rounded-xl shadow-2xl w-full border border-border',
+        'w-full border border-border bg-card text-card-foreground',
         maxWidthClass,
         panelClass
       )}

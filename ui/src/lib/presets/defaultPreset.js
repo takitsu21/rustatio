@@ -1,5 +1,5 @@
 import { api } from '$lib/api.js';
-import { normalizePreset } from '$lib/customPreset.js';
+import { normalizePreset } from '$lib/presets/customPreset.js';
 
 const DEFAULT_PRESET_KEY = 'rustatio-default-preset';
 export const DEFAULT_PRESET_CHANGED_EVENT = 'rustatio:default-preset-changed';
