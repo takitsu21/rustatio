@@ -56,15 +56,15 @@
           which has no CORS limitations and works with all trackers out of the box.
         </p>
         <p class="mb-2">
-          <strong>Solution 2:</strong> Deploy a free Cloudflare Worker as a CORS proxy. See our
+          <strong>Solution 2:</strong> Deploy a free
           <a
-            href="https://github.com/takitsu21/rustatio/blob/main/WEB_VERSION.md"
+            href="https://developers.cloudflare.com/workers/"
             target="_blank"
             class="text-primary hover:underline"
           >
-            setup guide
+            Cloudflare Worker
           </a>
-          for step-by-step instructions (takes 5 minutes).
+          as a CORS proxy.
         </p>
         <p class="mb-2">
           <strong>Example Worker URL:</strong>
