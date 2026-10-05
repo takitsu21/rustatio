@@ -81,7 +81,7 @@
 
   <!-- Dropdown menu -->
   {#if isOpen}
-    <div class="absolute z-50 mt-1 w-full rounded-md border border-border bg-popover shadow-md">
+    <div class="absolute z-50 mt-1 w-full border border-border bg-popover">
       {#each clients as client (client.id)}
         <button
           type="button"

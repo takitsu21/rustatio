@@ -5,10 +5,11 @@ import {
   formatRetrySeconds,
   getIdlingReasonText,
   getIdlingStatus,
+  getInstanceState,
   getStatusFromStats,
   getTrackerIssue,
 } from './status.js';
-import { getGridLivePeers, getGridLiveRate, isGridLiveState } from './gridMetrics.js';
+import { getGridLivePeers, getGridLiveRate, isGridLiveState } from '../grid/gridMetrics.js';
 
 test('getIdlingReasonText handles snake_case and camelCase reasons', () => {
   assert.equal(getIdlingReasonText('no_leechers'), 'No leechers available');
@@ -102,4 +103,13 @@ test('grid live metrics exclude paused and stopped states', () => {
   assert.deepEqual(getGridLivePeers('paused', 10, 20), { seeders: null, leechers: null });
   assert.deepEqual(getGridLivePeers('stopped', 10, 20), { seeders: null, leechers: null });
   assert.deepEqual(getGridLivePeers('idle', 10, 20), { seeders: 10, leechers: 20 });
+});
+
+test('getInstanceState maps instance flags to canonical states', () => {
+  assert.equal(getInstanceState(null), 'stopped');
+  assert.equal(getInstanceState({}), 'stopped');
+  assert.equal(getInstanceState({ isRunning: false }), 'stopped');
+  assert.equal(getInstanceState({ isRunning: true, isPaused: true }), 'paused');
+  assert.equal(getInstanceState({ isRunning: true, stats: { is_idling: true } }), 'idle');
+  assert.equal(getInstanceState({ isRunning: true, stats: {} }), 'running');
 });

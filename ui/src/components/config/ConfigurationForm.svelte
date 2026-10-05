@@ -4,7 +4,7 @@
   import Input from '$lib/components/ui/input.svelte';
   import Checkbox from '$lib/components/ui/checkbox.svelte';
   import InlineHelp from '$lib/components/common/InlineHelp.svelte';
-  import { cn } from '$lib/utils.js';
+  import { cn } from '$lib/core/utils.js';
   import { Settings, ArrowUpDown, Clock, Timer, Upload, Download, Lock } from '@lucide/svelte';
   import ClientIcon from './ClientIcon.svelte';
   import ClientSelect from './ClientSelect.svelte';
@@ -244,301 +244,332 @@
   }
 </script>
 
-<Card class="p-3">
-  <h2 class="mb-4 text-primary text-lg font-semibold flex items-center gap-2">
-    <Settings size={20} /> Configuration
-  </h2>
+<Card>
+  <div class="flex h-8 items-center gap-2 border-b border-border px-2.5">
+    <Settings size={13} class="text-muted-foreground" />
+    <span
+      class="flex-1 text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground"
+    >
+      Configuration
+    </span>
+  </div>
 
-  <!-- Client Settings -->
-  <div class="mb-4">
-    <div class="flex items-center gap-2 mb-3">
-      <ClientIcon clientId={localSelectedClient} size={18} />
-      <span class="text-sm font-medium">Client</span>
-    </div>
-    <div class="bg-muted/50 rounded-lg border border-border p-3">
-      <div class="grid grid-cols-3 gap-3">
-        <div>
-          <Label for="client" class="text-xs text-muted-foreground mb-1.5 block">Type</Label>
-          <ClientSelect
-            {clients}
-            bind:value={localSelectedClient}
-            disabled={isRunning}
-            onchange={() => updateValue('selectedClient', localSelectedClient)}
-          />
-        </div>
-        <div>
-          <Label for="clientVersion" class="text-xs text-muted-foreground mb-1.5 block"
-            >Version</Label
-          >
-          <VersionSelect
-            versions={clientVersions[localSelectedClient] || []}
-            bind:value={localSelectedClientVersion}
-            disabled={isRunning}
-            onchange={() => updateValue('selectedClientVersion', localSelectedClientVersion)}
-          />
-        </div>
-        <div>
-          <div class="mb-1.5 flex items-center justify-between gap-2">
-            <Label for="port" class="text-xs text-muted-foreground">Port</Label>
-            {#if vpnPortSyncVisible}
-              <div class="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                <Checkbox
-                  id="vpn-port-sync"
-                  bind:checked={localVpnPortSync}
-                  disabled={disableVpnPortSyncToggle}
-                  onchange={handleVpnPortSyncChange}
-                />
-                <Label for="vpn-port-sync" class="cursor-pointer flex items-center gap-1">
-                  <Lock size={11} /> VPN sync
-                </Label>
-                <InlineHelp text="Use Gluetun's current forwarded port when available." />
-              </div>
+  <div class="space-y-3 p-2.5">
+    <!-- Client Settings -->
+    <div>
+      <div
+        class="mb-2 flex items-center gap-2 text-[0.625rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground"
+      >
+        <ClientIcon clientId={localSelectedClient} size={14} />
+        <span>Client</span>
+      </div>
+      <div class="border border-border bg-background p-2.5">
+        <div class="grid grid-cols-3 gap-3">
+          <div>
+            <Label
+              for="client"
+              class="mb-1 block text-[0.625rem] uppercase tracking-wider text-muted-foreground"
+              >Type</Label
+            >
+            <ClientSelect
+              {clients}
+              bind:value={localSelectedClient}
+              disabled={isRunning}
+              onchange={() => updateValue('selectedClient', localSelectedClient)}
+            />
+          </div>
+          <div>
+            <Label
+              for="clientVersion"
+              class="mb-1 block text-[0.625rem] uppercase tracking-wider text-muted-foreground"
+              >Version</Label
+            >
+            <VersionSelect
+              versions={clientVersions[localSelectedClient] || []}
+              bind:value={localSelectedClientVersion}
+              disabled={isRunning}
+              onchange={() => updateValue('selectedClientVersion', localSelectedClientVersion)}
+            />
+          </div>
+          <div>
+            <div class="mb-1.5 flex items-center justify-between gap-2">
+              <Label for="port" class="text-xs text-muted-foreground">Port</Label>
+              {#if vpnPortSyncVisible}
+                <div class="flex items-center gap-1.5 text-[0.6875rem] text-muted-foreground">
+                  <Checkbox
+                    id="vpn-port-sync"
+                    bind:checked={localVpnPortSync}
+                    disabled={disableVpnPortSyncToggle}
+                    onchange={handleVpnPortSyncChange}
+                  />
+                  <Label for="vpn-port-sync" class="cursor-pointer flex items-center gap-1">
+                    <Lock size={11} /> VPN sync
+                  </Label>
+                  <InlineHelp text="Use Gluetun's current forwarded port when available." />
+                </div>
+              {/if}
+            </div>
+            <Input
+              id="port"
+              type="number"
+              bind:value={localPort}
+              disabled={isRunning || useSyncedPort}
+              min="1024"
+              max="65535"
+              class={cn(
+                'h-8 tabular-nums transition-colors',
+                useSyncedPort &&
+                  'border-stat-upload/50 bg-stat-upload/10 text-stat-upload placeholder:text-stat-upload/60',
+                useSyncedPort &&
+                  currentForwardedPort &&
+                  'ring-1 ring-stat-upload/30 focus-visible:ring-stat-upload'
+              )}
+              onfocus={handleFocus}
+              onblur={handlePortBlur}
+              oninput={handlePortInput}
+            />
+            {#if vpnPortSyncVisible && !networkStatusConfigured}
+              <p class="mt-1 text-[0.6875rem] text-amber-400">No VPN configured.</p>
+            {:else if vpnPortSyncVisible && useSyncedPort && currentForwardedPort}
+              <p class="mt-1 text-[0.6875rem] text-foreground/80">
+                Current forwarded port: <span class="font-mono">{currentForwardedPort}</span>
+              </p>
+            {:else if vpnPortSyncVisible && !vpnPortSyncEnabled && localVpnPortSync}
+              <p class="mt-1 text-[0.6875rem] text-amber-400">
+                VPN sync is disabled on the server. Uncheck it for this instance or set
+                <span class="font-mono">VPN_PORT_SYNC=on</span> and restart Rustatio.
+              </p>
+            {:else if vpnPortSyncVisible && !vpnPortSyncEnabled}
+              <p class="mt-1 text-[0.6875rem] text-amber-400">
+                VPN sync is disabled on the server. Set <span class="font-mono"
+                  >VPN_PORT_SYNC=on</span
+                >
+                and restart Rustatio to enable it.
+              </p>
+            {:else if vpnPortSyncVisible && networkStatusUnavailable}
+              <p class="mt-1 text-[0.6875rem] text-amber-400">
+                Gluetun status is unavailable. Check that Gluetun is running with port forwarding
+                enabled.
+              </p>
+            {:else if vpnPortSyncVisible && useSyncedPort && !currentForwardedPort}
+              <p class="mt-1 text-[0.6875rem] text-amber-400">
+                Waiting for a forwarded port from Gluetun. Make sure <span class="font-mono"
+                  >VPN_PORT_FORWARDING=on</span
+                >
+                is enabled and the VPN provider supports it.
+              </p>
             {/if}
           </div>
-          <Input
-            id="port"
-            type="number"
-            bind:value={localPort}
-            disabled={isRunning || useSyncedPort}
-            min="1024"
-            max="65535"
-            class={cn(
-              'h-9 transition-colors',
-              useSyncedPort &&
-                'border-stat-upload/50 bg-stat-upload/10 text-stat-upload placeholder:text-stat-upload/60',
-              useSyncedPort &&
-                currentForwardedPort &&
-                'ring-1 ring-stat-upload/30 focus-visible:ring-stat-upload'
-            )}
-            onfocus={handleFocus}
-            onblur={handlePortBlur}
-            oninput={handlePortInput}
-          />
-          {#if vpnPortSyncVisible && !networkStatusConfigured}
-            <p class="mt-1 text-[11px] text-amber-400">No VPN configured.</p>
-          {:else if vpnPortSyncVisible && useSyncedPort && currentForwardedPort}
-            <p class="mt-1 text-[11px] text-foreground/80">
-              Current forwarded port: <span class="font-mono">{currentForwardedPort}</span>
-            </p>
-          {:else if vpnPortSyncVisible && !vpnPortSyncEnabled && localVpnPortSync}
-            <p class="mt-1 text-[11px] text-amber-400">
-              VPN sync is disabled on the server. Uncheck it for this instance or set
-              <span class="font-mono">VPN_PORT_SYNC=on</span> and restart Rustatio.
-            </p>
-          {:else if vpnPortSyncVisible && !vpnPortSyncEnabled}
-            <p class="mt-1 text-[11px] text-amber-400">
-              VPN sync is disabled on the server. Set <span class="font-mono">VPN_PORT_SYNC=on</span
-              >
-              and restart Rustatio to enable it.
-            </p>
-          {:else if vpnPortSyncVisible && networkStatusUnavailable}
-            <p class="mt-1 text-[11px] text-amber-400">
-              Gluetun status is unavailable. Check that Gluetun is running with port forwarding
-              enabled.
-            </p>
-          {:else if vpnPortSyncVisible && useSyncedPort && !currentForwardedPort}
-            <p class="mt-1 text-[11px] text-amber-400">
-              Waiting for a forwarded port from Gluetun. Make sure <span class="font-mono"
-                >VPN_PORT_FORWARDING=on</span
-              >
-              is enabled and the VPN provider supports it.
-            </p>
-          {/if}
         </div>
       </div>
     </div>
-  </div>
 
-  <!-- Transfer Rates -->
-  <div class="mb-4">
-    <div class="flex items-center gap-2 mb-3">
-      <ArrowUpDown size={16} class="text-muted-foreground" />
-      <span class="text-sm font-medium">Transfer Rates</span>
-    </div>
-    <div class="bg-muted/50 rounded-lg border border-border overflow-hidden">
-      <div class="grid grid-cols-2">
-        <div class="p-3 border-r border-border">
-          <div class="flex items-center gap-2 mb-2">
-            <Upload size={14} class="text-stat-upload" />
-            <span class="text-xs text-muted-foreground">Upload</span>
-          </div>
-          <div class="flex items-center gap-2">
-            <Input
-              id="upload"
-              type="number"
-              bind:value={localUploadRate}
-              disabled={isRunning}
-              min="0"
-              step="0.1"
-              class="flex-1 h-9 text-center font-medium"
-              onfocus={handleFocus}
-              onblur={handleBlur}
-              oninput={() => updateValue('uploadRate', localUploadRate)}
-            />
-            <span class="text-sm text-muted-foreground">KB/s</span>
-          </div>
-        </div>
-        <div class="p-3">
-          <div class="flex items-center gap-2 mb-2">
-            <Download size={14} class="text-stat-download" />
-            <span class="text-xs text-muted-foreground">Download</span>
-          </div>
-          <div class="flex items-center gap-2">
-            <Input
-              id="download"
-              type="number"
-              bind:value={localDownloadRate}
-              disabled={isRunning}
-              min="0"
-              step="0.1"
-              class="flex-1 h-9 text-center font-medium"
-              onfocus={handleFocus}
-              onblur={handleBlur}
-              oninput={() => updateValue('downloadRate', localDownloadRate)}
-            />
-            <span class="text-sm text-muted-foreground">KB/s</span>
-          </div>
-          {#if localDownloadRate > 0 && localCompletionPercent >= 100}
-            <p class="text-[10px] text-orange-500 mt-1">No effect at 100% completion</p>
-          {/if}
-        </div>
+    <!-- Transfer Rates -->
+    <div>
+      <div
+        class="mb-2 flex items-center gap-2 text-[0.625rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground"
+      >
+        <ArrowUpDown size={14} />
+        <span>Transfer rates</span>
       </div>
-    </div>
-  </div>
-
-  <!-- Initial State -->
-  <div class="mb-4">
-    <div class="flex items-center gap-2 mb-3">
-      <Clock size={16} class="text-muted-foreground" />
-      <span class="text-sm font-medium">Initial State</span>
-    </div>
-    <div class="bg-muted/50 rounded-lg border border-border p-3">
-      <div class="grid grid-cols-2 gap-3">
-        <div>
-          <Label for="completion" class="text-xs text-muted-foreground mb-1.5 block"
-            >Completion</Label
-          >
-          <div class="flex items-center gap-2">
-            <Input
-              id="completion"
-              type="number"
-              bind:value={localCompletionPercent}
-              disabled={isRunning}
-              min="0"
-              max="100"
-              class="flex-1 h-9 text-center"
-              onfocus={handleFocus}
-              onblur={handleCompletionPercentBlur}
-              oninput={handleCompletionPercentInput}
-            />
-            <span class="text-sm text-muted-foreground">%</span>
+      <div class="overflow-hidden border border-border bg-background">
+        <div class="grid grid-cols-2">
+          <div class="p-3 border-r border-border">
+            <div class="flex items-center gap-2 mb-2">
+              <Upload size={14} class="text-stat-upload" />
+              <span class="text-xs text-muted-foreground">Upload</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <Input
+                id="upload"
+                type="number"
+                bind:value={localUploadRate}
+                disabled={isRunning}
+                min="0"
+                step="0.1"
+                class="flex-1 h-8 text-center tabular-nums"
+                onfocus={handleFocus}
+                onblur={handleBlur}
+                oninput={() => updateValue('uploadRate', localUploadRate)}
+              />
+              <span class="text-[0.625rem] text-muted-foreground">KB/s</span>
+            </div>
           </div>
-        </div>
-        <div>
-          <Label for="initialUp" class="text-xs text-muted-foreground mb-1.5 block"
-            >Already Uploaded</Label
-          >
-          <div class="flex items-center gap-2">
-            <Input
-              id="initialUp"
-              type="number"
-              bind:value={localInitialUploaded}
-              disabled={isRunning}
-              min="0"
-              step="1"
-              class="flex-1 h-9 text-center"
-              onfocus={handleFocus}
-              onblur={handleBlur}
-              oninput={() => updateValue('initialUploaded', Math.round(localInitialUploaded || 0))}
-            />
-            <span class="text-sm text-muted-foreground">MB</span>
+          <div class="p-3">
+            <div class="flex items-center gap-2 mb-2">
+              <Download size={14} class="text-stat-download" />
+              <span class="text-xs text-muted-foreground">Download</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <Input
+                id="download"
+                type="number"
+                bind:value={localDownloadRate}
+                disabled={isRunning}
+                min="0"
+                step="0.1"
+                class="flex-1 h-8 text-center tabular-nums"
+                onfocus={handleFocus}
+                onblur={handleBlur}
+                oninput={() => updateValue('downloadRate', localDownloadRate)}
+              />
+              <span class="text-[0.625rem] text-muted-foreground">KB/s</span>
+            </div>
+            {#if localDownloadRate > 0 && localCompletionPercent >= 100}
+              <p class="text-[0.625rem] text-orange-500 mt-1">No effect at 100% completion</p>
+            {/if}
           </div>
         </div>
       </div>
     </div>
-  </div>
 
-  <!-- Timing -->
-  <div class="mb-4">
-    <div class="flex items-center gap-2 mb-3">
-      <Timer size={16} class="text-muted-foreground" />
-      <span class="text-sm font-medium">Timing</span>
-    </div>
-    <div class="bg-muted/50 rounded-lg border border-border p-3">
-      <div class="grid grid-cols-2 gap-3">
-        <div>
-          <Label for="updateInterval" class="text-xs text-muted-foreground mb-1.5 block"
-            >Refresh Interval</Label
-          >
-          <div class="flex items-center gap-2">
-            <Input
-              id="updateInterval"
-              type="number"
-              bind:value={localUpdateIntervalSeconds}
-              disabled={isRunning}
-              min="1"
-              max="300"
-              step="1"
-              class="flex-1 h-9 text-center"
-              onfocus={handleFocus}
-              onblur={handleBlur}
-              oninput={() => updateValue('updateIntervalSeconds', localUpdateIntervalSeconds)}
-            />
-            <span class="text-sm text-muted-foreground">sec</span>
+    <!-- Initial State -->
+    <div>
+      <div
+        class="mb-2 flex items-center gap-2 text-[0.625rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground"
+      >
+        <Clock size={14} />
+        <span>Initial state</span>
+      </div>
+      <div class="border border-border bg-background p-2.5">
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <Label
+              for="completion"
+              class="mb-1 block text-[0.625rem] uppercase tracking-wider text-muted-foreground"
+              >Completion</Label
+            >
+            <div class="flex items-center gap-2">
+              <Input
+                id="completion"
+                type="number"
+                bind:value={localCompletionPercent}
+                disabled={isRunning}
+                min="0"
+                max="100"
+                class="flex-1 h-8 text-center tabular-nums"
+                onfocus={handleFocus}
+                onblur={handleCompletionPercentBlur}
+                oninput={handleCompletionPercentInput}
+              />
+              <span class="text-[0.625rem] text-muted-foreground">%</span>
+            </div>
           </div>
-        </div>
-        <div>
-          <Label for="scrapeInterval" class="text-xs text-muted-foreground mb-1.5 block"
-            >Scrape Interval</Label
-          >
-          <div class="flex items-center gap-2">
-            <Input
-              id="scrapeInterval"
-              type="number"
-              bind:value={localScrapeInterval}
-              disabled={isRunning}
-              min="10"
-              max="3600"
-              step="1"
-              class="flex-1 h-9 text-center"
-              onfocus={handleFocus}
-              onblur={handleScrapeIntervalBlur}
-              oninput={handleScrapeIntervalInput}
-            />
-            <span class="text-sm text-muted-foreground">sec</span>
+          <div>
+            <Label
+              for="initialUp"
+              class="mb-1 block text-[0.625rem] uppercase tracking-wider text-muted-foreground"
+              >Already uploaded</Label
+            >
+            <div class="flex items-center gap-2">
+              <Input
+                id="initialUp"
+                type="number"
+                bind:value={localInitialUploaded}
+                disabled={isRunning}
+                min="0"
+                step="1"
+                class="flex-1 h-8 text-center tabular-nums"
+                onfocus={handleFocus}
+                onblur={handleBlur}
+                oninput={() =>
+                  updateValue('initialUploaded', Math.round(localInitialUploaded || 0))}
+              />
+              <span class="text-[0.625rem] text-muted-foreground">MB</span>
+            </div>
           </div>
         </div>
       </div>
     </div>
-  </div>
 
-  <!-- Randomization -->
-  <div class="mb-3">
-    <RandomizationSettings
-      bind:enabled={localRandomizeRates}
-      bind:rangePercent={localRandomRangePercent}
-      uploadRate={localUploadRate}
-      downloadRate={localDownloadRate}
-      disabled={isRunning}
-      onchange={updates => {
-        for (const [key, value] of Object.entries(updates)) updateValue(key, value);
-      }}
-    />
-  </div>
+    <!-- Timing -->
+    <div>
+      <div
+        class="mb-2 flex items-center gap-2 text-[0.625rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground"
+      >
+        <Timer size={14} />
+        <span>Timing</span>
+      </div>
+      <div class="border border-border bg-background p-2.5">
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <Label
+              for="updateInterval"
+              class="mb-1 block text-[0.625rem] uppercase tracking-wider text-muted-foreground"
+              >Refresh interval</Label
+            >
+            <div class="flex items-center gap-2">
+              <Input
+                id="updateInterval"
+                type="number"
+                bind:value={localUpdateIntervalSeconds}
+                disabled={isRunning}
+                min="1"
+                max="300"
+                step="1"
+                class="flex-1 h-8 text-center tabular-nums"
+                onfocus={handleFocus}
+                onblur={handleBlur}
+                oninput={() => updateValue('updateIntervalSeconds', localUpdateIntervalSeconds)}
+              />
+              <span class="text-[0.625rem] text-muted-foreground">sec</span>
+            </div>
+          </div>
+          <div>
+            <Label
+              for="scrapeInterval"
+              class="mb-1 block text-[0.625rem] uppercase tracking-wider text-muted-foreground"
+              >Scrape interval</Label
+            >
+            <div class="flex items-center gap-2">
+              <Input
+                id="scrapeInterval"
+                type="number"
+                bind:value={localScrapeInterval}
+                disabled={isRunning}
+                min="10"
+                max="3600"
+                step="1"
+                class="flex-1 h-8 text-center tabular-nums"
+                onfocus={handleFocus}
+                onblur={handleScrapeIntervalBlur}
+                oninput={handleScrapeIntervalInput}
+              />
+              <span class="text-[0.625rem] text-muted-foreground">sec</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
 
-  <!-- Progressive Rates -->
-  <div class="mb-0">
-    <ProgressiveRateSettings
-      bind:enabled={localProgressiveRatesEnabled}
-      bind:durationHours={localProgressiveDurationHours}
-      bind:targetUploadRate={localTargetUploadRate}
-      bind:targetDownloadRate={localTargetDownloadRate}
-      uploadRate={localUploadRate}
-      downloadRate={localDownloadRate}
-      disabled={isRunning}
-      onchange={updates => {
-        for (const [key, value] of Object.entries(updates)) updateValue(key, value);
-      }}
-    />
+    <!-- Randomization -->
+    <div>
+      <RandomizationSettings
+        bind:enabled={localRandomizeRates}
+        bind:rangePercent={localRandomRangePercent}
+        uploadRate={localUploadRate}
+        downloadRate={localDownloadRate}
+        disabled={isRunning}
+        onchange={updates => {
+          for (const [key, value] of Object.entries(updates)) updateValue(key, value);
+        }}
+      />
+    </div>
+
+    <!-- Progressive Rates -->
+    <div>
+      <ProgressiveRateSettings
+        bind:enabled={localProgressiveRatesEnabled}
+        bind:durationHours={localProgressiveDurationHours}
+        bind:targetUploadRate={localTargetUploadRate}
+        bind:targetDownloadRate={localTargetDownloadRate}
+        uploadRate={localUploadRate}
+        downloadRate={localDownloadRate}
+        disabled={isRunning}
+        onchange={updates => {
+          for (const [key, value] of Object.entries(updates)) updateValue(key, value);
+        }}
+      />
+    </div>
   </div>
 </Card>

@@ -1,14 +1,4 @@
-import { normalizePresetSettings } from './customPreset.js';
-
-export const BULK_EDIT_SECTIONS = [
-  'client',
-  'rates',
-  'initial',
-  'timing',
-  'randomization',
-  'progressive',
-  'stopConditions',
-];
+import { normalizePresetSettings } from '../presets/customPreset.js';
 
 export function isMixed(values) {
   if (values.length <= 1) return false;

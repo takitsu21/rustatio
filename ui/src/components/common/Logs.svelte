@@ -83,59 +83,54 @@
   );
 </script>
 
-<Card class="p-3">
+<Card>
   <!-- Header -->
-  <div class="flex items-center justify-between">
-    <div class="flex items-center gap-3">
-      <Checkbox
-        id="show-logs"
-        bind:checked={showLogs}
-        onchange={checked => {
-          showLogs = checked;
-          if (onUpdate) {
-            onUpdate({ showLogs: checked });
-          }
-        }}
-      />
-      <Label for="show-logs" class="cursor-pointer font-medium text-sm flex items-center gap-2">
-        <Terminal size={16} class="text-muted-foreground" />
-        Application Logs
-      </Label>
+  <div class="flex h-8 items-center gap-2 border-b border-border px-2.5">
+    <Checkbox
+      id="show-logs"
+      bind:checked={showLogs}
+      onchange={checked => {
+        showLogs = checked;
+        if (onUpdate) {
+          onUpdate({ showLogs: checked });
+        }
+      }}
+    />
+    <Label
+      for="show-logs"
+      class="flex cursor-pointer items-center gap-1.5 text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground"
+    >
+      <Terminal size={12} />
+      Logs
+    </Label>
 
-      {#if logs.length > 0}
-        <span class="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
-          {logs.length}
-        </span>
-      {/if}
-    </div>
+    {#if logs.length > 0}
+      <span class="tabular-nums text-[0.625rem] text-muted-foreground">{logs.length}</span>
+    {/if}
 
-    <div class="flex items-center gap-2">
+    <div class="ml-auto flex items-center gap-1.5">
       {#if showLogs && logs.length > 0}
         <!-- Log level counts -->
-        <div class="hidden sm:flex items-center gap-1.5 mr-2">
+        <div class="mr-1 hidden items-center gap-1.5 sm:flex">
           {#if logCounts.error > 0}
-            <span
-              class="flex items-center gap-1 text-xs text-stat-leecher bg-stat-leecher/10 px-1.5 py-0.5 rounded"
-            >
+            <span class="flex items-center gap-1 text-[0.625rem] text-stat-leecher">
               <AlertCircle size={10} />
-              {logCounts.error}
+              <span class="tabular-nums">{logCounts.error}</span>
             </span>
           {/if}
           {#if logCounts.warn > 0}
-            <span
-              class="flex items-center gap-1 text-xs text-stat-ratio bg-stat-ratio/10 px-1.5 py-0.5 rounded"
-            >
+            <span class="flex items-center gap-1 text-[0.625rem] text-stat-ratio">
               <AlertTriangle size={10} />
-              {logCounts.warn}
+              <span class="tabular-nums">{logCounts.warn}</span>
             </span>
           {/if}
         </div>
 
         <button
           onclick={clearLogs}
-          class="flex items-center gap-1.5 px-2 py-1 text-xs font-semibold bg-stat-danger hover:bg-stat-danger/90 text-white rounded shadow-sm border-0 transition-colors cursor-pointer"
+          class="flex cursor-pointer items-center gap-1 border border-stat-danger/40 px-1.5 py-0.5 text-[0.625rem] text-stat-danger transition-colors hover:bg-stat-danger/10"
         >
-          <Trash2 size={12} />
+          <Trash2 size={11} />
           Clear
         </button>
       {/if}
@@ -147,12 +142,14 @@
             onUpdate({ showLogs });
           }
         }}
-        class="p-1 text-muted-foreground hover:text-foreground transition-colors cursor-pointer bg-transparent"
+        class="flex h-6 w-6 cursor-pointer items-center justify-center text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        title={showLogs ? 'Collapse logs' : 'Expand logs'}
+        aria-label={showLogs ? 'Collapse logs' : 'Expand logs'}
       >
         {#if showLogs}
-          <ChevronDown size={16} />
+          <ChevronDown size={13} />
         {:else}
-          <ChevronRight size={16} />
+          <ChevronRight size={13} />
         {/if}
       </button>
     </div>
@@ -160,55 +157,53 @@
 
   <!-- Log content -->
   {#if showLogs}
-    <div class="mt-3">
-      <div class="bg-muted/50 border border-border rounded-lg overflow-hidden">
-        {#if logs.length === 0}
-          <div class="p-8 text-center">
-            <Terminal size={32} class="text-muted-foreground mx-auto mb-2 opacity-30" />
-            <p class="text-sm text-muted-foreground">No logs yet</p>
-            <p class="text-xs text-muted-foreground/60 mt-1">Application events will appear here</p>
-          </div>
-        {:else}
-          <div
-            bind:this={scrollContainer}
-            onscroll={handleScroll}
-            class="max-h-[250px] overflow-y-auto p-2 font-mono text-xs space-y-1"
-          >
-            {#each logs as log, index (index)}
-              {@const colors = getLogColors(log.level)}
-              <div
-                class="flex items-start gap-2 py-1.5 px-2 rounded {colors.bg} border {colors.border} transition-colors"
+    <div class="border-t border-border">
+      {#if logs.length === 0}
+        <div class="p-6 text-center">
+          <Terminal size={20} class="mx-auto mb-1.5 text-muted-foreground opacity-30" />
+          <p class="text-[0.6875rem] text-muted-foreground">No logs yet</p>
+          <p class="mt-0.5 text-[0.625rem] text-muted-foreground/60">
+            Application events will appear here
+          </p>
+        </div>
+      {:else}
+        <div
+          bind:this={scrollContainer}
+          onscroll={handleScroll}
+          class="max-h-[15.625rem] space-y-px overflow-y-auto p-1.5 text-[0.6875rem]"
+        >
+          {#each logs as log, index (index)}
+            {@const colors = getLogColors(log.level)}
+            <div class="flex items-start gap-2 border-l-2 {colors.border} bg-muted/30 px-1.5 py-1">
+              <!-- Level badge -->
+              <span
+                class="flex flex-shrink-0 items-center gap-1 text-[0.5625rem] font-bold uppercase {colors.text}"
               >
-                <!-- Level badge -->
-                <span
-                  class="flex-shrink-0 {colors.text} {colors.bg} px-1.5 py-0.5 rounded text-[10px] font-bold uppercase flex items-center gap-1"
-                >
-                  {#if log.level === 'error'}
-                    <AlertCircle size={10} />
-                  {:else if log.level === 'warn'}
-                    <AlertTriangle size={10} />
-                  {:else if log.level === 'info'}
-                    <Info size={10} />
-                  {:else}
-                    <Bug size={10} />
-                  {/if}
-                  {log.level}
-                </span>
+                {#if log.level === 'error'}
+                  <AlertCircle size={10} />
+                {:else if log.level === 'warn'}
+                  <AlertTriangle size={10} />
+                {:else if log.level === 'info'}
+                  <Info size={10} />
+                {:else}
+                  <Bug size={10} />
+                {/if}
+                {log.level}
+              </span>
 
-                <!-- Timestamp -->
-                <span class="text-muted-foreground flex-shrink-0 tabular-nums">
-                  {formatTimestamp(log.timestamp)}
-                </span>
+              <!-- Timestamp -->
+              <span class="flex-shrink-0 tabular-nums text-muted-foreground">
+                {formatTimestamp(log.timestamp)}
+              </span>
 
-                <!-- Message -->
-                <span class="flex-1 {colors.text} break-all">
-                  {log.message}
-                </span>
-              </div>
-            {/each}
-          </div>
-        {/if}
-      </div>
+              <!-- Message -->
+              <span class="flex-1 break-all {colors.text}">
+                {log.message}
+              </span>
+            </div>
+          {/each}
+        </div>
+      {/if}
     </div>
   {/if}
 </Card>

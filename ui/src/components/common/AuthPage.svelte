@@ -13,7 +13,7 @@
     initializeTheme,
     handleClickOutside,
     getThemeName,
-  } from '$lib/themeStore.svelte.js';
+  } from '$lib/themes/themeStore.svelte.js';
   import { ChevronDown, Check, Lock, KeyRound, AlertCircle, Loader2, LogIn } from '@lucide/svelte';
 
   let { onAuthenticated = () => {} } = $props();
@@ -80,31 +80,32 @@
   }
 </script>
 
-<div class="min-h-screen bg-background flex flex-col items-center justify-center p-4">
+<div class="flex min-h-screen flex-col items-center justify-center bg-background p-4">
   <!-- Theme Toggle (Fixed Top-Right) -->
-  <div class="fixed top-4 right-4 z-30">
+  <div class="fixed right-3 top-3 z-30">
     <div class="relative theme-selector">
       <button
         onclick={toggleThemeDropdown}
-        class="group bg-secondary text-secondary-foreground border-2 border-border rounded-lg p-2 flex items-center gap-2 cursor-pointer transition-all hover:bg-primary hover:border-primary hover:text-primary-foreground hover:[&_svg]:!text-current active:scale-[0.98] shadow-lg"
+        class="flex h-6 items-center gap-1 px-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground cursor-pointer"
         title="Theme: {getThemeName(getTheme())}"
         aria-label="Toggle theme menu"
       >
         <ThemeIcon theme={getTheme()} />
-        <span class="transition-transform {getShowThemeDropdown() ? 'rotate-180' : ''}">
-          <ChevronDown size={14} />
-        </span>
+        <ChevronDown
+          size={11}
+          class="transition-transform {getShowThemeDropdown() ? 'rotate-180' : ''}"
+        />
       </button>
       {#if getShowThemeDropdown()}
         <div
-          class="absolute top-[calc(100%+0.5rem)] right-0 bg-card text-card-foreground border border-border/50 rounded-xl shadow-2xl p-1.5 min-w-[200px] max-h-[400px] overflow-y-auto z-50 backdrop-blur-xl animate-in fade-in slide-in-from-top-2 duration-200"
+          class="absolute right-0 top-[calc(100%+0.25rem)] z-50 max-h-[26.25rem] min-w-[13.125rem] overflow-y-auto border border-border bg-popover p-1 text-popover-foreground"
         >
           {#each Object.entries(THEME_CATEGORIES) as [categoryId, category] (categoryId)}
             <!-- Category Header -->
             <div
-              class="px-3 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider {categoryId !==
+              class="px-2 py-1 text-[0.625rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground {categoryId !==
               'default'
-                ? 'mt-2 border-t border-border pt-2'
+                ? 'mt-1 border-t border-border pt-1.5'
                 : ''}"
             >
               {category.name}
@@ -113,21 +114,16 @@
             {#each category.themes as themeId (themeId)}
               {@const themeOption = THEMES[themeId]}
               <button
-                class="w-full flex items-center gap-3 px-3 py-2 border-none cursor-pointer rounded-lg transition-all {getTheme() ===
+                class="flex w-full items-center gap-2 px-2 py-1.5 text-left transition-colors cursor-pointer {getTheme() ===
                 themeOption.id
-                  ? 'bg-primary text-primary-foreground shadow-sm [&_svg]:!text-current'
-                  : 'bg-transparent text-card-foreground hover:bg-secondary/80'}"
+                  ? 'bg-primary/15 text-foreground'
+                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'}"
                 onclick={() => selectTheme(themeOption.id)}
               >
                 <ThemeIcon theme={themeOption.id} />
-                <div class="flex-1 text-left">
-                  <span class="text-sm font-medium">{themeOption.name}</span>
-                  {#if themeOption.description}
-                    <span class="block text-xs opacity-70">{themeOption.description}</span>
-                  {/if}
-                </div>
+                <span class="flex-1 text-xs">{themeOption.name}</span>
                 {#if getTheme() === themeOption.id}
-                  <Check size={16} strokeWidth={2.5} />
+                  <Check size={12} strokeWidth={2.5} />
                 {/if}
               </button>
             {/each}
@@ -137,56 +133,55 @@
     </div>
   </div>
 
-  <!-- Background gradient decoration -->
-  <div class="absolute inset-0 overflow-hidden pointer-events-none">
-    <div class="absolute -top-40 -right-40 w-80 h-80 bg-primary/10 rounded-full blur-3xl"></div>
-    <div class="absolute -bottom-40 -left-40 w-80 h-80 bg-primary/5 rounded-full blur-3xl"></div>
-  </div>
-
   <div class="relative w-full max-w-md">
     <!-- Logo and Title -->
-    <div class="text-center mb-8">
+    <div class="mb-5 text-center">
       <!-- Logo Icon -->
-      <div class="inline-flex items-center justify-center mb-6">
+      <div class="mb-3 inline-flex items-center justify-center">
         <img
           src="/android-chrome-512x512.png"
           alt="Rustatio"
-          width="96"
-          height="96"
+          width="56"
+          height="56"
           class="object-contain"
         />
       </div>
 
-      <h1 class="text-3xl font-bold text-foreground tracking-tight mb-2">Rustatio</h1>
-      <p class="text-muted-foreground">Modern BitTorrent Ratio Faker</p>
+      <h1 class="text-lg font-bold uppercase tracking-[0.18em] text-foreground">Rustatio</h1>
+      <p class="mt-1 text-[0.625rem] uppercase tracking-wider text-muted-foreground">
+        BitTorrent ratio faker · self-hosted
+      </p>
     </div>
 
     <!-- Auth Card -->
-    <div
-      class="bg-card text-card-foreground rounded-2xl shadow-2xl border border-border/50 overflow-hidden"
-    >
+    <div class="overflow-hidden border border-border bg-card text-card-foreground">
       <!-- Card Header -->
-      <div class="px-8 pt-8 pb-4">
-        <div class="flex items-center gap-3 mb-2">
-          <div class="w-10 h-10 bg-stat-ratio/10 rounded-xl flex items-center justify-center">
-            <Lock size={20} class="text-stat-ratio" />
-          </div>
-          <div>
-            <h2 class="text-lg font-semibold text-foreground">Authentication Required</h2>
-            <p class="text-sm text-muted-foreground">Enter your API token to continue</p>
-          </div>
+      <div class="flex items-center gap-2.5 border-b border-border px-4 py-3">
+        <span
+          class="flex h-7 w-7 items-center justify-center border border-stat-ratio/40 bg-stat-ratio/10"
+        >
+          <Lock size={13} class="text-stat-ratio" />
+        </span>
+        <div>
+          <h2 class="text-xs font-semibold uppercase tracking-wider text-foreground">
+            Authentication required
+          </h2>
+          <p class="text-[0.625rem] text-muted-foreground">Enter your API token to continue</p>
         </div>
       </div>
 
       <!-- Card Body -->
-      <form onsubmit={handleSubmit} class="px-8 pb-8 space-y-5">
+      <form onsubmit={handleSubmit} class="space-y-4 p-4">
         <div>
-          <label for="api-token" class="block text-sm font-medium text-foreground mb-2">
-            API Token
+          <label
+            for="api-token"
+            class="mb-1 block text-[0.625rem] uppercase tracking-wider text-muted-foreground"
+          >
+            API token
           </label>
           <div class="relative">
-            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <KeyRound size={18} class="text-muted-foreground" />
+            <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-2.5">
+              <KeyRound size={13} class="text-muted-foreground" />
             </div>
             <input
               id="api-token"
@@ -194,12 +189,12 @@
               bind:value={token}
               placeholder="Enter your API token"
               autocomplete="current-password"
-              class="w-full pl-10 pr-4 py-3 text-sm border border-border rounded-xl bg-background focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
+              class="h-9 w-full border border-input bg-background pl-8 pr-2.5 text-xs text-foreground placeholder:text-muted-foreground focus:border-ring focus:outline-none"
               disabled={isVerifying}
             />
           </div>
-          <p class="mt-2 text-xs text-muted-foreground">
-            This is the <code class="px-1.5 py-0.5 bg-muted rounded text-foreground"
+          <p class="mt-1.5 text-[0.625rem] text-muted-foreground">
+            This is the <code class="border border-border bg-muted px-1 py-px text-foreground"
               >AUTH_TOKEN</code
             > environment variable set on the server.
           </p>
@@ -210,12 +205,12 @@
             id="remember-token"
             type="checkbox"
             bind:checked={rememberToken}
-            class="w-4 h-4 rounded border-border text-primary focus:ring-primary/50 cursor-pointer"
+            class="h-3.5 w-3.5 cursor-pointer rounded-none border-input accent-primary"
             disabled={isVerifying}
           />
           <label
             for="remember-token"
-            class="text-sm text-muted-foreground cursor-pointer select-none"
+            class="cursor-pointer select-none text-xs text-muted-foreground"
           >
             Remember this token
           </label>
@@ -223,19 +218,19 @@
 
         {#if error}
           <div
-            class="p-4 rounded-xl bg-stat-leecher/10 border border-stat-leecher/20 flex items-start gap-3"
+            class="flex items-start gap-2.5 border border-stat-leecher/40 bg-stat-leecher/10 p-2.5"
           >
-            <AlertCircle size={20} class="text-stat-leecher flex-shrink-0 mt-0.5" />
-            <p class="text-sm text-stat-leecher">{error}</p>
+            <AlertCircle size={14} class="mt-0.5 flex-shrink-0 text-stat-leecher" />
+            <p class="text-[0.6875rem] text-stat-leecher">{error}</p>
           </div>
         {/if}
 
-        <Button type="submit" class="w-full py-3 text-base" disabled={isVerifying}>
+        <Button type="submit" class="w-full" disabled={isVerifying}>
           {#if isVerifying}
-            <Loader2 size={20} class="animate-spin -ml-1 mr-2" />
-            Verifying...
+            <Loader2 size={13} class="animate-spin" />
+            Verifying…
           {:else}
-            <LogIn size={18} class="mr-2" />
+            <LogIn size={13} />
             Connect
           {/if}
         </Button>
@@ -243,8 +238,8 @@
     </div>
 
     <!-- Footer -->
-    <div class="mt-8 text-center">
-      <p class="text-xs text-muted-foreground">Running in self-hosted server mode</p>
+    <div class="mt-5 text-center">
+      <p class="text-[0.625rem] text-muted-foreground">Running in self-hosted server mode</p>
     </div>
   </div>
 </div>

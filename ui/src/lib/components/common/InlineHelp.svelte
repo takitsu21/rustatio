@@ -22,7 +22,7 @@
   {#if open}
     <span
       role="tooltip"
-      class="pointer-events-none absolute left-1/2 top-[calc(100%+0.4rem)] z-50 w-max max-w-[220px] -translate-x-1/2 rounded-lg border border-border/80 bg-popover px-2 py-1.5 text-[11px] leading-4 text-popover-foreground shadow-xl shadow-black/20"
+      class="pointer-events-none absolute left-1/2 top-[calc(100%+0.4rem)] z-50 w-max max-w-[13.75rem] -translate-x-1/2 rounded-md border border-border bg-popover px-2 py-1.5 text-[0.6875rem] leading-4 text-popover-foreground"
     >
       {text}
     </span>

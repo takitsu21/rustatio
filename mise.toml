@@ -201,9 +201,8 @@ sources = [
     "ui/src/*.css",
     "ui/src/*.svelte",
     "ui/src/components/**/*",
-    "ui/src/lib/*.js",
-    "ui/src/lib/*.svelte.js",
-    "ui/src/lib/*.css",
+    "ui/src/lib/**/*.js",
+    "ui/src/lib/**/*.css",
     "ui/src/lib/components/**/*",
     "ui/src/lib/presets/**/*",
     "ui/index.html",
@@ -219,7 +218,7 @@ run = "cd ui && npm run build"
 [tasks."ui:test"]
 description = "Run UI JavaScript tests"
 depends = ["ui:install"]
-run = "cd ui && node --test src/lib/*.test.js"
+run = "cd ui && node --test \"src/lib/**/*.test.js\""
 
 # CLI tasks
 [tasks."build:cli"]

@@ -87,37 +87,44 @@
   );
 </script>
 
-<Card class="p-3">
-  <div class="flex items-center justify-between mb-3">
-    <h2 class="text-primary text-lg font-semibold flex items-center gap-2">
-      <Target size={20} /> Stop Conditions
-    </h2>
+<Card>
+  <div class="flex h-8 items-center gap-2 border-b border-border px-2.5">
+    <Target size={13} class="text-muted-foreground" />
+    <span
+      class="flex-1 text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground"
+    >
+      Stop conditions
+    </span>
     {#if activeCount > 0}
-      <span class="text-xs bg-primary/10 text-primary px-2 py-1 rounded-full font-medium">
+      <span
+        class="border border-primary/40 bg-primary/10 px-1.5 py-px text-[0.625rem] font-semibold text-primary"
+      >
         {activeCount} active
       </span>
     {/if}
   </div>
 
-  <StopConditionSettings
-    bind:stopAtRatioEnabled={localStopAtRatioEnabled}
-    bind:stopAtRatio={localStopAtRatio}
-    bind:randomizeRatio={localRandomizeRatio}
-    bind:randomRatioRangePercent={localRandomRatioRangePercent}
-    {effectiveStopAtRatio}
-    bind:stopAtUploadedEnabled={localStopAtUploadedEnabled}
-    bind:stopAtUploadedGB={localStopAtUploadedGB}
-    bind:stopAtDownloadedEnabled={localStopAtDownloadedEnabled}
-    bind:stopAtDownloadedGB={localStopAtDownloadedGB}
-    bind:stopAtSeedTimeEnabled={localStopAtSeedTimeEnabled}
-    bind:stopAtSeedTimeHours={localStopAtSeedTimeHours}
-    bind:idleWhenNoLeechers={localIdleWhenNoLeechers}
-    bind:idleWhenNoSeeders={localIdleWhenNoSeeders}
-    bind:postStopAction={localPostStopAction}
-    {completionPercent}
-    disabled={isRunning}
-    onchange={updates => {
-      for (const [key, value] of Object.entries(updates)) updateValue(key, value);
-    }}
-  />
+  <div class="p-2.5">
+    <StopConditionSettings
+      bind:stopAtRatioEnabled={localStopAtRatioEnabled}
+      bind:stopAtRatio={localStopAtRatio}
+      bind:randomizeRatio={localRandomizeRatio}
+      bind:randomRatioRangePercent={localRandomRatioRangePercent}
+      {effectiveStopAtRatio}
+      bind:stopAtUploadedEnabled={localStopAtUploadedEnabled}
+      bind:stopAtUploadedGB={localStopAtUploadedGB}
+      bind:stopAtDownloadedEnabled={localStopAtDownloadedEnabled}
+      bind:stopAtDownloadedGB={localStopAtDownloadedGB}
+      bind:stopAtSeedTimeEnabled={localStopAtSeedTimeEnabled}
+      bind:stopAtSeedTimeHours={localStopAtSeedTimeHours}
+      bind:idleWhenNoLeechers={localIdleWhenNoLeechers}
+      bind:idleWhenNoSeeders={localIdleWhenNoSeeders}
+      bind:postStopAction={localPostStopAction}
+      {completionPercent}
+      disabled={isRunning}
+      onchange={updates => {
+        for (const [key, value] of Object.entries(updates)) updateValue(key, value);
+      }}
+    />
+  </div>
 </Card>

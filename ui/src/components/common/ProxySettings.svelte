@@ -25,97 +25,108 @@
 
 <!-- Only show in WASM mode (GitHub Pages) - Desktop and Server don't need CORS proxy -->
 {#if runMode === 'wasm'}
-  <Card class="p-3 mb-3">
-    <div class="flex items-center justify-between mb-3">
-      <h2 class="text-primary text-lg font-semibold flex items-center gap-2">
-        <Globe size={20} /> CORS Proxy (Optional)
-      </h2>
+  <Card class="mb-2">
+    <div class="flex h-8 items-center gap-2 border-b border-border px-2.5">
+      <Globe size={12} class="text-muted-foreground" />
+      <span
+        class="flex-1 text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground"
+      >
+        CORS proxy (optional)
+      </span>
       <button
-        class="text-muted-foreground hover:text-foreground text-sm"
+        class="cursor-pointer text-[0.625rem] text-muted-foreground transition-colors hover:text-foreground"
         onclick={() => (showHelp = !showHelp)}
       >
-        {showHelp ? '▼ Hide Help' : '▶ Show Help'}
+        {showHelp ? 'Hide help' : 'Show help'}
       </button>
     </div>
 
-    {#if showHelp}
-      <div class="bg-muted/50 p-3 rounded-lg mb-3 text-sm">
-        <p class="mb-2">
-          <strong>Why do I need this?</strong> Most BitTorrent trackers don't support CORS, which prevents
-          the web browser from making requests to them.
-        </p>
-        <p class="mb-2">
-          <strong>Solution 1 (Recommended):</strong> Use the
-          <a
-            href="https://github.com/takitsu21/rustatio/releases/latest"
-            target="_blank"
-            class="text-primary hover:underline font-semibold"
-          >
-            desktop app
-          </a>
-          which has no CORS limitations and works with all trackers out of the box.
-        </p>
-        <p class="mb-2">
-          <strong>Solution 2:</strong> Deploy a free
-          <a
-            href="https://developers.cloudflare.com/workers/"
-            target="_blank"
-            class="text-primary hover:underline"
-          >
-            Cloudflare Worker
-          </a>
-          as a CORS proxy.
-        </p>
-        <p class="mb-2">
-          <strong>Example Worker URL:</strong>
-          <code class="bg-background px-2 py-1 rounded text-xs">
-            https://rustatio-cors-proxy.yourname.workers.dev
-          </code>
-        </p>
-        <p class="text-stat-danger flex items-center gap-1.5">
-          <AlertTriangle size={16} class="flex-shrink-0" /> Without a proxy, only CORS-enabled trackers
-          will work.
-        </p>
-      </div>
-    {/if}
+    <div class="p-2.5">
+      {#if showHelp}
+        <div class="mb-2.5 border border-border bg-muted/30 p-2.5 text-[0.6875rem] leading-5">
+          <p class="mb-1.5">
+            <strong>Why do I need this?</strong> Most BitTorrent trackers don't support CORS, which prevents
+            the web browser from making requests to them.
+          </p>
+          <p class="mb-1.5">
+            <strong>Solution 1 (recommended):</strong> Use the
+            <a
+              href="https://github.com/takitsu21/rustatio/releases/latest"
+              target="_blank"
+              class="font-semibold text-primary hover:underline"
+            >
+              desktop app
+            </a>
+            which has no CORS limitations and works with all trackers out of the box.
+          </p>
+          <p class="mb-1.5">
+            <strong>Solution 2:</strong> Deploy a free
+            <a
+              href="https://developers.cloudflare.com/workers/"
+              target="_blank"
+              class="text-primary hover:underline"
+            >
+              Cloudflare Worker
+            </a>
+            as a CORS proxy.
+          </p>
+          <p class="mb-1.5">
+            <strong>Example worker URL:</strong>
+            <code class="border border-border bg-background px-1.5 py-0.5 text-[0.625rem]">
+              https://rustatio-cors-proxy.yourname.workers.dev
+            </code>
+          </p>
+          <p class="flex items-center gap-1.5 text-stat-ratio">
+            <AlertTriangle size={12} class="flex-shrink-0" /> Without a proxy, only CORS-enabled trackers
+            will work.
+          </p>
+        </div>
+      {/if}
 
-    <div class="flex flex-col gap-2">
-      <label for="proxy-url" class="text-sm font-medium">Proxy URL (leave empty to disable)</label>
-      <input
-        id="proxy-url"
-        type="url"
-        bind:value={proxyUrl}
-        placeholder="https://your-worker.workers.dev"
-        class="w-full px-3 py-2 bg-background border border-border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-      />
-      <div class="flex gap-2">
-        <Button onclick={saveProxy} class="flex-1">
-          {#snippet children()}
-            <span class="flex items-center gap-1.5"><Save size={16} /> Save Proxy</span>
-          {/snippet}
-        </Button>
-        {#if proxyUrl}
-          <Button
-            onclick={clearProxy}
-            class="flex-1 bg-stat-danger hover:bg-stat-danger/90 text-white shadow-sm"
-          >
+      <div class="flex flex-col gap-1.5">
+        <label
+          for="proxy-url"
+          class="text-[0.625rem] uppercase tracking-wider text-muted-foreground"
+          >Proxy URL (leave empty to disable)</label
+        >
+        <input
+          id="proxy-url"
+          type="url"
+          bind:value={proxyUrl}
+          placeholder="https://your-worker.workers.dev"
+          class="h-8 w-full border border-input bg-background px-2.5 text-xs text-foreground placeholder:text-muted-foreground focus:border-ring focus:outline-none"
+        />
+        <div class="flex gap-1.5">
+          <Button onclick={saveProxy} size="sm" class="flex-1">
             {#snippet children()}
-              <span class="flex items-center gap-1.5"><Trash2 size={16} /> Clear</span>
+              <Save size={12} /> Save proxy
             {/snippet}
           </Button>
+          {#if proxyUrl}
+            <Button
+              onclick={clearProxy}
+              size="sm"
+              variant="outline"
+              class="flex-1 text-stat-danger"
+            >
+              {#snippet children()}
+                <Trash2 size={12} /> Clear
+              {/snippet}
+            </Button>
+          {/if}
+        </div>
+        {#if proxyUrl}
+          <p class="flex items-center gap-1.5 text-[0.625rem] text-stat-upload">
+            <CheckCircle size={11} class="flex-shrink-0" /> Proxy configured: all tracker requests will
+            be routed through this proxy
+          </p>
+        {:else}
+          <p class="flex items-center gap-1.5 text-[0.625rem] text-stat-ratio">
+            <AlertTriangle size={11} class="flex-shrink-0" /> No proxy configured: only CORS-enabled trackers
+            will work
+          </p>
         {/if}
       </div>
-      {#if proxyUrl}
-        <p class="text-xs text-stat-upload flex items-center gap-1.5">
-          <CheckCircle size={14} class="flex-shrink-0" /> Proxy configured: All tracker requests will
-          be routed through this proxy
-        </p>
-      {:else}
-        <p class="text-xs text-stat-ratio flex items-center gap-1.5">
-          <AlertTriangle size={14} class="flex-shrink-0" /> No proxy configured: Only CORS-enabled trackers
-          will work
-        </p>
-      {/if}
     </div>
   </Card>
 {/if}

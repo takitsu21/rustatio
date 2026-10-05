@@ -18,7 +18,7 @@
   />
 {:else}
   <span
-    class={`inline-flex h-4 w-4 items-center justify-center rounded-sm bg-muted text-[9px] font-semibold uppercase text-muted-foreground shrink-0 ${className}`}
+    class={`inline-flex h-4 w-4 items-center justify-center rounded-sm bg-muted text-[0.5625rem] font-semibold uppercase text-muted-foreground shrink-0 ${className}`}
     aria-hidden="true"
   >
     {initial || tracker?.charAt(0)?.toUpperCase() || '?'}

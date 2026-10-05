@@ -1,7 +1,7 @@
 <script>
   import { onMount } from 'svelte';
   import Button from '$lib/components/ui/button.svelte';
-  import { devLog } from '$lib/devLog.js';
+  import { devLog } from '$lib/core/devLog.js';
   import { X } from '@lucide/svelte';
 
   let updateAvailable = $state(false);
@@ -209,9 +209,7 @@
 </script>
 
 {#if isTauri && updateAvailable}
-  <div
-    class="fixed bottom-4 right-4 bg-card border border-border rounded-lg shadow-lg p-4 max-w-sm z-50"
-  >
+  <div class="fixed bottom-10 right-3 z-50 max-w-sm border border-border bg-card p-3">
     <div class="flex flex-col gap-3">
       <div class="flex items-start justify-between">
         <div>
@@ -257,7 +255,7 @@
 {/if}
 
 {#if isTauri && !updateAvailable && checking}
-  <div class="fixed bottom-4 right-4 bg-card border border-border rounded-lg shadow-lg p-3 z-50">
+  <div class="fixed bottom-10 right-3 z-50 border border-border bg-card p-3">
     <p class="text-sm text-muted-foreground">Checking for updates...</p>
   </div>
 {/if}

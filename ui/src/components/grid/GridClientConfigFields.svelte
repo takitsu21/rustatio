@@ -1,5 +1,5 @@
 <script>
-  import { cn } from '$lib/utils.js';
+  import { cn } from '$lib/core/utils.js';
   import Input from '$lib/components/ui/input.svelte';
   import Label from '$lib/components/ui/label.svelte';
   import ClientSelect from '../config/ClientSelect.svelte';

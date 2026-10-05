@@ -11,14 +11,14 @@
   import StopConditionSettings from '../config/StopConditionSettings.svelte';
   import GridClientConfigFields from './GridClientConfigFields.svelte';
   import { builtInPresets } from '$lib/presets/index.js';
-  import { normalizePreset, normalizePresets } from '$lib/customPreset.js';
+  import { normalizePreset, normalizePresets } from '$lib/presets/customPreset.js';
   import {
     applyPresetToBulkState,
     buildBulkUpdateEntries,
     createBulkEditState,
     mergeBulkSectionsIntoInstance,
-  } from '$lib/gridBulkEdit.js';
-  import { buildFakerConfig } from '$lib/fakerConfig.js';
+  } from '$lib/grid/gridBulkEdit.js';
+  import { buildFakerConfig } from '$lib/core/fakerConfig.js';
   import { ArrowUpDown, Clock, LoaderCircle, Settings, Target, Timer, X } from '@lucide/svelte';
 
   let {
@@ -403,7 +403,10 @@
   >
     <div class="flex items-center justify-between border-b border-border p-4">
       <div>
-        <h2 id="grid-bulk-edit-title" class="text-lg font-semibold text-foreground">
+        <h2
+          id="grid-bulk-edit-title"
+          class="text-xs font-semibold uppercase tracking-wider text-foreground"
+        >
           Edit Selected
         </h2>
         <p class="text-xs text-muted-foreground">
@@ -482,7 +485,7 @@
                 </div>
               </div>
             </div>
-            <span class="text-[11px] text-muted-foreground"
+            <span class="text-[0.6875rem] text-muted-foreground"
               >{sections.client.apply ? 'Will apply' : 'Skipped'}</span
             >
           </div>
@@ -508,7 +511,7 @@
             >
               {#snippet portHeaderExtra()}
                 {#if vpnPortSyncVisible}
-                  <div class="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                  <div class="flex items-center gap-1.5 text-[0.6875rem] text-muted-foreground">
                     <Checkbox
                       checked={clientVpnPortSync}
                       disabled={vpnPortSyncBlocked && !clientVpnPortSync}
@@ -529,11 +532,13 @@
 
               {#snippet portFooter()}
                 {#if vpnPortSyncVisible && !networkStatusConfigured}
-                  <p class="mt-1 text-[11px] text-amber-400">No VPN configured.</p>
+                  <p class="mt-1 text-[0.6875rem] text-amber-400">No VPN configured.</p>
                 {:else if vpnPortSyncVisible && !vpnPortSyncEnabled}
-                  <p class="mt-1 text-[11px] text-amber-400">VPN sync is disabled on the server.</p>
+                  <p class="mt-1 text-[0.6875rem] text-amber-400">
+                    VPN sync is disabled on the server.
+                  </p>
                 {:else if vpnPortSyncVisible && networkStatusUnavailable}
-                  <p class="mt-1 text-[11px] text-amber-400">Gluetun status is unavailable.</p>
+                  <p class="mt-1 text-[0.6875rem] text-amber-400">Gluetun status is unavailable.</p>
                 {/if}
               {/snippet}
             </GridClientConfigFields>
@@ -563,7 +568,7 @@
                 </div>
               </div>
             </div>
-            <span class="text-[11px] text-muted-foreground"
+            <span class="text-[0.6875rem] text-muted-foreground"
               >{sections.rates.apply ? 'Will apply' : 'Skipped'}</span
             >
           </div>
@@ -604,7 +609,7 @@
                 </div>
               </div>
             </div>
-            <span class="text-[11px] text-muted-foreground"
+            <span class="text-[0.6875rem] text-muted-foreground"
               >{sections.initial.apply ? 'Will apply' : 'Skipped'}</span
             >
           </div>
@@ -667,7 +672,7 @@
                 </div>
               </div>
             </div>
-            <span class="text-[11px] text-muted-foreground"
+            <span class="text-[0.6875rem] text-muted-foreground"
               >{sections.timing.apply ? 'Will apply' : 'Skipped'}</span
             >
           </div>
@@ -711,7 +716,7 @@
                 </div>
               </div>
             </div>
-            <span class="text-[11px] text-muted-foreground"
+            <span class="text-[0.6875rem] text-muted-foreground"
               >{sections.randomization.apply ? 'Will apply' : 'Skipped'}</span
             >
           </div>
@@ -748,7 +753,7 @@
                 </div>
               </div>
             </div>
-            <span class="text-[11px] text-muted-foreground"
+            <span class="text-[0.6875rem] text-muted-foreground"
               >{sections.progressive.apply ? 'Will apply' : 'Skipped'}</span
             >
           </div>
@@ -788,7 +793,7 @@
                 </div>
               </div>
             </div>
-            <span class="text-[11px] text-muted-foreground"
+            <span class="text-[0.6875rem] text-muted-foreground"
               >{sections.stopConditions.apply ? 'Will apply' : 'Skipped'}</span
             >
           </div>

@@ -23,137 +23,147 @@
   const torrentDownloaded = $derived(torrentSize > 0 ? torrentSize - (stats?.left ?? 0) : 0);
 </script>
 
-<Card class="p-3">
-  <h2 class="mb-3 text-primary text-lg font-semibold flex items-center gap-2">
-    <BarChart3 size={20} /> Progress
-  </h2>
-  <div class="flex flex-col gap-3">
+<Card>
+  <div class="flex h-8 items-center gap-2 border-b border-border px-2.5">
+    <BarChart3 size={13} class="text-muted-foreground" />
+    <span
+      class="flex-1 text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground"
+    >
+      Progress
+    </span>
+  </div>
+
+  <div class="flex flex-col gap-2.5 p-2.5">
     {#if isLeeching}
       <div>
-        <div class="flex justify-between items-center mb-2 flex-wrap gap-2">
-          <span class="font-semibold text-stat-leecher text-sm">Torrent Download</span>
-          <span class="text-xs text-muted-foreground"
+        <div class="mb-1 flex flex-wrap items-center gap-2">
+          <span class="flex-1 text-[0.6875rem] font-medium text-stat-leecher">Torrent download</span
+          >
+          <span class="tabular-nums text-[0.625rem] text-muted-foreground"
             >{formatBytes(torrentDownloaded)} / {formatBytes(torrentSize)}</span
           >
           {#if stats.eta_download_completion}
-            <span class="text-xs text-muted-foreground italic"
+            <span class="tabular-nums text-[0.625rem] italic text-muted-foreground"
               >ETA {formatDuration(stats.eta_download_completion.secs)}</span
             >
           {/if}
         </div>
-        <div class="w-full h-5 bg-muted rounded-full overflow-hidden border border-border">
-          <div
-            class="h-full bg-stat-leecher transition-all duration-300 flex items-center justify-end pr-2"
-            style="width: {torrentCompletion}%"
-          >
-            {#if torrentCompletion >= 10}
-              <span class="text-[0.7rem] text-white font-semibold pr-1"
-                >{torrentCompletion.toFixed(1)}%</span
-              >
-            {/if}
+        <div class="flex items-center gap-2">
+          <div class="h-1.5 min-w-0 flex-1 bg-muted">
+            <div
+              class="h-full bg-stat-leecher transition-[width] duration-300"
+              style="width: {torrentCompletion}%"
+            ></div>
           </div>
+          <span class="w-9 shrink-0 text-right tabular-nums text-[0.625rem] text-foreground"
+            >{torrentCompletion.toFixed(0)}%</span
+          >
         </div>
         {#if torrentCompletion >= 100}
-          <p class="text-xs text-stat-upload mt-1">Download complete — now seeding</p>
+          <p class="mt-1 text-[0.625rem] text-stat-upload">Download complete — now seeding</p>
         {/if}
       </div>
     {/if}
 
     {#if stopAtRatioEnabled && stats.ratio_progress >= 0}
       <div>
-        <div class="flex justify-between items-center mb-2 flex-wrap gap-2">
-          <span class="font-semibold text-foreground text-sm">Ratio</span>
-          <span class="text-xs text-muted-foreground"
+        <div class="mb-1 flex flex-wrap items-center gap-2">
+          <span class="flex-1 text-[0.6875rem] font-medium text-foreground">Ratio</span>
+          <span class="tabular-nums text-[0.625rem] text-muted-foreground"
             >{(stats.ratio ?? 0).toFixed(2)} / {stopAtRatio}</span
           >
           {#if stats.eta_ratio}
-            <span class="text-xs text-muted-foreground italic"
+            <span class="tabular-nums text-[0.625rem] italic text-muted-foreground"
               >ETA {formatDuration(stats.eta_ratio.secs)}</span
             >
           {/if}
         </div>
-        <div class="w-full h-5 bg-muted rounded-full overflow-hidden border border-border">
-          <div
-            class="h-full bg-gradient-to-r from-primary to-primary/90 transition-all duration-300 flex items-center justify-end pr-2"
-            style="width: {stats.ratio_progress}%"
-          >
-            <span class="text-[0.7rem] text-white font-semibold pr-1"
-              >{(stats.ratio_progress ?? 0).toFixed(0)}%</span
-            >
+        <div class="flex items-center gap-2">
+          <div class="h-1.5 min-w-0 flex-1 bg-muted">
+            <div
+              class="h-full bg-stat-ratio transition-[width] duration-300"
+              style="width: {stats.ratio_progress}%"
+            ></div>
           </div>
+          <span class="w-9 shrink-0 text-right tabular-nums text-[0.625rem] text-foreground"
+            >{(stats.ratio_progress ?? 0).toFixed(0)}%</span
+          >
         </div>
       </div>
     {/if}
 
     {#if stopAtUploadedEnabled && stats.upload_progress >= 0}
       <div>
-        <div class="flex justify-between items-center mb-2 flex-wrap gap-2">
-          <span class="font-semibold text-foreground text-sm">Uploaded ↑</span>
-          <span class="text-xs text-muted-foreground"
+        <div class="mb-1 flex flex-wrap items-center gap-2">
+          <span class="flex-1 text-[0.6875rem] font-medium text-foreground">Uploaded ↑</span>
+          <span class="tabular-nums text-[0.625rem] text-muted-foreground"
             >{formatBytes(stats.session_uploaded)} / {stopAtUploadedGB} GB</span
           >
           {#if stats.eta_uploaded}
-            <span class="text-xs text-muted-foreground italic"
+            <span class="tabular-nums text-[0.625rem] italic text-muted-foreground"
               >ETA {formatDuration(stats.eta_uploaded.secs)}</span
             >
           {/if}
         </div>
-        <div class="w-full h-5 bg-muted rounded-full overflow-hidden border border-border">
-          <div
-            class="h-full bg-stat-upload transition-all duration-300 flex items-center justify-end pr-2"
-            style="width: {stats.upload_progress}%"
-          >
-            <span class="text-[0.7rem] text-white font-semibold pr-1"
-              >{(stats.upload_progress ?? 0).toFixed(0)}%</span
-            >
+        <div class="flex items-center gap-2">
+          <div class="h-1.5 min-w-0 flex-1 bg-muted">
+            <div
+              class="h-full bg-stat-upload transition-[width] duration-300"
+              style="width: {stats.upload_progress}%"
+            ></div>
           </div>
+          <span class="w-9 shrink-0 text-right tabular-nums text-[0.625rem] text-foreground"
+            >{(stats.upload_progress ?? 0).toFixed(0)}%</span
+          >
         </div>
       </div>
     {/if}
 
     {#if stopAtDownloadedEnabled && stats.download_progress >= 0}
       <div>
-        <div class="flex justify-between items-center mb-2 flex-wrap gap-2">
-          <span class="font-semibold text-foreground text-sm">Downloaded ↓</span>
-          <span class="text-xs text-muted-foreground"
+        <div class="mb-1 flex flex-wrap items-center gap-2">
+          <span class="flex-1 text-[0.6875rem] font-medium text-foreground">Downloaded ↓</span>
+          <span class="tabular-nums text-[0.625rem] text-muted-foreground"
             >{formatBytes(stats.session_downloaded)} / {stopAtDownloadedGB} GB</span
           >
         </div>
-        <div class="w-full h-5 bg-muted rounded-full overflow-hidden border border-border">
-          <div
-            class="h-full bg-gradient-to-r from-primary to-primary/90 transition-all duration-300 flex items-center justify-end pr-2"
-            style="width: {stats.download_progress}%"
-          >
-            <span class="text-[0.7rem] text-white font-semibold pr-1"
-              >{(stats.download_progress ?? 0).toFixed(0)}%</span
-            >
+        <div class="flex items-center gap-2">
+          <div class="h-1.5 min-w-0 flex-1 bg-muted">
+            <div
+              class="h-full bg-stat-download transition-[width] duration-300"
+              style="width: {stats.download_progress}%"
+            ></div>
           </div>
+          <span class="w-9 shrink-0 text-right tabular-nums text-[0.625rem] text-foreground"
+            >{(stats.download_progress ?? 0).toFixed(0)}%</span
+          >
         </div>
       </div>
     {/if}
 
     {#if stopAtSeedTimeEnabled && stats.seed_time_progress >= 0}
       <div>
-        <div class="flex justify-between items-center mb-2 flex-wrap gap-2">
-          <span class="font-semibold text-foreground text-sm">⏱️ Seed Time</span>
-          <span class="text-xs text-muted-foreground"
+        <div class="mb-1 flex flex-wrap items-center gap-2">
+          <span class="flex-1 text-[0.6875rem] font-medium text-foreground">Seed time</span>
+          <span class="tabular-nums text-[0.625rem] text-muted-foreground"
             >{formatDuration(stats.elapsed_time?.secs || 0)} / {stopAtSeedTimeHours}h</span
           >
           {#if stats.eta_seed_time}
-            <span class="text-xs text-muted-foreground italic"
+            <span class="tabular-nums text-[0.625rem] italic text-muted-foreground"
               >ETA {formatDuration(stats.eta_seed_time.secs)}</span
             >
           {/if}
         </div>
-        <div class="w-full h-5 bg-muted rounded-full overflow-hidden border border-border">
-          <div
-            class="h-full bg-stat-ratio transition-all duration-300 flex items-center justify-end pr-2"
-            style="width: {stats.seed_time_progress}%"
-          >
-            <span class="text-[0.7rem] text-white font-semibold pr-1"
-              >{(stats.seed_time_progress ?? 0).toFixed(0)}%</span
-            >
+        <div class="flex items-center gap-2">
+          <div class="h-1.5 min-w-0 flex-1 bg-muted">
+            <div
+              class="h-full bg-primary transition-[width] duration-300"
+              style="width: {stats.seed_time_progress}%"
+            ></div>
           </div>
+          <span class="w-9 shrink-0 text-right tabular-nums text-[0.625rem] text-foreground"
+            >{(stats.seed_time_progress ?? 0).toFixed(0)}%</span
+          >
         </div>
       </div>
     {/if}
