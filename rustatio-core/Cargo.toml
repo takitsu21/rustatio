@@ -41,7 +41,7 @@ web-sys = { version = "0.3", features = ["Window", "Storage", "console"], option
 percent-encoding = "2.3"
 
 [dev-dependencies]
-mockall = "0.13"
+mockall = "0.15"
 
 [features]
 default = ["native"]
