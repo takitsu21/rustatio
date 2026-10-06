@@ -266,7 +266,7 @@ export async function listenToLogs(callback) {
 }
 
 // Instance events subscription (for real-time sync)
-// Server mode: SSE for watch folder events
+// Server mode: SSE for watch folder events and pushed summaries
 // Tauri mode: listens for instance-restored events during startup
 export function listenToInstanceEvents(callback) {
   if (isTauri) {
@@ -297,14 +297,17 @@ export function listenToInstanceEvents(callback) {
     const authQuery = token ? `?token=${encodeURIComponent(token)}` : '';
     const eventSource = new EventSource(`${serverBaseUrl}/api/events${authQuery}`);
 
-    eventSource.addEventListener('instance', event => {
+    const handleInstanceEvent = event => {
       try {
         const instanceEvent = JSON.parse(event.data);
         callback(instanceEvent);
       } catch (e) {
         console.error('Failed to parse instance event:', e);
       }
-    });
+    };
+
+    eventSource.addEventListener('instance', handleInstanceEvent);
+    eventSource.addEventListener('summaries', handleInstanceEvent);
 
     eventSource.onerror = error => {
       console.warn('Instance SSE connection error, will retry:', error);

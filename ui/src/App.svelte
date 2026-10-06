@@ -516,7 +516,10 @@
     // Initialize instance store (will restore session from localStorage)
     await instanceActions.initialize();
     startNetworkStatusPolling();
-    startTrackerRetryPolling();
+    // Server mode receives tracker retry state through pushed summaries.
+    if (getRunMode() !== 'server') {
+      startTrackerRetryPolling();
+    }
 
     // Start polling for any instances that were restored in a running state (server mode)
     // This ensures UI updates after page refresh when instances are still running on server
@@ -556,6 +559,18 @@
         } else if (event.type === 'deleted') {
           // Remove instance from frontend store
           instanceActions.removeInstanceFromStore(event.id);
+        } else if (event.type === 'summaries') {
+          // Push update: merge all summaries, then run stop-condition handling
+          // only for instances that actually changed.
+          const changed = instanceActions.applySummaries(event.instances);
+          for (const summary of changed) {
+            const instance = getInstance(summary.id);
+            if (!instance) continue;
+            if (await handlePostStopDelete(instance.id, instance.stats)) continue;
+            if (shouldAutoStop(instance.stats)) {
+              await handleAutoStop(instance.id, instance.stats);
+            }
+          }
         }
       });
     }
@@ -934,51 +949,54 @@
   }
 
   // Create live stats interval (updates UI every second for the active instance)
-  // In server mode, just reads stats (scheduler advances them).
+  // In server mode, just reads stats (scheduler advances them) at the scheduler tick.
   // In desktop/WASM, calls updateStatsOnly to advance stats locally.
   function createLiveStatsInterval(instanceId) {
     const isServer = getRunMode() === 'server';
 
-    return setInterval(async () => {
-      const instance = getInstance(instanceId);
+    return setInterval(
+      async () => {
+        const instance = getInstance(instanceId);
 
-      if (!instance || !instance.isRunning || instance.isPaused) {
-        return;
-      }
-
-      try {
-        const stats = isServer
-          ? await api.getStats(instanceId)
-          : await api.updateStatsOnly(instanceId);
-
-        if (stats && instance.isRunning) {
-          const updates = {
-            stats,
-            ...getStatusFromStats(stats),
-          };
-
-          if (stats.torrent_completion !== undefined) {
-            updates.completionPercent = stats.torrent_completion;
-          }
-
-          // Sync backend's effective ratio to frontend
-          if (stats.effective_stop_at_ratio != null) {
-            updates.effectiveStopAtRatio = stats.effective_stop_at_ratio;
-          }
-
-          instanceActions.updateInstance(instanceId, updates);
-
-          if (await handlePostStopDelete(instanceId, stats)) {
-            return;
-          }
-          if (shouldAutoStop(stats)) {
-            await handleAutoStop(instanceId, stats);
-          }
+        if (!instance || !instance.isRunning || instance.isPaused) {
+          return;
         }
-      } catch (error) {
-        console.debug('Live stats fetch error:', error);
-      }
-    }, 1000);
+
+        try {
+          const stats = isServer
+            ? await api.getStats(instanceId)
+            : await api.updateStatsOnly(instanceId);
+
+          if (stats && instance.isRunning) {
+            const updates = {
+              stats,
+              ...getStatusFromStats(stats),
+            };
+
+            if (stats.torrent_completion !== undefined) {
+              updates.completionPercent = stats.torrent_completion;
+            }
+
+            // Sync backend's effective ratio to frontend
+            if (stats.effective_stop_at_ratio != null) {
+              updates.effectiveStopAtRatio = stats.effective_stop_at_ratio;
+            }
+
+            instanceActions.updateInstance(instanceId, updates);
+
+            if (await handlePostStopDelete(instanceId, stats)) {
+              return;
+            }
+            if (shouldAutoStop(stats)) {
+              await handleAutoStop(instanceId, stats);
+            }
+          }
+        } catch (error) {
+          console.debug('Live stats fetch error:', error);
+        }
+      },
+      isServer ? 5000 : 1000
+    );
   }
 
   // =============================================================================
@@ -1023,14 +1041,18 @@
   // Start tracker announce polling for an instance (created for ALL running instances)
   // Live stats polling is managed separately — only for the active instance
   function startPollingForInstance(instanceId, intervalSeconds = 5) {
-    const intervalMs = intervalSeconds * 1000;
+    let updateIntervalId = null;
 
-    const updateIntervalId = createTrackerAnnounceInterval(instanceId, intervalMs);
+    // Server mode gets stats through pushed SSE summaries, so no per-instance interval.
+    if (getRunMode() !== 'server') {
+      const intervalMs = intervalSeconds * 1000;
+      updateIntervalId = createTrackerAnnounceInterval(instanceId, intervalMs);
 
-    // Store interval ID in instance for cleanup
-    instanceActions.updateInstance(instanceId, {
-      updateInterval: updateIntervalId,
-    });
+      // Store interval ID in instance for cleanup
+      instanceActions.updateInstance(instanceId, {
+        updateInterval: updateIntervalId,
+      });
+    }
 
     // Start live stats only if this is the currently active instance
     const currentActiveId = get(activeInstanceId);

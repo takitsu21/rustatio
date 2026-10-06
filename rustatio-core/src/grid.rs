@@ -1,4 +1,4 @@
-use crate::faker::PresetSettings;
+use crate::faker::{PostStopAction, PresetSettings};
 use crate::torrent::ClientType;
 use serde::{Deserialize, Serialize};
 use url::Url;
@@ -121,6 +121,16 @@ pub struct InstanceSummary {
     pub torrent_completion: f64,
     pub source: String,
     pub created_at: u64,
+    #[serde(default)]
+    pub is_idling: bool,
+    #[serde(default)]
+    pub idling_reason: Option<String>,
+    #[serde(default)]
+    pub stop_condition_met: bool,
+    #[serde(default)]
+    pub post_stop_action: PostStopAction,
+    #[serde(default)]
+    pub effective_stop_at_ratio: Option<f64>,
 }
 
 #[cfg(test)]
@@ -193,5 +203,45 @@ mod tests {
             Some("tracker.torrent.eu.org".to_string())
         );
         assert_eq!(primary_tracker_host(""), None);
+    }
+
+    #[test]
+    fn test_instance_summary_serializes_runtime_fields() {
+        let summary = InstanceSummary {
+            id: "id".to_string(),
+            name: "name".to_string(),
+            info_hash: "info".to_string(),
+            primary_tracker_host: None,
+            state: "stopped".to_string(),
+            is_tracker_invalid: false,
+            tracker_error: None,
+            tracker_retry_attempt: 0,
+            tracker_retry_at_ms: None,
+            tags: Vec::new(),
+            total_size: 0,
+            uploaded: 0,
+            downloaded: 0,
+            ratio: 0.0,
+            current_upload_rate: 0.0,
+            current_download_rate: 0.0,
+            seeders: 0,
+            leechers: 0,
+            left: 0,
+            torrent_completion: 100.0,
+            source: "manual".to_string(),
+            created_at: 0,
+            is_idling: true,
+            idling_reason: Some("no_leechers".to_string()),
+            stop_condition_met: true,
+            post_stop_action: PostStopAction::DeleteInstance,
+            effective_stop_at_ratio: Some(2.5),
+        };
+
+        let value = serde_json::to_value(&summary).unwrap_or(serde_json::Value::Null);
+        assert_eq!(value["isIdling"], true);
+        assert_eq!(value["idlingReason"], "no_leechers");
+        assert_eq!(value["stopConditionMet"], true);
+        assert_eq!(value["postStopAction"], "delete_instance");
+        assert_eq!(value["effectiveStopAtRatio"], 2.5);
     }
 }

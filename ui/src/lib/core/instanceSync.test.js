@@ -23,7 +23,12 @@ function baseInstance(overrides = {}) {
       leechers: 1,
       left: 0,
       torrent_completion: 100,
+      state: 'Stopped',
       is_idling: false,
+      idling_reason: null,
+      stop_condition_met: false,
+      post_stop_action: null,
+      effective_stop_at_ratio: null,
       session_id: 'keep-me',
     },
     ...overrides,
@@ -110,4 +115,38 @@ test('mergeSummary reports stopped instances as idle', () => {
   assert.equal(next.isPaused, false);
   assert.equal(next.statusMessage, 'Ready to start faking');
   assert.equal(next.statusIcon, null);
+});
+
+test('mergeSummary maps the summary state into stats', () => {
+  const next = mergeSummary(baseInstance(), summary({ state: 'running', uploaded: 200 }));
+
+  assert.equal(next.stats.state, 'Running');
+  assert.equal(next.stats.uploaded, 200);
+});
+
+test('mergeSummary treats idling instances as running', () => {
+  const next = mergeSummary(
+    baseInstance(),
+    summary({ state: 'idle', isIdling: true, idlingReason: 'no_leechers' })
+  );
+
+  assert.equal(next.isRunning, true);
+  assert.equal(next.stats.state, 'Running');
+  assert.equal(next.stats.is_idling, true);
+  assert.equal(next.stats.idling_reason, 'no_leechers');
+});
+
+test('mergeSummary copies stop condition fields', () => {
+  const next = mergeSummary(
+    baseInstance(),
+    summary({
+      stopConditionMet: true,
+      postStopAction: 'delete_instance',
+      effectiveStopAtRatio: 3.5,
+    })
+  );
+
+  assert.equal(next.stats.stop_condition_met, true);
+  assert.equal(next.stats.post_stop_action, 'delete_instance');
+  assert.equal(next.stats.effective_stop_at_ratio, 3.5);
 });

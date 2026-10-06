@@ -725,6 +725,11 @@ pub async fn list_summaries(state: State<'_, AppState>) -> Result<Vec<InstanceSu
                 InstanceSource::WatchFolder => "watch_folder".to_string(),
             },
             created_at,
+            is_idling: stats.is_idling,
+            idling_reason: stats.idling_reason.clone(),
+            stop_condition_met: stats.stop_condition_met,
+            post_stop_action: stats.post_stop_action,
+            effective_stop_at_ratio: stats.effective_stop_at_ratio,
         });
     }
 

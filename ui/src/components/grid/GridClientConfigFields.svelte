@@ -29,6 +29,7 @@
     inputStep = '0.1',
     showUnit = false,
     unit = 'KB/s',
+    timeUnit = 'sec',
     onClientChange = () => {},
     onVersionChange = () => {},
     onPortInput = () => {},
@@ -144,7 +145,7 @@
             oninput={onRefreshInput}
             onblur={onRefreshBlur}
           />
-          <span class="text-sm text-muted-foreground">{unit}</span>
+          <span class="text-sm text-muted-foreground">{timeUnit}</span>
         </div>
       {:else}
         <Input
@@ -174,7 +175,7 @@
             oninput={onScrapeInput}
             onblur={onScrapeBlur}
           />
-          <span class="text-sm text-muted-foreground">{unit}</span>
+          <span class="text-sm text-muted-foreground">{timeUnit}</span>
         </div>
       {:else}
         <Input

@@ -92,13 +92,23 @@
     debounceTimer = setTimeout(() => gridActions.fetchSummaries(), 200);
   }
 
-  // Start polling and SSE on mount
-  gridActions.startPolling(3000);
+  // Start polling and SSE on mount. In server mode summaries arrive over SSE.
+  if (getRunMode() === 'server') {
+    gridActions.fetchSummaries();
+  } else {
+    gridActions.startPolling(3000);
+  }
   refreshNetworkStatus();
   refreshClientInfos();
 
   const cleanupEvents = listenToInstanceEvents(event => {
-    if (event.type === 'created' || event.type === 'deleted' || event.type === 'state_changed') {
+    if (event.type === 'summaries') {
+      gridActions.applySummaries(event.instances);
+    } else if (
+      event.type === 'created' ||
+      event.type === 'deleted' ||
+      event.type === 'state_changed'
+    ) {
       debouncedFetch();
     }
   });
@@ -164,7 +174,8 @@
       instanceActions.updateInstance(String(instance.id), instance);
     }
 
-    await Promise.all(entries.map(entry => instanceActions.ensureInstance(String(entry.id))));
+    // Hydrate all updated instances from one backend read instead of one call per instance.
+    await instanceActions.ensureInstances(entries.map(entry => String(entry.id)));
     await gridActions.fetchSummaries();
   }
 

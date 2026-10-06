@@ -65,6 +65,53 @@ struct ExistingInstanceState {
     completion_percent: Option<f64>,
 }
 
+fn build_summary(id: &str, instance: &FakerInstance, stats: &FakerStats) -> InstanceSummary {
+    let source = match instance.source {
+        InstanceSource::Manual => "manual",
+        InstanceSource::WatchFolder => "watch_folder",
+    };
+
+    let state = match stats.state {
+        FakerState::Paused => "paused",
+        _ if stats.is_idling => "idle",
+        FakerState::Idle => "idle",
+        FakerState::Starting => "starting",
+        FakerState::Running => "running",
+        FakerState::Stopping => "stopping",
+        FakerState::Stopped => "stopped",
+    };
+
+    InstanceSummary {
+        id: id.to_string(),
+        name: instance.summary.name.clone(),
+        info_hash: hex::encode(instance.torrent_info_hash),
+        primary_tracker_host: primary_tracker_host(&instance.summary.announce),
+        state: state.to_string(),
+        is_tracker_invalid: stats.tracker_error.is_some(),
+        tracker_error: stats.tracker_error.clone(),
+        tracker_retry_attempt: stats.tracker_retry_attempt,
+        tracker_retry_at_ms: stats.tracker_retry_at_ms,
+        tags: instance.tags.clone(),
+        total_size: instance.summary.total_size,
+        uploaded: stats.uploaded,
+        downloaded: stats.downloaded,
+        ratio: stats.ratio,
+        current_upload_rate: stats.current_upload_rate,
+        current_download_rate: stats.current_download_rate,
+        seeders: stats.seeders,
+        leechers: stats.leechers,
+        left: stats.left,
+        torrent_completion: stats.torrent_completion,
+        source: source.to_string(),
+        created_at: instance.created_at,
+        is_idling: stats.is_idling,
+        idling_reason: stats.idling_reason.clone(),
+        stop_condition_met: stats.stop_condition_met,
+        post_stop_action: stats.post_stop_action,
+        effective_stop_at_ratio: stats.effective_stop_at_ratio,
+    }
+}
+
 impl AppState {
     pub fn new(data_dir: &str) -> Self {
         let (log_sender, _) = broadcast::channel(256);
@@ -847,6 +894,7 @@ impl AppState {
         if let Err(e) = self.save_state().await {
             tracing::warn!("Failed to save state after updating tags: {}", e);
         }
+        self.emit_instance_summaries(&[id.to_string()]).await;
         Ok(())
     }
 
@@ -858,6 +906,7 @@ impl AppState {
     ) -> Result<usize, String> {
         let mut instances = self.instances.write().await;
         let mut updated = 0;
+        let mut updated_ids = Vec::new();
 
         for id in ids {
             if let Some(instance) = instances.get_mut(id) {
@@ -868,6 +917,7 @@ impl AppState {
                 }
                 instance.tags.retain(|t| !remove_tags.contains(t));
                 updated += 1;
+                updated_ids.push(id.clone());
             }
         }
 
@@ -876,6 +926,7 @@ impl AppState {
             if let Err(e) = self.save_state().await {
                 tracing::warn!("Failed to save state after grid tag update: {}", e);
             }
+            self.emit_instance_summaries(&updated_ids).await;
         }
         Ok(updated)
     }
@@ -885,50 +936,33 @@ impl AppState {
         let mut result = Vec::with_capacity(instances.len());
 
         for (id, instance) in instances.iter() {
-            let stats = instance.faker.stats_snapshot();
-
-            let source = match instance.source {
-                InstanceSource::Manual => "manual",
-                InstanceSource::WatchFolder => "watch_folder",
-            };
-
-            let state = match stats.state {
-                FakerState::Paused => "paused",
-                _ if stats.is_idling => "idle",
-                FakerState::Idle => "idle",
-                FakerState::Starting => "starting",
-                FakerState::Running => "running",
-                FakerState::Stopping => "stopping",
-                FakerState::Stopped => "stopped",
-            };
-
-            result.push(InstanceSummary {
-                id: id.clone(),
-                name: instance.summary.name.clone(),
-                info_hash: hex::encode(instance.torrent_info_hash),
-                primary_tracker_host: primary_tracker_host(&instance.summary.announce),
-                state: state.to_string(),
-                is_tracker_invalid: stats.tracker_error.is_some(),
-                tracker_error: stats.tracker_error.clone(),
-                tracker_retry_attempt: stats.tracker_retry_attempt,
-                tracker_retry_at_ms: stats.tracker_retry_at_ms,
-                tags: instance.tags.clone(),
-                total_size: instance.summary.total_size,
-                uploaded: stats.uploaded,
-                downloaded: stats.downloaded,
-                ratio: stats.ratio,
-                current_upload_rate: stats.current_upload_rate,
-                current_download_rate: stats.current_download_rate,
-                seeders: stats.seeders,
-                leechers: stats.leechers,
-                left: stats.left,
-                torrent_completion: stats.torrent_completion,
-                source: source.to_string(),
-                created_at: instance.created_at,
-            });
+            result.push(instance.faker.with_stats(|stats| build_summary(id, instance, stats)));
         }
 
         result
+    }
+
+    // Build summaries for a specific set of ids, without cloning full stats snapshots.
+    pub async fn instance_summaries_for(&self, ids: &[String]) -> Vec<InstanceSummary> {
+        let instances = self.instances.read().await;
+        ids.iter()
+            .filter_map(|id| {
+                instances.get(id).map(|instance| {
+                    instance.faker.with_stats(|stats| build_summary(id, instance, stats))
+                })
+            })
+            .collect()
+    }
+
+    // Push a summaries batch to SSE subscribers; skipped when nobody is listening.
+    pub async fn emit_instance_summaries(&self, ids: &[String]) {
+        if ids.is_empty() || self.instance_sender.receiver_count() == 0 {
+            return;
+        }
+        let summaries = self.instance_summaries_for(ids).await;
+        if !summaries.is_empty() {
+            self.emit_instance_event(InstanceEvent::Summaries { instances: summaries });
+        }
     }
 
     pub async fn create_instance_with_tags(
