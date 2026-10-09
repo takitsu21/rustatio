@@ -86,6 +86,14 @@ Fedora/RHEL/CentOS:
 sudo dnf install Rustatio-*.rpm
 ```
 
+Arch Linux ([AUR](https://aur.archlinux.org/packages/rustatio-bin)):
+
+```bash
+yay -S rustatio-bin
+# or
+paru -S rustatio-bin
+```
+
 AppImage (universal):
 
 ```bash
