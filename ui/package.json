@@ -40,6 +40,6 @@
     "svelte-eslint-parser": "^1.4.1",
     "tailwind-merge": "^3.4.0",
     "tailwindcss": "^4.1.18",
-    "vite": "^7.3.2"
+    "vite": "^7.3.6"
   }
 }
