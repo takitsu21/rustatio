@@ -89,6 +89,9 @@ impl Modify for SecurityAddon {
         routes::clients::get_client_infos,
         // Network
         routes::network::get_network_status,
+        routes::network::get_proxy,
+        routes::network::set_proxy,
+        routes::network::test_proxy,
         // Watch
         routes::watch::get_watch_status,
         routes::watch::list_watch_files,
@@ -122,6 +125,7 @@ impl Modify for SecurityAddon {
             routes::torrents::LoadTorrentResponse,
             routes::faker::StartFakerRequest,
             routes::network::NetworkStatus,
+            routes::network::ProxyTestResponse,
             routes::watch::ReloadAllResponse,
             routes::clients::ClientInfoResponse,
             crate::services::InstanceInfo,

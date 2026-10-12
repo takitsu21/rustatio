@@ -6,6 +6,7 @@ import {
   getNetworkLabel,
   getPeerListenerError,
   getPeerListenerPort,
+  getProxyStatus,
   isNetworkConfigured,
   maskIp,
 } from './network.js';
@@ -44,4 +45,22 @@ test('getNetworkLabel maps VPN states to rail labels', () => {
   assert.deepEqual(getNetworkLabel({ is_vpn: true }), { label: 'VPN active', tone: 'upload' });
   assert.deepEqual(getNetworkLabel({ is_vpn: false }), { label: 'No VPN', tone: 'ratio' });
   assert.equal(getNetworkLabel(null), null);
+});
+
+test('getProxyStatus returns null when no proxy is active', () => {
+  assert.equal(getProxyStatus(null), null);
+  assert.equal(getProxyStatus({}), null);
+  assert.equal(getProxyStatus({ proxy_enabled: false, proxy_url: 'http://proxy:1' }), null);
+  assert.equal(getProxyStatus({ proxy_enabled: true }), null);
+});
+
+test('getProxyStatus reads snake_case and camelCase payloads', () => {
+  assert.deepEqual(getProxyStatus({ proxy_enabled: true, proxy_url: 'socks5h://127.0.0.1:1080' }), {
+    url: 'socks5h://127.0.0.1:1080',
+    address: '127.0.0.1:1080',
+  });
+  assert.deepEqual(getProxyStatus({ proxyEnabled: true, proxyUrl: 'http://proxy:8080' }), {
+    url: 'http://proxy:8080',
+    address: 'proxy:8080',
+  });
 });

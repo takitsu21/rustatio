@@ -54,7 +54,7 @@ impl WatchEngine for DesktopWatchEngine {
         let faker = RatioFaker::new(
             Arc::new(instance.info.clone()),
             instance.config.clone(),
-            Some(self.state.http_client.clone()),
+            Some(self.state.http_client().await),
         )
         .map_err(|e| format!("Failed to create faker: {e}"))?;
 

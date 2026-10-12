@@ -1,6 +1,6 @@
 use rustatio_core::{
-    FakerConfig, FakerState, FakerStats, PeerListenerService, PeerListenerStatus, RatioFakerHandle,
-    TorrentInfo, TorrentSummary,
+    FakerConfig, FakerState, FakerStats, PeerListenerService, PeerListenerStatus, ProxySettings,
+    RatioFakerHandle, TorrentInfo, TorrentSummary,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashMap};
@@ -42,7 +42,8 @@ pub struct AppState {
     pub fakers: Arc<RwLock<HashMap<u32, FakerInstance>>>,
     pub next_instance_id: Arc<RwLock<u32>>,
     pub config: Arc<RwLock<rustatio_core::AppConfig>>,
-    pub http_client: rustatio_core::reqwest::Client,
+    pub http_client: Arc<RwLock<rustatio_core::reqwest::Client>>,
+    pub proxy_settings: Arc<RwLock<Option<ProxySettings>>>,
     pub watch: Arc<RwLock<Option<crate::watch::DesktopWatchService>>>,
     pub default_config: Arc<RwLock<Option<FakerConfig>>>,
     pub watch_settings: Arc<RwLock<Option<WatchSettings>>>,
@@ -64,6 +65,51 @@ impl AppState {
 
     pub async fn peer_listener_status(&self) -> PeerListenerStatus {
         self.peer_listener_status.read().await.clone()
+    }
+
+    /// Shared HTTP client used for tracker traffic (proxy-aware).
+    pub async fn http_client(&self) -> rustatio_core::reqwest::Client {
+        self.http_client.read().await.clone()
+    }
+
+    /// Current proxy settings (defaults to disabled when unset).
+    pub async fn proxy_settings(&self) -> ProxySettings {
+        self.proxy_settings.read().await.clone().unwrap_or_default()
+    }
+
+    /// Validate, persist and apply new proxy settings to the shared client and
+    /// all instances.
+    pub async fn set_proxy_settings(&self, settings: ProxySettings) -> Result<(), String> {
+        settings.validate()?;
+
+        let proxy = settings.is_configured().then_some(&settings);
+        let client = rustatio_core::proxy::build_client(proxy)?;
+
+        // Persist first: if saving fails nothing is applied and the previous
+        // settings stay active.
+        let previous = self.proxy_settings.write().await.replace(settings);
+        if let Err(err) = self.save_state().await {
+            *self.proxy_settings.write().await = previous;
+            return Err(err);
+        }
+
+        *self.http_client.write().await = client.clone();
+        self.apply_http_client(client).await;
+
+        Ok(())
+    }
+
+    async fn apply_http_client(&self, client: rustatio_core::reqwest::Client) {
+        let fakers: Vec<Arc<RatioFakerHandle>> = {
+            let instances = self.fakers.read().await;
+            instances.values().map(|instance| Arc::clone(&instance.faker)).collect()
+        };
+
+        for faker in fakers {
+            if let Err(err) = faker.set_http_client(Some(client.clone())).await {
+                log::warn!("Failed to apply proxy settings to an instance: {err}");
+            }
+        }
     }
 
     async fn desired_peer_port_from_instances(&self) -> Result<Option<u16>, String> {
@@ -145,12 +191,14 @@ impl AppState {
 
         let default_config = self.default_config.read().await.clone();
         let watch_settings = self.watch_settings.read().await.clone();
+        let proxy_settings = self.proxy_settings.read().await.clone();
 
         PersistedState {
             instances,
             next_instance_id: next_id,
             default_config,
             watch_settings,
+            proxy_settings,
             version: 1,
         }
     }
@@ -187,12 +235,14 @@ impl AppState {
 
         let default_config = self.default_config.blocking_read().clone();
         let watch_settings = self.watch_settings.blocking_read().clone();
+        let proxy_settings = self.proxy_settings.blocking_read().clone();
 
         PersistedState {
             instances,
             next_instance_id: next_id,
             default_config,
             watch_settings,
+            proxy_settings,
             version: 1,
         }
     }
@@ -224,7 +274,7 @@ impl AppState {
             let old_config = instance.config.clone();
             instance
                 .faker
-                .update_config(config.clone(), Some(self.http_client.clone()))
+                .update_config(config.clone(), Some(self.http_client().await))
                 .await
                 .map_err(|e| format!("Failed to update faker config: {e}"))?;
             instance.config = config.clone();
@@ -237,7 +287,7 @@ impl AppState {
                 instance.config = old_config.clone();
                 instance
                     .faker
-                    .update_config(old_config, Some(self.http_client.clone()))
+                    .update_config(old_config, Some(self.http_client().await))
                     .await
                     .map_err(|e| {
                         format!("{err}; rollback failed while restoring previous config: {e}")

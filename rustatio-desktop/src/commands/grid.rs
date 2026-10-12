@@ -91,7 +91,7 @@ async fn import_torrent_files(
         let faker = match RatioFaker::new(
             Arc::clone(&torrent_arc),
             faker_config.clone(),
-            Some(state.http_client.clone()),
+            Some(state.http_client().await),
         ) {
             Ok(f) => f,
             Err(e) => {
@@ -535,7 +535,7 @@ pub async fn grid_update_config(
                 new_config.initial_downloaded = instance.cumulative_downloaded;
 
                 let result =
-                    instance.faker.update_config(new_config, Some(state.http_client.clone())).await;
+                    instance.faker.update_config(new_config, Some(state.http_client().await)).await;
                 match result {
                     Ok(()) => {
                         instance.config = faker_config.clone();
@@ -588,7 +588,7 @@ pub async fn bulk_update_configs(
                 new_config.initial_downloaded = instance.cumulative_downloaded;
 
                 let result =
-                    instance.faker.update_config(new_config, Some(state.http_client.clone())).await;
+                    instance.faker.update_config(new_config, Some(state.http_client().await)).await;
                 match result {
                     Ok(()) => {
                         instance.config = entry.config;

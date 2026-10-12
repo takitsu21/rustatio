@@ -81,7 +81,7 @@ async fn restore_saved_instances(
         let summary = Arc::new(persisted.torrent.clone());
         let torrent = Arc::new(persisted.torrent.to_info());
 
-        match RatioFaker::new(Arc::clone(&torrent), config, Some(state.http_client.clone())) {
+        match RatioFaker::new(Arc::clone(&torrent), config, Some(state.http_client().await)) {
             Ok(faker) => {
                 let was_running =
                     matches!(persisted.state, FakerState::Starting | FakerState::Running);
@@ -235,6 +235,7 @@ fn main() {
     let saved_instances_map = saved_state.instances;
     let saved_default_config = saved_state.default_config.clone();
     let saved_watch_settings = saved_state.watch_settings;
+    let saved_proxy_settings = saved_state.proxy_settings;
 
     // Keep references for exit handler
     let fakers_for_exit = Arc::new(RwLock::new(HashMap::new()));
@@ -243,11 +244,27 @@ fn main() {
     let should_exit = Arc::new(AtomicBool::new(false));
     let close_prompt_open = Arc::new(AtomicBool::new(false));
 
+    // Only keep the saved proxy settings when the client builds: invalid
+    // settings must not be reported as active while traffic bypasses them.
+    let mut initial_http_client = rustatio_core::proxy::build_client(None).unwrap_or_default();
+    let mut initial_proxy_settings = None;
+
+    if let Some(settings) = saved_proxy_settings {
+        match rustatio_core::proxy::build_client(Some(&settings)) {
+            Ok(client) => {
+                initial_http_client = client;
+                initial_proxy_settings = Some(settings);
+            }
+            Err(err) => log::warn!("Ignoring invalid saved proxy settings: {err}"),
+        }
+    }
+
     let app_state = AppState {
         fakers: Arc::clone(&fakers_for_exit),
         next_instance_id: Arc::clone(&next_id_for_exit),
         config: Arc::new(RwLock::new(config)),
-        http_client: rustatio_core::reqwest::Client::new(),
+        http_client: Arc::new(RwLock::new(initial_http_client)),
+        proxy_settings: Arc::new(RwLock::new(initial_proxy_settings)),
         watch: Arc::new(RwLock::new(None)),
         default_config: Arc::new(RwLock::new(saved_default_config)),
         watch_settings: Arc::new(RwLock::new(saved_watch_settings)),
@@ -289,6 +306,9 @@ fn main() {
             commands::get_client_types,
             commands::get_client_infos,
             commands::get_network_status,
+            commands::get_proxy_settings,
+            commands::set_proxy_settings,
+            commands::test_proxy,
             commands::write_file,
             commands::set_log_level,
             commands::detect_linux_package_type,

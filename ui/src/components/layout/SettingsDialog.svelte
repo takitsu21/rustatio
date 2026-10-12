@@ -1,7 +1,16 @@
 <script>
   import { instances, activeInstanceId, instanceActions } from '$lib/core/instanceStore.js';
   import { get } from 'svelte/store';
-  import { api } from '$lib/api.js';
+  import { api, getRunMode } from '$lib/api.js';
+  import {
+    PROXY_TYPES,
+    defaultPortFor,
+    emptyProxyForm,
+    errorText,
+    formFromSettings,
+    settingsFromForm,
+    validateProxyForm,
+  } from '$lib/proxy.js';
   import Button from '$lib/components/ui/button.svelte';
   import BaseModal from '../common/BaseModal.svelte';
   import { builtInPresets } from '$lib/presets/index.js';
@@ -89,6 +98,76 @@
   $effect(() => {
     if (isOpen) {
       closeBehavior = getCloseBehavior();
+    }
+  });
+
+  // Proxy settings (server and desktop only)
+  const proxySupported = getRunMode() !== 'wasm';
+  let proxyForm = $state(emptyProxyForm());
+  let proxySaving = $state(false);
+  let proxyTesting = $state(false);
+  let proxyMessage = $state('');
+  let proxyError = $state('');
+
+  const socksLookupAvailable = $derived(proxyForm.type === 'socks4' || proxyForm.type === 'socks5');
+
+  function handleProxyTypeChange(type) {
+    proxyForm.type = type;
+    if (!proxyForm.port) {
+      proxyForm.port = String(defaultPortFor(type));
+    }
+  }
+
+  async function loadProxySettings() {
+    if (!proxySupported) return;
+    try {
+      proxyForm = formFromSettings(await api.getProxySettings());
+      proxyError = '';
+    } catch (e) {
+      proxyError = `Failed to load proxy settings: ${errorText(e)}`;
+    }
+  }
+
+  async function saveProxySettings() {
+    proxyMessage = '';
+    proxyError = validateProxyForm(proxyForm) || '';
+    if (proxyError) return;
+
+    proxySaving = true;
+    try {
+      const payload = settingsFromForm(proxyForm);
+      await api.setProxySettings(payload);
+      proxyForm = formFromSettings(payload);
+      proxyMessage = 'Proxy settings saved and applied to instances';
+      window.dispatchEvent(new Event('rustatio:refresh-network-status'));
+    } catch (e) {
+      proxyError = `Failed to save proxy settings: ${errorText(e)}`;
+    } finally {
+      proxySaving = false;
+    }
+  }
+
+  async function testProxySettings() {
+    proxyMessage = '';
+    proxyError = validateProxyForm(proxyForm) || '';
+    if (proxyError) return;
+
+    proxyTesting = true;
+    try {
+      const result = await api.testProxy(settingsFromForm(proxyForm));
+      proxyMessage = result?.ip
+        ? `Proxy connected - egress IP: ${result.ip}`
+        : 'Proxy connection succeeded';
+    } catch (e) {
+      proxyError = `Proxy test failed: ${errorText(e)}`;
+    } finally {
+      proxyTesting = false;
+    }
+  }
+
+  $effect(() => {
+    if (isOpen) {
+      loadProxySettings();
     }
   });
 
@@ -503,6 +582,17 @@
       >
         General
       </button>
+      {#if proxySupported}
+        <button
+          class="flex-1 cursor-pointer px-3 py-1.5 text-[0.6875rem] font-medium transition-colors {activeTab ===
+          'connection'
+            ? 'border-b-2 border-primary bg-primary/5 text-primary'
+            : 'text-muted-foreground hover:text-foreground'}"
+          onclick={() => (activeTab = 'connection')}
+        >
+          Connection
+        </button>
+      {/if}
       <button
         class="flex-1 cursor-pointer px-3 py-1.5 text-[0.6875rem] font-medium transition-colors {activeTab ===
         'presets'
@@ -703,6 +793,150 @@
               {modifierLabel} 0 resets.
             </p>
           </div>
+        </div>
+      {:else if activeTab === 'connection'}
+        <!-- Connection Settings Tab -->
+        <div class="space-y-3">
+          <p class="text-[0.6875rem] text-muted-foreground">
+            Route tracker traffic through a proxy instead of a full VPN. Changes apply to new and
+            running instances.
+          </p>
+
+          <label class="flex cursor-pointer items-center gap-2 text-xs text-foreground">
+            <input
+              type="checkbox"
+              bind:checked={proxyForm.enabled}
+              class="h-3.5 w-3.5 cursor-pointer accent-foreground"
+            />
+            Use a proxy for tracker traffic
+          </label>
+
+          <fieldset class="border border-border p-3" disabled={!proxyForm.enabled}>
+            <legend
+              class="px-1 text-[0.625rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground"
+            >
+              Proxy Server
+            </legend>
+
+            <div class="flex flex-wrap items-center gap-2">
+              <label for="proxyType" class="text-[0.6875rem] text-muted-foreground">Type</label>
+              <select
+                id="proxyType"
+                value={proxyForm.type}
+                onchange={e => handleProxyTypeChange(e.target.value)}
+                class="h-8 w-28 border border-input bg-background px-2 text-xs text-foreground focus:border-ring focus:outline-none"
+              >
+                {#each PROXY_TYPES as type (type.id)}
+                  <option value={type.id}>{type.label}</option>
+                {/each}
+              </select>
+
+              <label for="proxyHost" class="ml-1 text-[0.6875rem] text-muted-foreground">Host</label
+              >
+              <input
+                id="proxyHost"
+                type="text"
+                bind:value={proxyForm.host}
+                placeholder="127.0.0.1"
+                class="h-8 min-w-[8rem] flex-1 border border-input bg-background px-2.5 text-xs text-foreground focus:border-ring focus:outline-none"
+              />
+
+              <label for="proxyPort" class="text-[0.6875rem] text-muted-foreground">Port</label>
+              <input
+                id="proxyPort"
+                type="text"
+                inputmode="numeric"
+                bind:value={proxyForm.port}
+                class="h-8 w-20 border border-input bg-background px-2.5 text-xs text-foreground focus:border-ring focus:outline-none"
+              />
+            </div>
+
+            <label
+              class="mt-3 flex items-center gap-2 text-xs {socksLookupAvailable
+                ? 'cursor-pointer text-foreground'
+                : 'text-muted-foreground'}"
+            >
+              <input
+                type="checkbox"
+                bind:checked={proxyForm.resolveHostnameViaProxy}
+                disabled={!socksLookupAvailable}
+                class="h-3.5 w-3.5 accent-foreground"
+              />
+              Perform hostname lookup via proxy
+            </label>
+
+            <fieldset class="mt-3 border border-border p-3">
+              <legend class="px-1">
+                <label
+                  class="flex cursor-pointer items-center gap-2 text-[0.625rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground"
+                >
+                  <input
+                    type="checkbox"
+                    bind:checked={proxyForm.authentication}
+                    class="h-3.5 w-3.5 cursor-pointer accent-foreground"
+                  />
+                  Authentication
+                </label>
+              </legend>
+
+              <div class="space-y-1.5">
+                <div class="flex items-center gap-2">
+                  <label for="proxyUsername" class="w-20 text-[0.6875rem] text-muted-foreground"
+                    >Username</label
+                  >
+                  <input
+                    id="proxyUsername"
+                    type="text"
+                    bind:value={proxyForm.username}
+                    disabled={!proxyForm.authentication}
+                    class="h-8 flex-1 border border-input bg-background px-2.5 text-xs text-foreground focus:border-ring focus:outline-none disabled:opacity-50"
+                  />
+                </div>
+                <div class="flex items-center gap-2">
+                  <label for="proxyPassword" class="w-20 text-[0.6875rem] text-muted-foreground"
+                    >Password</label
+                  >
+                  <input
+                    id="proxyPassword"
+                    type="password"
+                    bind:value={proxyForm.password}
+                    disabled={!proxyForm.authentication}
+                    class="h-8 flex-1 border border-input bg-background px-2.5 text-xs text-foreground focus:border-ring focus:outline-none disabled:opacity-50"
+                  />
+                </div>
+              </div>
+
+              <p class="mt-2 text-[0.625rem] text-muted-foreground">
+                Note: the password is saved unencrypted.
+              </p>
+            </fieldset>
+          </fieldset>
+
+          <div class="flex items-center gap-2">
+            <Button size="sm" onclick={saveProxySettings} disabled={proxySaving}>
+              <Save size={12} />
+              {proxySaving ? 'Saving...' : 'Save'}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onclick={testProxySettings}
+              disabled={proxyTesting || !proxyForm.enabled || !proxyForm.host}
+            >
+              {proxyTesting ? 'Testing...' : 'Test connection'}
+            </Button>
+          </div>
+
+          {#if proxyError}
+            <p class="text-xs text-stat-leecher">{proxyError}</p>
+          {:else if proxyMessage}
+            <p class="text-xs text-stat-upload">{proxyMessage}</p>
+          {/if}
+
+          <p class="text-xs text-muted-foreground">
+            SOCKS5/SOCKS4 with hostname lookup resolve DNS through the proxy (recommended). In
+            Docker, use the host address (e.g. host.docker.internal) instead of localhost.
+          </p>
         </div>
       {:else if activeTab === 'presets'}
         <!-- Presets Tab -->

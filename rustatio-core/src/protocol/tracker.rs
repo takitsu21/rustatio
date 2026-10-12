@@ -1,6 +1,6 @@
 use crate::protocol::bencode;
 use crate::torrent::ClientConfig;
-use crate::{log_debug, log_error, log_info, log_trace, log_warn};
+use crate::{log_debug, log_error, log_info, log_trace, log_warn, proxy};
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use std::fmt::Write;
@@ -22,7 +22,7 @@ pub enum TrackerError {
 
 impl From<reqwest::Error> for TrackerError {
     fn from(err: reqwest::Error) -> Self {
-        Self::HttpError(err.to_string())
+        Self::HttpError(proxy::describe(&err))
     }
 }
 
@@ -52,9 +52,9 @@ pub struct ReqwestHttpClient {
 impl HttpClient for ReqwestHttpClient {
     async fn get(&self, url: String, agent: String) -> HttpResult {
         let req = self.client.get(url).header(reqwest::header::USER_AGENT, agent);
-        let res = req.send().await.map_err(|err| err.to_string())?;
+        let res = req.send().await.map_err(|err| proxy::describe(&err))?;
         let status = res.status();
-        let body = res.bytes().await.map_err(|err| err.to_string())?;
+        let body = res.bytes().await.map_err(|err| proxy::describe(&err))?;
         Ok(HttpResponse { status, body: body.to_vec() })
     }
 }

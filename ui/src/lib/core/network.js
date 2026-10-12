@@ -39,3 +39,16 @@ export function getNetworkLabel(status) {
   }
   return { label: 'No VPN', tone: 'ratio' };
 }
+
+/**
+ * Proxy badge data for the transfer rail, or null when no proxy is active.
+ */
+export function getProxyStatus(status) {
+  const enabled = status?.proxy_enabled ?? status?.proxyEnabled ?? false;
+  const url = status?.proxy_url ?? status?.proxyUrl ?? '';
+  if (!enabled || !url) return null;
+  return {
+    url,
+    address: String(url).replace(/^[a-zA-Z0-9]+:\/\//, ''),
+  };
+}

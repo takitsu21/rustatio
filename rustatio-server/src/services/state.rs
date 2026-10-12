@@ -8,8 +8,8 @@ use super::persistence::{
 use rustatio_core::logger::set_instance_context_str;
 use rustatio_core::{
     primary_tracker_host, FakerConfig, FakerState, FakerStats, InstanceSummary,
-    PeerListenerService, PeerListenerStatus, RatioFaker, RatioFakerHandle, TorrentInfo,
-    TorrentSummary,
+    PeerListenerService, PeerListenerStatus, ProxySettings, RatioFaker, RatioFakerHandle,
+    TorrentInfo, TorrentSummary,
 };
 use std::collections::{BTreeSet, HashMap};
 use std::sync::atomic::{AtomicU16, Ordering};
@@ -29,7 +29,8 @@ pub struct AppState {
     default_preset: Arc<RwLock<Option<DefaultPreset>>>,
     watch_settings: Arc<RwLock<Option<WatchSettings>>>,
     custom_presets: Arc<RwLock<Vec<CustomPreset>>>,
-    http_client: reqwest::Client,
+    http_client: Arc<RwLock<reqwest::Client>>,
+    proxy_settings: Arc<RwLock<Option<ProxySettings>>>,
     forwarded_port: Arc<AtomicU16>,
     server_vpn_port_sync: bool,
     peer_listener: Arc<RwLock<Option<PeerListenerHandle>>>,
@@ -125,7 +126,10 @@ impl AppState {
             default_preset: Arc::new(RwLock::new(None)),
             watch_settings: Arc::new(RwLock::new(None)),
             custom_presets: Arc::new(RwLock::new(Vec::new())),
-            http_client: reqwest::Client::new(),
+            http_client: Arc::new(RwLock::new(
+                rustatio_core::proxy::build_client(None).unwrap_or_default(),
+            )),
+            proxy_settings: Arc::new(RwLock::new(None)),
             forwarded_port: Arc::new(AtomicU16::new(0)),
             server_vpn_port_sync: std::env::var("VPN_PORT_SYNC").is_ok_and(|v| {
                 matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on")
@@ -148,6 +152,51 @@ impl AppState {
 
     pub const fn vpn_port_sync_enabled(&self) -> bool {
         self.server_vpn_port_sync
+    }
+
+    /// Shared HTTP client used for tracker traffic (proxy-aware).
+    pub async fn http_client(&self) -> reqwest::Client {
+        self.http_client.read().await.clone()
+    }
+
+    /// Current proxy settings (defaults to disabled when unset).
+    pub async fn proxy_settings(&self) -> ProxySettings {
+        self.proxy_settings.read().await.clone().unwrap_or_default()
+    }
+
+    /// Validate, persist and apply new proxy settings to the shared client and
+    /// all running instances.
+    pub async fn set_proxy_settings(&self, settings: ProxySettings) -> Result<(), String> {
+        settings.validate()?;
+
+        let proxy = settings.is_configured().then_some(&settings);
+        let client = rustatio_core::proxy::build_client(proxy)?;
+
+        // Persist first: if saving fails nothing is applied and the previous
+        // settings stay active.
+        let previous = self.proxy_settings.write().await.replace(settings);
+        if let Err(err) = self.save_state().await {
+            *self.proxy_settings.write().await = previous;
+            return Err(err);
+        }
+
+        *self.http_client.write().await = client.clone();
+        self.apply_http_client(client).await;
+
+        Ok(())
+    }
+
+    async fn apply_http_client(&self, client: reqwest::Client) {
+        let fakers: Vec<Arc<RatioFakerHandle>> = {
+            let instances = self.instances.read().await;
+            instances.values().map(|instance| Arc::clone(&instance.faker)).collect()
+        };
+
+        for faker in fakers {
+            if let Err(err) = faker.set_http_client(Some(client.clone())).await {
+                tracing::warn!("Failed to apply proxy settings to an instance: {err}");
+            }
+        }
     }
 
     pub async fn peer_listener_status(&self) -> PeerListenerStatus {
@@ -328,6 +377,20 @@ impl AppState {
             tracing::info!("Restored watch settings from saved state");
         }
 
+        if let Some(settings) = saved.proxy_settings.clone() {
+            let proxy = settings.is_configured().then_some(&settings);
+            match rustatio_core::proxy::build_client(proxy) {
+                Ok(client) => {
+                    *self.http_client.write().await = client;
+                    *self.proxy_settings.write().await = Some(settings);
+                    tracing::info!("Restored proxy settings from saved state");
+                }
+                Err(err) => {
+                    tracing::warn!("Ignoring invalid saved proxy settings: {err}");
+                }
+            }
+        }
+
         if !saved.custom_presets.is_empty() {
             *self.custom_presets.write().await = saved.custom_presets.clone();
             tracing::info!(
@@ -361,7 +424,7 @@ impl AppState {
             match RatioFaker::new(
                 Arc::clone(&torrent),
                 faker_config,
-                Some(self.http_client.clone()),
+                Some(self.http_client().await),
             ) {
                 Ok(faker) => {
                     let restored_stats = runtime.map_or_else(
@@ -434,6 +497,7 @@ impl AppState {
         let default_config = self.default_config.read().await.clone();
         let default_preset = self.default_preset.read().await.clone();
         let watch_settings = self.watch_settings.read().await.clone();
+        let proxy_settings = self.proxy_settings.read().await.clone();
         let custom_presets = self.custom_presets.read().await.clone();
 
         let mut persisted = PersistedState {
@@ -441,6 +505,7 @@ impl AppState {
             default_config,
             default_preset,
             watch_settings,
+            proxy_settings,
             custom_presets,
             version: 1,
         };
@@ -498,7 +563,7 @@ impl AppState {
 
         instance
             .faker
-            .update_config(faker_config, Some(self.http_client.clone()))
+            .update_config(faker_config, Some(self.http_client().await))
             .await
             .map_err(|e| e.to_string())?;
         instance.config = config;
@@ -526,7 +591,7 @@ impl AppState {
 
         instance
             .faker
-            .update_config(config, Some(self.http_client.clone()))
+            .update_config(config, Some(self.http_client().await))
             .await
             .map_err(|e| format!("Failed to update faker config: {e}"))?;
         drop(instances);
@@ -563,7 +628,7 @@ impl AppState {
 
                     let result = instance
                         .faker
-                        .update_config(faker_config, Some(self.http_client.clone()))
+                        .update_config(faker_config, Some(self.http_client().await))
                         .await;
                     match result {
                         Ok(()) => {
@@ -659,7 +724,7 @@ impl AppState {
         let id = context.id.clone();
         let existing = self.collect_existing_instance_state(&context).await;
         let faker_config = Self::build_faker_config(&context, &existing);
-        let instance = self.build_instance(context, faker_config, existing)?;
+        let instance = self.build_instance(context, faker_config, existing).await?;
         self.insert_instance(id, instance).await
     }
 
@@ -814,7 +879,7 @@ impl AppState {
             } else {
                 instance
                     .faker
-                    .update_config(faker_config, Some(self.http_client.clone()))
+                    .update_config(faker_config, Some(self.http_client().await))
                     .await
                     .map_err(|e| format!("Failed to update synced port: {e}"))?;
             }
@@ -1031,7 +1096,7 @@ impl AppState {
         faker_config
     }
 
-    fn build_instance(
+    async fn build_instance(
         &self,
         context: InstanceBuildContext,
         faker_config: FakerConfig,
@@ -1041,7 +1106,7 @@ impl AppState {
         let faker = RatioFaker::new(
             Arc::clone(&context.torrent),
             faker_config,
-            Some(self.http_client.clone()),
+            Some(self.http_client().await),
         )
         .map_err(|e| e.to_string())?;
 
@@ -1659,5 +1724,41 @@ mod tests {
             restored.list_instances().await.into_iter().map(|inst| inst.id).collect();
         let expected: BTreeSet<String> = (5..10u8).map(|i| format!("inst-{i}")).collect();
         assert_eq!(remaining, expected, "bulk delete must not touch unselected instances");
+    }
+
+    #[tokio::test]
+    async fn proxy_settings_round_trip_through_saved_state() {
+        let temp = tempfile::tempdir();
+        assert!(temp.is_ok());
+        let temp = temp.unwrap_or_else(|_| unreachable!());
+        let dir = temp.path().to_string_lossy().to_string();
+
+        let state = AppState::new(&dir);
+        let settings = ProxySettings {
+            enabled: true,
+            url: "socks5h://127.0.0.1:1080".to_string(),
+            ..ProxySettings::default()
+        };
+        assert!(state.set_proxy_settings(settings.clone()).await.is_ok());
+
+        let restored = AppState::new(&dir);
+        assert!(restored.load_saved_state().await.is_ok());
+        assert_eq!(restored.proxy_settings().await, settings);
+    }
+
+    #[tokio::test]
+    async fn set_proxy_settings_rejects_unsupported_scheme() {
+        let temp = tempfile::tempdir();
+        assert!(temp.is_ok());
+        let temp = temp.unwrap_or_else(|_| unreachable!());
+        let state = AppState::new(&temp.path().to_string_lossy());
+
+        let invalid = ProxySettings {
+            enabled: true,
+            url: "ftp://proxy:21".to_string(),
+            ..ProxySettings::default()
+        };
+        assert!(state.set_proxy_settings(invalid).await.is_err());
+        assert_eq!(state.proxy_settings().await, ProxySettings::default());
     }
 }

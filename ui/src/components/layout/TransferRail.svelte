@@ -1,7 +1,16 @@
 <script>
-  import { getForwardedPort, getNetworkLabel, maskIp } from '$lib/core/network.js';
+  import { getForwardedPort, getNetworkLabel, getProxyStatus, maskIp } from '$lib/core/network.js';
   import { formatBytes, formatRate } from '$lib/core/format.js';
-  import { Loader2, Ban, AlertCircle, Lock, LockOpen, RefreshCw, PlugZap } from '@lucide/svelte';
+  import {
+    Loader2,
+    Ban,
+    AlertCircle,
+    Lock,
+    LockOpen,
+    RefreshCw,
+    PlugZap,
+    Shield,
+  } from '@lucide/svelte';
 
   let {
     totals = null,
@@ -13,6 +22,7 @@
 
   let network = $derived(getNetworkLabel(networkStatus));
   let forwardedPort = $derived(getForwardedPort(networkStatus));
+  let proxy = $derived(getProxyStatus(networkStatus));
 </script>
 
 <footer
@@ -75,6 +85,13 @@
 
   <!-- Network status -->
   <div class="ml-auto flex items-center gap-3">
+    {#if proxy}
+      <span class="flex items-center gap-1.5" title="Tracker traffic is routed through {proxy.url}">
+        <Shield size={11} class="text-stat-upload" />
+        <span class="hidden text-stat-upload lg:inline">Proxy</span>
+        <span class="tabular-nums hidden xl:inline">{proxy.address}</span>
+      </span>
+    {/if}
     {#if networkStatusLoading}
       <span class="flex items-center gap-1.5">
         <Loader2 size={11} class="animate-spin" />

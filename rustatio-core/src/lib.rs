@@ -5,6 +5,7 @@ pub mod logger;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod peer_listener;
 pub mod protocol;
+pub mod proxy;
 pub mod torrent;
 pub mod validation;
 
@@ -18,6 +19,7 @@ pub use faker::{
 pub use grid::{primary_tracker_host, GridImportSettings, GridMode, InstanceSummary};
 #[cfg(not(target_arch = "wasm32"))]
 pub use peer_listener::{PeerCatalog, PeerListenerService, PeerListenerStatus, PeerLookup};
+pub use proxy::ProxySettings;
 pub use torrent::{
     ClientConfig, ClientInfo, ClientType, HttpVersion, TorrentError, TorrentFile, TorrentInfo,
     TorrentSummary,

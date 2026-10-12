@@ -171,7 +171,7 @@ pub async fn load_instance_torrent(
             let faker = RatioFaker::new(
                 Arc::clone(&torrent_arc),
                 config.clone(),
-                Some(state.http_client.clone()),
+                Some(state.http_client().await),
             )
             .map_err(|e| format!("Failed to create faker: {e}"))?;
 
@@ -193,7 +193,7 @@ pub async fn load_instance_torrent(
             let instance = entry.get_mut();
             let config = instance.config.clone();
             let faker =
-                RatioFaker::new(Arc::clone(&torrent_arc), config, Some(state.http_client.clone()))
+                RatioFaker::new(Arc::clone(&torrent_arc), config, Some(state.http_client().await))
                     .map_err(|e| format!("Failed to create faker: {e}"))?;
             instance.torrent = torrent_arc;
             instance.summary = summary_arc;

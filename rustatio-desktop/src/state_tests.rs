@@ -3,7 +3,8 @@ mod tests {
     use crate::persistence;
     use crate::state::{AppState, FakerInstance, InstanceInfo};
     use rustatio_core::{
-        AppConfig, FakerConfig, PeerListenerStatus, RatioFaker, RatioFakerHandle, TorrentInfo,
+        AppConfig, FakerConfig, PeerListenerStatus, ProxySettings, RatioFaker, RatioFakerHandle,
+        TorrentInfo,
     };
     use rustatio_watch::InstanceSource;
     use std::collections::HashMap;
@@ -39,7 +40,8 @@ mod tests {
             fakers: Arc::new(RwLock::new(HashMap::new())),
             next_instance_id: Arc::new(RwLock::new(1)),
             config: Arc::new(RwLock::new(AppConfig::default())),
-            http_client: rustatio_core::reqwest::Client::new(),
+            http_client: Arc::new(RwLock::new(rustatio_core::reqwest::Client::new())),
+            proxy_settings: Arc::new(RwLock::new(None)),
             watch: Arc::new(RwLock::new(None)),
             default_config: Arc::new(RwLock::new(None)),
             watch_settings: Arc::new(RwLock::new(None)),
@@ -55,7 +57,7 @@ mod tests {
         let torrent = Arc::new(info.clone());
         let summary = Arc::new(info.summary());
         let faker =
-            RatioFaker::new(Arc::clone(&torrent), config.clone(), Some(state.http_client.clone()));
+            RatioFaker::new(Arc::clone(&torrent), config.clone(), Some(state.http_client().await));
         assert!(faker.is_ok());
         let faker = faker.unwrap_or_else(|_| unreachable!());
 
@@ -315,5 +317,41 @@ mod tests {
         assert_eq!(saved.config.stop_at_ratio, updated.stop_at_ratio);
 
         persistence::set_test_state_file_path(None);
+    }
+
+    #[tokio::test]
+    async fn proxy_settings_are_included_in_persisted_state() {
+        let state = app_state();
+        let settings = ProxySettings {
+            enabled: true,
+            url: "socks5h://127.0.0.1:1080".to_string(),
+            ..ProxySettings::default()
+        };
+        *state.proxy_settings.write().await = Some(settings.clone());
+
+        let persisted = state.build_persisted_state().await;
+        assert_eq!(persisted.proxy_settings, Some(settings.clone()));
+
+        let blocking = tokio::task::spawn_blocking({
+            let state = state.clone();
+            move || state.build_persisted_state_blocking()
+        })
+        .await;
+        assert!(blocking.is_ok());
+        let blocking = blocking.unwrap_or_else(|_| unreachable!());
+        assert_eq!(blocking.proxy_settings, Some(settings));
+    }
+
+    #[tokio::test]
+    async fn set_proxy_settings_rejects_invalid_url() {
+        let state = app_state();
+        let invalid = ProxySettings {
+            enabled: true,
+            url: "ftp://proxy:21".to_string(),
+            ..ProxySettings::default()
+        };
+
+        assert!(state.set_proxy_settings(invalid).await.is_err());
+        assert_eq!(state.proxy_settings().await, ProxySettings::default());
     }
 }

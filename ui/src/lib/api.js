@@ -4,6 +4,7 @@ const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
 // Check if running in server mode (served by rustatio-server)
 // We detect this by checking if /api/health endpoint responds
 let isServerMode = false;
+let runModeDetected = false;
 let serverBaseUrl = '';
 
 let initialized = false;
@@ -165,6 +166,18 @@ async function detectServerMode() {
   return false;
 }
 
+// Resolve the run mode before the app mounts so every component sees the
+// correct getRunMode() value from its first render. Returns true in server mode.
+export async function initRunMode() {
+  if (runModeDetected) return isServerMode;
+  runModeDetected = true;
+
+  if (isTauri) return false;
+
+  await detectServerMode();
+  return isServerMode;
+}
+
 // Only import WASM if not in Tauri
 if (!isTauri) {
   try {
@@ -182,9 +195,13 @@ export async function initWasm() {
     return;
   }
 
-  // Try server mode first
-  const serverAvailable = await detectServerMode();
-  if (serverAvailable) {
+  // The run mode is normally detected before the app mounts; detect it here
+  // as a fallback so a component can never see a stale 'wasm' mode.
+  if (!runModeDetected) {
+    await initRunMode();
+  }
+
+  if (isServerMode) {
     initialized = true;
     return;
   }
@@ -534,6 +551,22 @@ const serverApi = {
   },
   getNetworkStatus: async () => {
     return serverFetch('/network/status', { method: 'GET' });
+  },
+  // Proxy settings for tracker traffic (server mode only)
+  getProxySettings: async () => {
+    return serverFetch('/network/proxy', { method: 'GET' });
+  },
+  setProxySettings: async settings => {
+    await serverFetch('/network/proxy', {
+      method: 'PUT',
+      body: JSON.stringify(settings),
+    });
+  },
+  testProxy: async settings => {
+    return serverFetch('/network/proxy/test', {
+      method: 'POST',
+      body: JSON.stringify(settings),
+    });
   },
   getConfig: () => {
     const stored = localStorage.getItem('rustatio-config');
@@ -933,6 +966,19 @@ const tauriApi = {
       return local;
     }
   },
+  // Proxy settings for tracker traffic (desktop mode)
+  getProxySettings: async () => {
+    const { invoke } = await import('@tauri-apps/api/core');
+    return invoke('get_proxy_settings');
+  },
+  setProxySettings: async settings => {
+    const { invoke } = await import('@tauri-apps/api/core');
+    return invoke('set_proxy_settings', { settings });
+  },
+  testProxy: async settings => {
+    const { invoke } = await import('@tauri-apps/api/core');
+    return invoke('test_proxy', { settings });
+  },
   getConfig: async () => {
     const { invoke } = await import('@tauri-apps/api/core');
     return invoke('get_config');
@@ -1151,6 +1197,10 @@ const wasmApi = {
       return null;
     }
   },
+  // Proxy settings are not available in WASM/browser mode
+  getProxySettings: async () => null,
+  setProxySettings: async () => {},
+  testProxy: async () => null,
   getConfig: () => {
     const stored = localStorage.getItem('rustatio-config');
     return stored ? JSON.parse(stored) : null;

@@ -104,7 +104,7 @@ pub async fn start_faker(
     let mut faker = RatioFaker::new(
         Arc::clone(&torrent_arc),
         config_with_cumulative,
-        Some(state.http_client.clone()),
+        Some(state.http_client().await),
     )
     .map_err(|e| {
         let error_msg = format!("Failed to create faker: {e}");

@@ -1407,6 +1407,20 @@ impl RatioFaker {
         Ok(())
     }
 
+    /// Replace the HTTP client used for tracker traffic.
+    ///
+    /// Used when the global proxy settings change so running instances pick up
+    /// the new client without losing their peer id or session state.
+    pub fn set_http_client(&mut self, http_client: Option<reqwest::Client>) -> Result<()> {
+        let client_config =
+            ClientConfig::get(self.config.client_type, self.config.client_version.clone());
+        self.tracker_client = Arc::new(
+            TrackerClient::new(client_config, http_client)
+                .map_err(|e| FakerError::ConfigError(e.to_string()))?,
+        );
+        Ok(())
+    }
+
     fn build_announce_request(&self, event: TrackerEvent) -> AnnounceRequest {
         log_debug!(
             "Preparing announce: event={:?}, uploaded={}, downloaded={}, left={}",
@@ -1968,6 +1982,12 @@ impl RatioFakerHandle {
         let result = guard.update_config(config, http_client);
         let _ = self.stats_tx.send(guard.stats_snapshot());
         result
+    }
+
+    /// Replace the HTTP client used for tracker traffic.
+    pub async fn set_http_client(&self, http_client: Option<reqwest::Client>) -> Result<()> {
+        let mut guard = self.inner.lock().await;
+        guard.set_http_client(http_client)
     }
 
     pub async fn can_retry_tracker(&self) -> bool {

@@ -168,7 +168,7 @@
       const result = await api.getNetworkStatus();
       if (result) {
         networkStatus = result;
-        if (isNetworkConfigured(result) === false) {
+        if (isNetworkConfigured(result) === false && !result.proxy_enabled) {
           stopNetworkStatusPolling();
         }
       } else {
@@ -516,6 +516,7 @@
     // Initialize instance store (will restore session from localStorage)
     await instanceActions.initialize();
     startNetworkStatusPolling();
+    window.addEventListener('rustatio:refresh-network-status', refreshNetworkStatus);
     // Server mode receives tracker retry state through pushed summaries.
     if (getRunMode() !== 'server') {
       startTrackerRetryPolling();
@@ -640,6 +641,7 @@
     document.removeEventListener('click', handleClickOutside);
     window.removeEventListener('keydown', handleZoomKeydown, true);
     window.removeEventListener('wheel', handleZoomWheel, true);
+    window.removeEventListener('rustatio:refresh-network-status', refreshNetworkStatus);
 
     // Clean up beforeunload handler
     if (beforeUnloadHandler) {

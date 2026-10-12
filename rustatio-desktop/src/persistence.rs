@@ -1,4 +1,4 @@
-use rustatio_core::{FakerConfig, FakerState, TorrentSummary};
+use rustatio_core::{FakerConfig, FakerState, ProxySettings, TorrentSummary};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -30,6 +30,8 @@ pub struct PersistedState {
     pub default_config: Option<FakerConfig>,
     #[serde(default)]
     pub watch_settings: Option<WatchSettings>,
+    #[serde(default)]
+    pub proxy_settings: Option<ProxySettings>,
     pub version: u32,
 }
 
@@ -40,6 +42,7 @@ impl PersistedState {
             next_instance_id: 1,
             default_config: None,
             watch_settings: None,
+            proxy_settings: None,
             version: 1,
         }
     }

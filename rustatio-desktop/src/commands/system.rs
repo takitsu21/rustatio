@@ -1,3 +1,4 @@
+use rustatio_core::ProxySettings;
 use serde::Serialize;
 use std::sync::atomic::Ordering;
 use tauri::{Manager, State};
@@ -84,6 +85,10 @@ pub struct DesktopNetworkStatus {
     active: bool,
     #[serde(rename = "peer_listener_error")]
     error: Option<String>,
+    #[serde(rename = "proxy_enabled")]
+    proxy_enabled: bool,
+    #[serde(rename = "proxy_url")]
+    proxy_url: Option<String>,
 }
 
 #[tauri::command]
@@ -91,9 +96,39 @@ pub async fn get_network_status(
     state: State<'_, crate::state::AppState>,
 ) -> Result<DesktopNetworkStatus, String> {
     let status = state.peer_listener_status().await;
+    let proxy = state.proxy_settings().await;
     Ok(DesktopNetworkStatus {
         port: status.bound_port,
         active: status.bound_port.is_some(),
         error: status.last_error,
+        proxy_enabled: proxy.is_configured(),
+        proxy_url: proxy.is_configured().then(|| proxy.url.clone()),
     })
+}
+
+#[derive(Serialize)]
+pub struct ProxyTestResponse {
+    ip: String,
+}
+
+#[tauri::command]
+pub async fn get_proxy_settings(
+    state: State<'_, crate::state::AppState>,
+) -> Result<ProxySettings, String> {
+    Ok(state.proxy_settings().await)
+}
+
+#[tauri::command]
+pub async fn set_proxy_settings(
+    settings: ProxySettings,
+    state: State<'_, crate::state::AppState>,
+) -> Result<(), String> {
+    state.set_proxy_settings(settings).await
+}
+
+#[tauri::command]
+pub async fn test_proxy(settings: ProxySettings) -> Result<ProxyTestResponse, String> {
+    let proxy = settings.is_configured().then_some(&settings);
+    let ip = rustatio_core::proxy::fetch_public_ip(proxy).await?;
+    Ok(ProxyTestResponse { ip })
 }
