@@ -16,7 +16,7 @@ serde_bencode = "0.2"
 toml = "0.8"
 sha1 = "0.10"
 url = "2.5"
-rand = "0.9"
+rand = "0.10"
 getrandom = { version = "0.3", features = ["wasm_js"] }
 thiserror = "2.0"
 log = "0.4"
