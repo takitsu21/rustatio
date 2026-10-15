@@ -25,7 +25,7 @@ async-trait = "0.1"
 dirs = "6"
 
 # HTTP client - works on both native and WASM
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "gzip"], optional = true }
+reqwest = { version = "0.13", default-features = false, features = ["rustls-tls", "gzip"], optional = true }
 
 # Async runtime
 tokio = { version = "1.48", default-features = false, features = ["sync", "time", "macros", "rt", "net", "io-util"], optional = true }
@@ -42,7 +42,7 @@ percent-encoding = "2.3"
 
 # Native-only extra: SOCKS proxy support for tracker traffic (not available in browsers)
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "gzip", "socks"], optional = true }
+reqwest = { version = "0.13", default-features = false, features = ["rustls-tls", "gzip", "socks"], optional = true }
 
 [dev-dependencies]
 mockall = "0.13"

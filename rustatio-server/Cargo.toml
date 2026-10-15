@@ -41,7 +41,7 @@ urlencoding = "2.1"
 hex = "0.4"
 
 # HTTP client for network status
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls-tls"] }
 
 # File system watcher for watch folder feature
 # Include static files at compile time (optional, for single binary)
