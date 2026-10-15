@@ -30,10 +30,14 @@
   } from '$lib/presets/customPreset.js';
   import {
     THEMES,
-    THEME_CATEGORIES,
     getTheme,
+    getLightTheme,
+    getDarkTheme,
     selectTheme,
+    selectLightTheme,
+    selectDarkTheme,
   } from '$lib/themes/themeStore.svelte.js';
+  import ThemeSelect from '../common/ThemeSelect.svelte';
   import { ZOOM_MAX, ZOOM_MIN, zoomPercent } from '$lib/core/zoom.js';
   import { getZoom, resetZoom, zoomIn, zoomOut } from '$lib/core/zoomStore.svelte.js';
   import {
@@ -49,6 +53,15 @@
     ZoomOut,
   } from '@lucide/svelte';
   import PresetIcon from '../config/PresetIcon.svelte';
+
+  // Theme picker options, split by tone for the automatic light/dark pair
+  const allThemeIds = Object.keys(THEMES);
+  const lightThemeIds = Object.values(THEMES)
+    .filter(info => info.isDark === false)
+    .map(info => info.id);
+  const darkThemeIds = Object.values(THEMES)
+    .filter(info => info.isDark === true)
+    .map(info => info.id);
 
   let { isOpen = $bindable(false) } = $props();
 
@@ -712,25 +725,50 @@
                 for="themeSelect"
                 class="min-w-[3.75rem] text-[0.6875rem] text-muted-foreground">Theme</label
               >
-              <select
+              <ThemeSelect
                 id="themeSelect"
+                class="w-56"
                 value={getTheme()}
-                onchange={e => selectTheme(e.target.value)}
-                class="h-8 border border-input bg-background px-2.5 text-xs text-foreground focus:border-ring focus:outline-none w-56"
-              >
-                {#each Object.entries(THEME_CATEGORIES) as [categoryId, category] (categoryId)}
-                  <optgroup label={category.name}>
-                    {#each category.themes as themeId (themeId)}
-                      {@const themeOption = THEMES[themeId]}
-                      <option value={themeOption.id}>{themeOption.name}</option>
-                    {/each}
-                  </optgroup>
-                {/each}
-              </select>
+                themes={allThemeIds}
+                onchange={selectTheme}
+              />
             </div>
             <p class="mt-3 text-xs text-muted-foreground">
               {THEMES[getTheme()]?.description || ''}
             </p>
+            <p class="mt-3 mb-2 text-[0.6875rem] text-muted-foreground">
+              Automatic light and dark pair, applied when Theme is Automatic (follows your OS
+              preference). Changing either one switches Theme to Automatic; picking a theme above
+              updates both to its family counterparts.
+            </p>
+            <div class="flex items-center gap-4">
+              <label
+                for="lightThemeSelect"
+                class="min-w-[3.75rem] text-[0.6875rem] text-muted-foreground">Light</label
+              >
+              <ThemeSelect
+                id="lightThemeSelect"
+                class="w-56"
+                label="Light theme"
+                value={getLightTheme()}
+                themes={lightThemeIds}
+                onchange={selectLightTheme}
+              />
+            </div>
+            <div class="mt-2 flex items-center gap-4">
+              <label
+                for="darkThemeSelect"
+                class="min-w-[3.75rem] text-[0.6875rem] text-muted-foreground">Dark</label
+              >
+              <ThemeSelect
+                id="darkThemeSelect"
+                class="w-56"
+                label="Dark theme"
+                value={getDarkTheme()}
+                themes={darkThemeIds}
+                onchange={selectDarkTheme}
+              />
+            </div>
           </div>
 
           <!-- Interface Section -->

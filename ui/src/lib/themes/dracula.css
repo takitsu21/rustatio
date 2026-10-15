@@ -1,0 +1,72 @@
+/**
+ * Dracula Color Themes for Rustatio
+ * https://draculatheme.com/
+ *
+ * Flavors:
+ * - Dracula: The original vivid dark theme
+ * - Alucard: The official warm parchment light counterpart
+ */
+
+/* ========================================
+   Dracula (Dark - Original)
+   ======================================== */
+:root.dracula,
+.dracula {
+  color-scheme: dark;
+  --color-background: #282a36;
+  --color-foreground: #f8f8f2;
+  --color-card: #21222c;
+  --color-card-foreground: #f8f8f2;
+  --color-popover: #21222c;
+  --color-popover-foreground: #f8f8f2;
+  --color-primary: #bd93f9;
+  --color-primary-foreground: #282a36;
+  --color-secondary: #343746;
+  --color-secondary-foreground: #f8f8f2;
+  --color-muted: #44475a;
+  --color-muted-foreground: #6272a4;
+  --color-accent: #ff79c6;
+  --color-accent-foreground: #282a36;
+  --color-destructive: #ff5555;
+  --color-destructive-foreground: #282a36;
+  --color-border: #44475a;
+  --color-input: #343746;
+  --color-ring: #bd93f9;
+  --color-stat-upload: #50fa7b;
+  --color-stat-download: #8be9fd;
+  --color-stat-ratio: #f1fa8c;
+  --color-stat-leecher: #ff5555;
+  --color-stat-danger: #ff5555;
+}
+
+/* ========================================
+   Alucard (Light - Original)
+   ======================================== */
+:root.alucard,
+.alucard {
+  color-scheme: light;
+  --color-background: #fffbeb;
+  --color-foreground: #1f1f1f;
+  --color-card: #f2eedf;
+  --color-card-foreground: #1f1f1f;
+  --color-popover: #f2eedf;
+  --color-popover-foreground: #1f1f1f;
+  --color-primary: #644ac9;
+  --color-primary-foreground: #fffbeb;
+  --color-secondary: #e4e1d3;
+  --color-secondary-foreground: #1f1f1f;
+  --color-muted: #d7d3c6;
+  --color-muted-foreground: #6c664b;
+  --color-accent: #a3144d;
+  --color-accent-foreground: #fffbeb;
+  --color-destructive: #cb3a2a;
+  --color-destructive-foreground: #fffbeb;
+  --color-border: #c9c6ba;
+  --color-input: #e4e1d3;
+  --color-ring: #644ac9;
+  --color-stat-upload: #14710a;
+  --color-stat-download: #036a96;
+  --color-stat-ratio: #846e15;
+  --color-stat-leecher: #cb3a2a;
+  --color-stat-danger: #cb3a2a;
+}

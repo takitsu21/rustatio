@@ -10,6 +10,35 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#2D3748" />
     <title>Rustatio - Modern BitTorrent Ratio Faker</title>
+    <script>
+      // Apply the saved theme before first paint to avoid a flash of the default
+      // theme. Each theme block in CSS declares its own color-scheme, so only
+      // the effective class is needed. The tone map is injected at build time
+      // from themeRegistry.js (see the themeTones plugin in vite.config.js).
+      (function () {
+        try {
+          var tones = __THEME_TONES__;
+          var pick = function (key, dark) {
+            var value = localStorage.getItem(key);
+            return value && tones[value] === dark ? value : null;
+          };
+          var isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+          var saved = localStorage.getItem('rustatio-theme');
+          if (!saved || tones[saved] === undefined) {
+            saved = 'system';
+          }
+          if (saved === 'system') {
+            saved =
+              pick(isDark ? 'rustatio-theme-dark' : 'rustatio-theme-light') ||
+              (isDark ? 'dark' : 'light');
+          }
+          document.documentElement.classList.add(saved);
+          document.documentElement.setAttribute('data-theme', saved);
+        } catch {
+          // localStorage unavailable: fall back to the default theme
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="app"></div>

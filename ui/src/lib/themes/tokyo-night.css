@@ -1,0 +1,139 @@
+/**
+ * Tokyo Night Color Themes for Rustatio
+ * https://github.com/tokyo-night/tokyo-night-vscode-theme
+ * https://github.com/folke/tokyonight.nvim
+ *
+ * Flavors:
+ * - Night: The original deep navy palette
+ * - Storm: Slightly lighter, muted navy
+ * - Moon: Soft indigo with warmer accents
+ * - Light: Daylight counterpart
+ */
+
+/* ========================================
+   Tokyo Night (Dark - Original)
+   ======================================== */
+:root.tokyo-night,
+.tokyo-night {
+  color-scheme: dark;
+  --color-background: #1a1b26;
+  --color-foreground: #c0caf5;
+  --color-card: #16161e;
+  --color-card-foreground: #c0caf5;
+  --color-popover: #16161e;
+  --color-popover-foreground: #c0caf5;
+  --color-primary: #7aa2f7;
+  --color-primary-foreground: #1a1b26;
+  --color-secondary: #1f2335;
+  --color-secondary-foreground: #c0caf5;
+  --color-muted: #292e42;
+  --color-muted-foreground: #565f89;
+  --color-accent: #bb9af7;
+  --color-accent-foreground: #1a1b26;
+  --color-destructive: #f7768e;
+  --color-destructive-foreground: #1a1b26;
+  --color-border: #3b4261;
+  --color-input: #292e42;
+  --color-ring: #7aa2f7;
+  --color-stat-upload: #9ece6a;
+  --color-stat-download: #7dcfff;
+  --color-stat-ratio: #e0af68;
+  --color-stat-leecher: #f7768e;
+  --color-stat-danger: #db4b4b;
+}
+
+/* ========================================
+   Tokyo Night Storm (Dark - Muted)
+   ======================================== */
+:root.tokyo-storm,
+.tokyo-storm {
+  color-scheme: dark;
+  --color-background: #24283b;
+  --color-foreground: #c0caf5;
+  --color-card: #1f2335;
+  --color-card-foreground: #c0caf5;
+  --color-popover: #1f2335;
+  --color-popover-foreground: #c0caf5;
+  --color-primary: #7aa2f7;
+  --color-primary-foreground: #24283b;
+  --color-secondary: #292e42;
+  --color-secondary-foreground: #c0caf5;
+  --color-muted: #3b4261;
+  --color-muted-foreground: #565f89;
+  --color-accent: #bb9af7;
+  --color-accent-foreground: #24283b;
+  --color-destructive: #f7768e;
+  --color-destructive-foreground: #24283b;
+  --color-border: #414868;
+  --color-input: #292e42;
+  --color-ring: #7aa2f7;
+  --color-stat-upload: #9ece6a;
+  --color-stat-download: #7dcfff;
+  --color-stat-ratio: #e0af68;
+  --color-stat-leecher: #f7768e;
+  --color-stat-danger: #db4b4b;
+}
+
+/* ========================================
+   Tokyo Night Moon (Dark - Soft)
+   ======================================== */
+:root.tokyo-moon,
+.tokyo-moon {
+  color-scheme: dark;
+  --color-background: #222436;
+  --color-foreground: #c8d3f5;
+  --color-card: #1e2030;
+  --color-card-foreground: #c8d3f5;
+  --color-popover: #1e2030;
+  --color-popover-foreground: #c8d3f5;
+  --color-primary: #82aaff;
+  --color-primary-foreground: #222436;
+  --color-secondary: #2f334d;
+  --color-secondary-foreground: #c8d3f5;
+  --color-muted: #3b4261;
+  --color-muted-foreground: #636da6;
+  --color-accent: #c099ff;
+  --color-accent-foreground: #222436;
+  --color-destructive: #ff757f;
+  --color-destructive-foreground: #222436;
+  --color-border: #444a73;
+  --color-input: #2f334d;
+  --color-ring: #82aaff;
+  --color-stat-upload: #c3e88d;
+  --color-stat-download: #86e1fc;
+  --color-stat-ratio: #ffc777;
+  --color-stat-leecher: #ff757f;
+  --color-stat-danger: #c53b53;
+}
+
+/* ========================================
+   Tokyo Night Light
+   ======================================== */
+:root.tokyo-light,
+.tokyo-light {
+  color-scheme: light;
+  --color-background: #e6e7ed;
+  --color-foreground: #343b59;
+  --color-card: #dadce3;
+  --color-card-foreground: #343b59;
+  --color-popover: #dadce3;
+  --color-popover-foreground: #343b59;
+  --color-primary: #2959aa;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #d6d8df;
+  --color-secondary-foreground: #343b59;
+  --color-muted: #c1c2c7;
+  --color-muted-foreground: #606269;
+  --color-accent: #7b43ba;
+  --color-accent-foreground: #ffffff;
+  --color-destructive: #8c4351;
+  --color-destructive-foreground: #ffffff;
+  --color-border: #c1c2c7;
+  --color-input: #d6d8df;
+  --color-ring: #2959aa;
+  --color-stat-upload: #385f0d;
+  --color-stat-download: #006c86;
+  --color-stat-ratio: #8f5e15;
+  --color-stat-leecher: #8c4351;
+  --color-stat-danger: #942f2f;
+}

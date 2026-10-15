@@ -1,0 +1,72 @@
+/**
+ * Gruvbox Color Themes for Rustatio
+ * https://github.com/morhetz/gruvbox
+ *
+ * Flavors (medium contrast):
+ * - Dark: Warm retro dark with the classic groove palette
+ * - Light: Cream light counterpart
+ */
+
+/* ========================================
+   Gruvbox Dark (Medium Contrast)
+   ======================================== */
+:root.gruvbox-dark,
+.gruvbox-dark {
+  color-scheme: dark;
+  --color-background: #282828;
+  --color-foreground: #ebdbb2;
+  --color-card: #1d2021;
+  --color-card-foreground: #ebdbb2;
+  --color-popover: #1d2021;
+  --color-popover-foreground: #ebdbb2;
+  --color-primary: #fabd2f;
+  --color-primary-foreground: #282828;
+  --color-secondary: #3c3836;
+  --color-secondary-foreground: #ebdbb2;
+  --color-muted: #504945;
+  --color-muted-foreground: #a89984;
+  --color-accent: #8ec07c;
+  --color-accent-foreground: #282828;
+  --color-destructive: #fb4934;
+  --color-destructive-foreground: #282828;
+  --color-border: #665c54;
+  --color-input: #3c3836;
+  --color-ring: #fabd2f;
+  --color-stat-upload: #b8bb26;
+  --color-stat-download: #83a598;
+  --color-stat-ratio: #fabd2f;
+  --color-stat-leecher: #fb4934;
+  --color-stat-danger: #cc241d;
+}
+
+/* ========================================
+   Gruvbox Light (Medium Contrast)
+   ======================================== */
+:root.gruvbox-light,
+.gruvbox-light {
+  color-scheme: light;
+  --color-background: #fbf1c7;
+  --color-foreground: #3c3836;
+  --color-card: #f2e5bc;
+  --color-card-foreground: #3c3836;
+  --color-popover: #f2e5bc;
+  --color-popover-foreground: #3c3836;
+  --color-primary: #b57614;
+  --color-primary-foreground: #fbf1c7;
+  --color-secondary: #ebdbb2;
+  --color-secondary-foreground: #3c3836;
+  --color-muted: #d5c4a1;
+  --color-muted-foreground: #7c6f64;
+  --color-accent: #427b58;
+  --color-accent-foreground: #fbf1c7;
+  --color-destructive: #9d0006;
+  --color-destructive-foreground: #fbf1c7;
+  --color-border: #bdae93;
+  --color-input: #ebdbb2;
+  --color-ring: #b57614;
+  --color-stat-upload: #79740e;
+  --color-stat-download: #076678;
+  --color-stat-ratio: #b57614;
+  --color-stat-leecher: #9d0006;
+  --color-stat-danger: #cc241d;
+}

@@ -3,8 +3,11 @@
 @import url('https://cdn.jsdelivr.net/npm/@fontsource/maple-mono@latest/index.css');
 @import url('https://cdn.jsdelivr.net/npm/@fontsource/maple-mono@latest/700.css');
 
-/* Catppuccin color themes */
+/* Color themes */
 @import './lib/themes/catppuccin.css';
+@import './lib/themes/tokyo-night.css';
+@import './lib/themes/dracula.css';
+@import './lib/themes/gruvbox.css';
 
 html,
 body {
@@ -154,7 +157,9 @@ svg.lucide {
   }
 
   @media (prefers-color-scheme: dark) {
-    :root:not(.light):not(.latte):not(.frappe):not(.macchiato):not(.mocha) {
+    /* Pre-hydration fallback: the pre-paint script in index.html marks the
+       document with data-theme, and every theme block sets its own color-scheme */
+    :root:not([data-theme]) {
       color-scheme: dark;
     }
   }

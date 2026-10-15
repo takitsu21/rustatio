@@ -1,31 +1,40 @@
 <script>
-  import { Sun, Moon, Monitor, Coffee, Droplet, Palette } from '@lucide/svelte';
+  import {
+    Castle,
+    CloudMoon,
+    Coffee,
+    Droplet,
+    Flame,
+    Monitor,
+    Moon,
+    MoonStar,
+    Palette,
+    Sparkles,
+    Sun,
+    Sunrise,
+  } from '@lucide/svelte';
+  import { THEMES } from '$lib/themes/themeStore.svelte.js';
 
   let { theme } = $props();
 
-  // Catppuccin flavor colors (Mauve from each palette)
-  const flavorColors = {
-    latte: '#8839ef',
-    frappe: '#ca9ee6',
-    macchiato: '#c6a0f6',
-    mocha: '#cba6f7',
+  // Icon name from the registry to Lucide component
+  const ICONS = {
+    monitor: Monitor,
+    sun: Sun,
+    moon: Moon,
+    coffee: Coffee,
+    droplet: Droplet,
+    'moon-star': MoonStar,
+    'cloud-moon': CloudMoon,
+    sparkles: Sparkles,
+    castle: Castle,
+    flame: Flame,
+    sunrise: Sunrise,
+    palette: Palette,
   };
+
+  let info = $derived(THEMES[theme]);
+  let Icon = $derived(ICONS[info?.icon] ?? Palette);
 </script>
 
-{#if theme === 'light'}
-  <Sun size={18} />
-{:else if theme === 'dark'}
-  <Moon size={18} />
-{:else if theme === 'system'}
-  <Monitor size={18} />
-{:else if theme === 'latte'}
-  <Sun size={18} style="color: {flavorColors.latte}" />
-{:else if theme === 'frappe'}
-  <Coffee size={18} style="color: {flavorColors.frappe}" />
-{:else if theme === 'macchiato'}
-  <Droplet size={18} style="color: {flavorColors.macchiato}" />
-{:else if theme === 'mocha'}
-  <Moon size={18} style="color: {flavorColors.mocha}" />
-{:else}
-  <Palette size={18} />
-{/if}
+<Icon size={18} style={info?.color ? `color: ${info.color}` : undefined} />

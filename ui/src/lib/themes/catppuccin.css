@@ -14,6 +14,7 @@
    ======================================== */
 :root.latte,
 .latte {
+  color-scheme: light;
   /* Tailwind 4 color variables */
   --color-background: #eff1f5;
   --color-foreground: #4c4f69;
@@ -46,6 +47,7 @@
    ======================================== */
 :root.frappe,
 .frappe {
+  color-scheme: dark;
   /* Tailwind 4 color variables */
   --color-background: #303446;
   --color-foreground: #c6d0f5;
@@ -78,6 +80,7 @@
    ======================================== */
 :root.macchiato,
 .macchiato {
+  color-scheme: dark;
   /* Tailwind 4 color variables */
   --color-background: #24273a;
   --color-foreground: #cad3f5;
@@ -110,6 +113,7 @@
    ======================================== */
 :root.mocha,
 .mocha {
+  color-scheme: dark;
   /* Tailwind 4 color variables */
   --color-background: #1e1e2e;
   --color-foreground: #cdd6f4;

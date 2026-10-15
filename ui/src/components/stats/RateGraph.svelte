@@ -3,6 +3,7 @@
   import * as echarts from 'echarts';
   import Card from '$lib/components/ui/card.svelte';
   import { getZoom } from '$lib/core/zoomStore.svelte.js';
+  import { getEffectiveTheme, THEMES } from '$lib/themes/themeStore.svelte.js';
   import { Activity, Users, Upload, Download, Percent, Clock, RotateCcw } from '@lucide/svelte';
 
   let { stats, formatDuration } = $props();
@@ -40,12 +41,8 @@
 
   // Get theme-aware colors
   function getThemeColors() {
-    const root = document.documentElement;
-    const isDark =
-      root.classList.contains('dark') ||
-      root.classList.contains('frappe') ||
-      root.classList.contains('macchiato') ||
-      root.classList.contains('mocha');
+    // `system` is already resolved to a concrete theme in the store
+    const isDark = THEMES[getEffectiveTheme()]?.isDark === true;
 
     return {
       isDark,
