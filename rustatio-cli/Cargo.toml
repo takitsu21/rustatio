@@ -24,7 +24,7 @@ tokio = { version = "1.48", features = ["full", "signal"] }
 # TUI
 ratatui = "0.29"
 crossterm = "0.28"
-comfy-table = "7.1"
+comfy-table = "8.0"
 
 # JSON serialization
 serde = { version = "1.0", features = ["derive"] }
