@@ -3857,7 +3857,7 @@ name = "rustatio-core"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "dirs 6.0.0",
+ "dirs 7.0.0",
  "getrandom 0.3.4",
  "instant",
  "js-sys",
