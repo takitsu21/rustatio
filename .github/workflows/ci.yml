@@ -46,7 +46,7 @@ jobs:
             clang
 
       - name: Cache Rust build artifacts
-        uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2.8.2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
 
       - name: Create frontend dist stub for Tauri compilation
         run: mkdir -p ui/dist
