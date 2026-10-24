@@ -190,12 +190,12 @@ docker compose up -d
 
 | Client | Latest supported version |
 |--------|--------------------------|
-| uTorrent | 3.5.5 |
-| qBittorrent | 5.2.4 |
-| Transmission | 4.1.3 |
+| uTorrent | 3.6.0 |
+| qBittorrent | 5.3.0 |
+| Transmission | 4.1.4 |
 | Deluge | 2.2.0 |
 | BitTorrent | 7.11.0 |
-| rTorrent | 0.16.24 |
+| rTorrent | 0.16.26 |
 
 Each client is emulated with its proper peer ID format, User-Agent header, HTTP protocol version, and query parameter ordering; older versions remain selectable in the UI.
 
