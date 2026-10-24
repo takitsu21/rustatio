@@ -19,8 +19,8 @@ rustatio-watch = { path = "../rustatio-watch" }
 axum = { version = "0.8", features = ["multipart"] }
 tower = { version = "0.5", features = ["util"] }
 tower-http = { version = "0.6", features = ["fs", "cors", "trace"] }
-utoipa = { version = "5.4", features = ["macros", "axum_extras"] }
-utoipa-swagger-ui = { version = "9", features = ["axum"] }
+utoipa = { version = "6.0", features = ["macros", "axum_extras"] }
+utoipa-swagger-ui = { version = "10", features = ["axum"] }
 
 # Async runtime
 tokio = { version = "1.48", features = ["full"] }
