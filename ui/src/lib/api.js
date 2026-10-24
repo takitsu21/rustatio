@@ -1,3 +1,5 @@
+import { createEventStream } from './serverStream.js';
+
 // Check if running in Tauri
 const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
@@ -12,6 +14,22 @@ let wasm = null;
 
 // Log event listener registry for web version
 let logListeners = [];
+
+// One shared SSE connection for server mode. Browsers only allow a handful of
+// concurrent HTTP/1.1 connections per origin, so logs and instance events must
+// share a stream instead of each opening their own.
+let eventStream = null;
+
+function getEventStream() {
+  if (!eventStream) {
+    // Include auth token as query parameter since EventSource doesn't support headers
+    const token = getAuthToken();
+    const authQuery = token ? `?token=${encodeURIComponent(token)}` : '';
+    eventStream = createEventStream(`${serverBaseUrl}/api/stream${authQuery}`);
+  }
+
+  return eventStream;
+}
 
 // =============================================================================
 // Authentication Token Management
@@ -252,30 +270,13 @@ export async function listenToLogs(callback) {
     // 2. logListeners for frontend-generated logs
     logListeners.push(callback);
 
-    try {
-      // Include auth token as query parameter since EventSource doesn't support headers
-      const token = getAuthToken();
-      const authQuery = token ? `?token=${encodeURIComponent(token)}` : '';
-      const eventSource = new EventSource(`${serverBaseUrl}/api/logs${authQuery}`);
+    const unsubscribe = getEventStream().subscribeLogs(callback);
 
-      eventSource.addEventListener('log', event => {
-        try {
-          const logEvent = JSON.parse(event.data);
-          callback(logEvent);
-        } catch (e) {
-          console.error('Failed to parse log event:', e);
-        }
-      });
-
-      eventSource.onerror = error => {
-        console.warn('SSE connection error, will retry:', error);
-      };
-
-      // Return cleanup function
-      return () => eventSource.close();
-    } catch (error) {
-      console.error('Failed to set up SSE log listener:', error);
-    }
+    // Return cleanup function
+    return () => {
+      logListeners = logListeners.filter(listener => listener !== callback);
+      unsubscribe();
+    };
   } else {
     // For WASM, register callback to receive web console logs
     logListeners.push(callback);
@@ -335,34 +336,7 @@ export function listenToInstanceEvents(callback) {
     return () => {};
   }
 
-  try {
-    // Include auth token as query parameter since EventSource doesn't support headers
-    const token = getAuthToken();
-    const authQuery = token ? `?token=${encodeURIComponent(token)}` : '';
-    const eventSource = new EventSource(`${serverBaseUrl}/api/events${authQuery}`);
-
-    const handleInstanceEvent = event => {
-      try {
-        const instanceEvent = JSON.parse(event.data);
-        callback(instanceEvent);
-      } catch (e) {
-        console.error('Failed to parse instance event:', e);
-      }
-    };
-
-    eventSource.addEventListener('instance', handleInstanceEvent);
-    eventSource.addEventListener('summaries', handleInstanceEvent);
-
-    eventSource.onerror = error => {
-      console.warn('Instance SSE connection error, will retry:', error);
-    };
-
-    // Return cleanup function
-    return () => eventSource.close();
-  } catch (error) {
-    console.error('Failed to set up instance event listener:', error);
-    return () => {};
-  }
+  return getEventStream().subscribeInstances(callback);
 }
 
 // Web-version logging wrapper (called when WASM logs to console)

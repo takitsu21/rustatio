@@ -95,7 +95,11 @@ pub async fn auth_middleware(request: Request, next: Next) -> Response {
 /// use the header so the secret is never placed in a URL (and therefore never
 /// written to access logs, reverse proxies, or browser history).
 fn allows_query_token(method: &Method, path: &str) -> bool {
-    *method == Method::GET && matches!(path, "/logs" | "/events" | "/api/logs" | "/api/events")
+    *method == Method::GET
+        && matches!(
+            path,
+            "/logs" | "/events" | "/stream" | "/api/logs" | "/api/events" | "/api/stream"
+        )
 }
 
 fn constant_time_eq(expected: &[u8], actual: &[u8]) -> bool {
@@ -127,10 +131,13 @@ mod tests {
     fn test_query_token_allowed_only_for_sse_get() {
         assert!(allows_query_token(&Method::GET, "/logs"));
         assert!(allows_query_token(&Method::GET, "/events"));
+        assert!(allows_query_token(&Method::GET, "/stream"));
         assert!(allows_query_token(&Method::GET, "/api/logs"));
         assert!(allows_query_token(&Method::GET, "/api/events"));
+        assert!(allows_query_token(&Method::GET, "/api/stream"));
 
         assert!(!allows_query_token(&Method::POST, "/logs"));
+        assert!(!allows_query_token(&Method::POST, "/stream"));
         assert!(!allows_query_token(&Method::GET, "/instances"));
         assert!(!allows_query_token(&Method::GET, "/api/instances"));
         assert!(!allows_query_token(&Method::GET, "/auth/verify"));

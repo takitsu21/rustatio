@@ -131,6 +131,7 @@
   let unsubViewMode = null;
   let unsubActiveInstanceId = null;
   let instanceEventsCleanup = null;
+  let logsCleanup = null;
   let closeRequestedCleanup = null;
   let desktopReconcileIntervalId = null;
   let trackerRetryIntervalId = null;
@@ -489,7 +490,7 @@
     api.setLogLevel(initialLogLevel);
 
     // Set up log listener with RAF batching
-    await listenToLogs(logEvent => {
+    logsCleanup = await listenToLogs(logEvent => {
       // Filter logs based on configured log level
       const configuredLevel = localStorage.getItem('rustatio-log-level') || 'info';
       const eventPriority = LOG_LEVELS[logEvent.level] ?? 2;
@@ -631,6 +632,13 @@
     // Clean up instance events subscription
     if (instanceEventsCleanup) {
       instanceEventsCleanup();
+      instanceEventsCleanup = null;
+    }
+
+    // Clean up log subscription
+    if (logsCleanup) {
+      logsCleanup();
+      logsCleanup = null;
     }
 
     if (closeRequestedCleanup) {

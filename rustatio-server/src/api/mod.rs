@@ -113,6 +113,7 @@ impl Modify for SecurityAddon {
         // Events
         routes::events::logs_sse,
         routes::events::instances_sse,
+        routes::events::stream_sse,
     ),
     components(
         schemas(
