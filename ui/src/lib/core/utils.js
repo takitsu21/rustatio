@@ -49,6 +49,21 @@ export function getDownloadType(os) {
   }
 }
 
+/**
+ * Normalize an instance id to the representation used by the stores.
+ * Backend ids can be numbers (desktop/WASM) or strings (server), so keeping
+ * one representation prevents strict comparisons from missing an instance.
+ */
+export function normalizeId(id) {
+  if (id === null || id === undefined) return null;
+  return String(id);
+}
+
+/** Compare two instance ids without depending on number/string representation. */
+export function sameId(left, right) {
+  return normalizeId(left) === normalizeId(right);
+}
+
 export function selectActiveInstanceId(restoredInstances, savedSession = null) {
   const savedActiveId = savedSession?.activeInstanceId;
   if (

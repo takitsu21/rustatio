@@ -9,6 +9,8 @@ import { hydrateInstances } from '$lib/core/instanceHydration.js';
 import {
   getActiveInstanceIndex,
   getBackendInstanceStateFlags,
+  normalizeId,
+  sameId,
   selectActiveInstanceId,
   serializeSessionInstances,
   shouldRetryDesktopRestore,
@@ -38,7 +40,7 @@ export function computeEffectiveRatio(stopAtRatio, randomizeRatio, randomRatioRa
 // Create default instance state
 function createDefaultInstance(id, defaults = {}) {
   return {
-    id,
+    id: normalizeId(id),
 
     // Torrent state
     torrent: null,
@@ -288,7 +290,8 @@ export { saveSession };
 function updateActiveInstanceStore() {
   const $instances = get(instances);
   const $activeInstanceId = get(activeInstanceId);
-  const active = $instances.find(inst => inst.id === $activeInstanceId) || $instances[0] || null;
+  const active =
+    $instances.find(inst => sameId(inst.id, $activeInstanceId)) || $instances[0] || null;
   if (active !== get(activeInstance)) {
     activeInstance.set(active);
   }
@@ -368,6 +371,45 @@ function buildRestoredInstance(serverInst, statusMessage = 'restored from server
     instance.statusIcon = 'rocket';
   } else {
     instance.statusMessage = 'Ready to start faking';
+    instance.statusType = 'idle';
+    instance.statusIcon = null;
+  }
+
+  return instance;
+}
+
+function buildMergedInstance(serverInst) {
+  const instance = createDefaultInstance(
+    String(serverInst.id),
+    buildInstanceDefaultsFromServer(serverInst)
+  );
+
+  instance.torrent = serverInst.torrent;
+  instance.torrentPath = serverInst.torrent.name;
+  instance.stats = serverInst.stats;
+
+  const state = serverInst.stats.state;
+  const flags = getBackendInstanceStateFlags(state);
+  instance.isRunning = flags.isRunning;
+  instance.isPaused = flags.isPaused;
+
+  if (instance.isPaused) {
+    instance.statusMessage = 'Paused - added from watch folder';
+    instance.statusType = 'paused';
+    instance.statusIcon = 'pause';
+  } else if (flags.isIdling) {
+    const status = serverInst.stats?.is_idling
+      ? getStatusFromStats(serverInst.stats)
+      : getIdlingStatus();
+    instance.statusMessage = status.statusMessage;
+    instance.statusType = status.statusType;
+    instance.statusIcon = status.statusIcon;
+  } else if (instance.isRunning) {
+    instance.statusMessage = 'Running - added from watch folder';
+    instance.statusType = 'running';
+    instance.statusIcon = 'rocket';
+  } else {
+    instance.statusMessage = 'Ready to start - added from watch folder';
     instance.statusType = 'idle';
     instance.statusIcon = null;
   }
@@ -508,21 +550,8 @@ export const instanceActions = {
 
         instances.set(restoredInstances);
 
-        // Set active instance based on saved index
-        if (
-          savedSession.activeInstanceId &&
-          restoredInstances.some(inst => inst.id === savedSession.activeInstanceId)
-        ) {
-          activeInstanceId.set(savedSession.activeInstanceId);
-        } else if (
-          savedSession.activeInstanceIndex !== null &&
-          savedSession.activeInstanceIndex >= 0 &&
-          savedSession.activeInstanceIndex < restoredInstances.length
-        ) {
-          activeInstanceId.set(restoredInstances[savedSession.activeInstanceIndex].id);
-        } else {
-          activeInstanceId.set(restoredInstances[0].id);
-        }
+        // Set active instance based on saved id, then index as a fallback.
+        activeInstanceId.set(selectActiveInstanceId(restoredInstances, savedSession));
 
         updateActiveInstanceStore();
         return restoredInstances[0].id;
@@ -534,9 +563,9 @@ export const instanceActions = {
 
         const newInstance = createDefaultInstance(instanceId, effectiveDefaults);
         instances.set([newInstance]);
-        activeInstanceId.set(instanceId);
+        activeInstanceId.set(newInstance.id);
         updateActiveInstanceStore();
-        return instanceId;
+        return newInstance.id;
       }
     } catch (error) {
       console.error('Failed to initialize:', error);
@@ -555,13 +584,13 @@ export const instanceActions = {
 
       // Newest first so freshly created instances stay visible at the top
       instances.update(insts => [newInstance, ...insts]);
-      activeInstanceId.set(instanceId);
+      activeInstanceId.set(newInstance.id);
       updateActiveInstanceStore();
 
       // Save session after adding instance
-      await saveSession(get(instances), instanceId);
+      await saveSession(get(instances), newInstance.id);
 
-      return instanceId;
+      return newInstance.id;
     } catch (error) {
       console.error('Failed to create instance:', error);
       throw error;
@@ -574,7 +603,7 @@ export const instanceActions = {
     const currentInstances = get(instances);
 
     // Find the instance to check its source
-    const instanceToRemove = currentInstances.find(inst => inst.id === id);
+    const instanceToRemove = currentInstances.find(inst => sameId(inst.id, id));
     if (!force && instanceToRemove && instanceToRemove.source === 'watch_folder') {
       throw new Error(
         'Cannot delete watch folder instance. Delete the torrent file from the watch folder instead.'
@@ -606,11 +635,11 @@ export const instanceActions = {
 
       // Atomically remove old instance and add new one (if last instance) in single update
       instances.update(insts => {
-        const filtered = insts.filter(inst => inst.id !== id);
+        const filtered = insts.filter(inst => !sameId(inst.id, id));
 
         // If we're removing the active instance, switch to the new one or first available
         const currentActiveId = get(activeInstanceId);
-        if (currentActiveId === id) {
+        if (sameId(currentActiveId, id)) {
           newActiveId = newActiveId || filtered[0]?.id || null;
           activeInstanceId.set(newActiveId);
         }
@@ -634,7 +663,7 @@ export const instanceActions = {
 
   // Select/switch to an instance
   selectInstance: id => {
-    activeInstanceId.set(id);
+    activeInstanceId.set(normalizeId(id));
     updateActiveInstanceStore();
   },
 
@@ -642,7 +671,7 @@ export const instanceActions = {
   updateInstance: (id, updates) => {
     // Don't update if no changes
     const currentInstances = get(instances);
-    const currentInst = currentInstances.find(i => i.id === id);
+    const currentInst = currentInstances.find(i => sameId(i.id, id));
     if (!currentInst) return;
 
     // Check if updates are actually different
@@ -658,7 +687,7 @@ export const instanceActions = {
 
     instances.update(insts => {
       return insts.map(inst => {
-        if (inst.id === id) {
+        if (sameId(inst.id, id)) {
           return { ...inst, ...updates };
         }
         return inst;
@@ -666,7 +695,7 @@ export const instanceActions = {
     });
 
     // Only update active instance store if the modified instance is the active one
-    if (id === get(activeInstanceId)) {
+    if (sameId(get(activeInstanceId), id)) {
       updateActiveInstanceStore();
     }
   },
@@ -682,7 +711,7 @@ export const instanceActions = {
   // Get instance by ID
   getInstance: id => {
     const currentInstances = get(instances);
-    return currentInstances.find(inst => inst.id === id);
+    return currentInstances.find(inst => sameId(inst.id, id));
   },
 
   // Get current active instance
@@ -702,46 +731,39 @@ export const instanceActions = {
       return false;
     }
 
-    // Create frontend instance from server state
-    const instance = createDefaultInstance(serverId, buildInstanceDefaultsFromServer(serverInst));
-
-    // Set torrent info
-    instance.torrent = serverInst.torrent;
-    instance.torrentPath = serverInst.torrent.name;
-    instance.stats = serverInst.stats;
-
-    // Set running state based on server state
-    const state = serverInst.stats.state;
-    const flags = getBackendInstanceStateFlags(state);
-    instance.isRunning = flags.isRunning;
-    instance.isPaused = flags.isPaused;
-
-    if (instance.isPaused) {
-      instance.statusMessage = 'Paused - added from watch folder';
-      instance.statusType = 'paused';
-      instance.statusIcon = 'pause';
-    } else if (flags.isIdling) {
-      const status = serverInst.stats?.is_idling
-        ? getStatusFromStats(serverInst.stats)
-        : getIdlingStatus();
-      instance.statusMessage = status.statusMessage;
-      instance.statusType = status.statusType;
-      instance.statusIcon = status.statusIcon;
-    } else if (instance.isRunning) {
-      instance.statusMessage = 'Running - added from watch folder';
-      instance.statusType = 'running';
-      instance.statusIcon = 'rocket';
-    } else {
-      instance.statusMessage = 'Ready to start - added from watch folder';
-      instance.statusType = 'idle';
-      instance.statusIcon = null;
-    }
-
     // Add to instances store (newest first)
-    instances.update(insts => [instance, ...insts]);
+    instances.update(insts => [buildMergedInstance(serverInst), ...insts]);
     updateActiveInstanceStore();
 
     return true;
+  },
+
+  // Merge multiple server instances in one store update.
+  // Used after a bulk import so adding N instances does not trigger N full-array copies.
+  mergeServerInstances: serverInstances => {
+    if (!Array.isArray(serverInstances) || serverInstances.length === 0) {
+      return 0;
+    }
+
+    const currentInstances = get(instances);
+    const knownIds = new Set(currentInstances.map(inst => String(inst.id)));
+    const added = [];
+
+    for (const serverInst of serverInstances) {
+      const serverId = String(serverInst.id);
+      if (knownIds.has(serverId)) continue;
+      knownIds.add(serverId);
+      added.push(buildMergedInstance(serverInst));
+    }
+
+    if (added.length === 0) return 0;
+
+    // Match the newest-first order produced by repeated mergeServerInstance calls.
+    added.reverse();
+    instances.update(insts => [...added, ...insts]);
+    updateActiveInstanceStore();
+
+    return added.length;
   },
 
   // Reconcile frontend instances with backend instances.
@@ -836,8 +858,9 @@ export const instanceActions = {
         }
       }
 
-      // Refresh runtime state and stats for all existing instances.
-      await instanceActions.syncAllInstanceStates();
+      // Refresh runtime state and stats for all existing instances using the
+      // summaries we already fetched instead of issuing a second backend read.
+      await instanceActions.syncAllInstanceStates(summaries);
 
       if (removedAny || nextActiveKey !== currentActiveKey) {
         updateActiveInstanceStore();
@@ -1009,7 +1032,7 @@ export const instanceActions = {
   // Add an instance to the standard store from grid import data
   addInstanceToStore: async (id, name, importDefaults = {}) => {
     const currentInstances = get(instances);
-    if (currentInstances.some(inst => inst.id === id)) return;
+    if (currentInstances.some(inst => sameId(inst.id, id))) return;
 
     const defaults = await buildNewInstanceDefaults(importDefaults);
     const instance = createDefaultInstance(id, defaults);
@@ -1050,7 +1073,7 @@ export const instanceActions = {
   // Used by grid actions to propagate state changes to the standard view store.
   syncInstanceState: async (id, { isRunning, isPaused, stats } = {}) => {
     const currentInstances = get(instances);
-    const existing = currentInstances.find(inst => inst.id === id);
+    const existing = currentInstances.find(inst => sameId(inst.id, id));
     if (!existing) return;
 
     const updates = {};
@@ -1082,12 +1105,12 @@ export const instanceActions = {
 
   // Sync all instance states and stats from the backend summaries.
   // Called when switching from grid view back to standard view.
-  syncAllInstanceStates: async () => {
+  syncAllInstanceStates: async (summaries = null) => {
     try {
-      const summaries = await api.listSummaries();
-      if (!summaries) return;
+      const list = Array.isArray(summaries) ? summaries : await api.listSummaries();
+      if (!list) return;
 
-      const summaryMap = new Map(summaries.map(s => [String(s.id), s]));
+      const summaryMap = new Map(list.map(s => [String(s.id), s]));
       const currentInstances = get(instances);
 
       let changedAny = false;
@@ -1146,7 +1169,7 @@ export const instanceActions = {
   removeInstanceFromStore: async id => {
     const currentInstances = get(instances);
 
-    const exists = currentInstances.some(inst => inst.id === id);
+    const exists = currentInstances.some(inst => sameId(inst.id, id));
     if (!exists) {
       return false;
     }
@@ -1160,10 +1183,10 @@ export const instanceActions = {
     }
 
     instances.update(insts => {
-      const filtered = insts.filter(inst => inst.id !== id);
+      const filtered = insts.filter(inst => !sameId(inst.id, id));
 
       const currentActiveId = get(activeInstanceId);
-      if (currentActiveId === id) {
+      if (sameId(currentActiveId, id)) {
         activeInstanceId.set(newInstance?.id || filtered[0]?.id || null);
       }
 

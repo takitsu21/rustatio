@@ -1,5 +1,5 @@
 <script>
-  import { cn } from '$lib/core/utils.js';
+  import { cn, sameId } from '$lib/core/utils.js';
   import { getGridLivePeers, getGridLiveRate } from '$lib/grid/gridMetrics.js';
   import { getTrackerIssue } from '$lib/core/status.js';
   import { formatBytes, formatRate } from '$lib/core/format.js';
@@ -242,7 +242,7 @@
   }
 
   function handleRowClick(e, instance) {
-    const currentIndex = data.findIndex(d => d.id === instance.id);
+    const currentIndex = data.findIndex(d => sameId(d.id, instance.id));
     if (currentIndex < 0) return;
 
     const shouldSelect = !$selectedIds.has(instance.id);
@@ -255,7 +255,7 @@
   }
 
   function handleCheckboxChange(e, instance) {
-    const currentIndex = data.findIndex(d => d.id === instance.id);
+    const currentIndex = data.findIndex(d => sameId(d.id, instance.id));
     if (currentIndex < 0) return;
 
     const shouldSelect = Boolean(e.currentTarget.checked);

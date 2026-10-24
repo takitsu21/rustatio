@@ -53,5 +53,6 @@ export function buildFakerConfig(instance, clientVersions = {}, opts = {}) {
       : null,
     progressive_duration: parseFloat(instance.progressiveDurationHours ?? 1) * 3600,
     scrape_interval: parseInt(instance.scrapeInterval ?? 60),
+    update_interval_seconds: parseInt(instance.updateIntervalSeconds ?? 5),
   };
 }

@@ -1,5 +1,6 @@
 <script>
   import { instances, activeInstanceId, instanceActions } from '$lib/core/instanceStore.js';
+  import { sameId } from '$lib/core/utils.js';
   import { get } from 'svelte/store';
   import { api, getRunMode } from '$lib/api.js';
   import {
@@ -308,7 +309,7 @@
 
     if (!instances || activeId === null) return null;
 
-    const instance = instances.find(i => i.id === activeId);
+    const instance = instances.find(i => sameId(i.id, activeId));
     if (!instance) return null;
 
     // Check built-in presets
@@ -337,7 +338,7 @@
     }
 
     const currentItems = get(instances);
-    const instance = currentItems.find(i => i.id === active);
+    const instance = currentItems.find(i => sameId(i.id, active));
     if (!instance) {
       throw new Error('Instance not found.');
     }

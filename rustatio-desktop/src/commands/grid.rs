@@ -1,6 +1,6 @@
 use rustatio_core::{
-    primary_tracker_host, FakerConfig, FakerState, FakerStats, GridImportSettings, InstanceSummary,
-    PresetSettings, RatioFaker, RatioFakerHandle, TorrentInfo,
+    FakerConfig, FakerStats, GridImportSettings, InstanceSummary, PresetSettings, RatioFaker,
+    RatioFakerHandle, TorrentInfo,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -55,23 +55,54 @@ async fn import_torrent_files(
 
     let now = now_secs();
 
-    let next_id = state.next_instance_id.write().await;
-    let base_id = *next_id;
-    drop(next_id);
+    // Reserve the whole range up front so concurrent imports cannot claim the same ids.
+    let count = u32::try_from(paths.len()).unwrap_or(u32::MAX);
+    let base_id = {
+        let mut next_id = state.next_instance_id.write().await;
+        let base_id = *next_id;
+        *next_id = (*next_id).saturating_add(count);
+        base_id
+    };
 
-    let mut fakers_lock = state.fakers.write().await;
+    let existing_hashes: std::collections::HashSet<[u8; 20]> = {
+        let fakers = state.fakers.read().await;
+        fakers.values().map(|instance| instance.torrent.info_hash).collect()
+    };
 
-    for (i, path) in paths.iter().enumerate() {
-        let torrent = match TorrentInfo::from_file_summary(path) {
-            Ok(t) => t,
-            Err(e) => {
-                errors.push(format!("{}: {}", path.display(), e));
+    let parsed = tokio::task::spawn_blocking(move || {
+        paths
+            .into_iter()
+            .map(|path| {
+                let result = TorrentInfo::from_file_summary(&path);
+                (path, result)
+            })
+            .collect::<Vec<_>>()
+    })
+    .await;
+
+    let parsed = match parsed {
+        Ok(parsed) => parsed,
+        Err(error) => {
+            return GridImportResponse {
+                imported,
+                duplicates,
+                errors: vec![format!("Failed to read torrent files: {error}")],
+            };
+        }
+    };
+
+    let client = state.http_client().await;
+    let mut prepared = Vec::new();
+
+    for (index, (path, result)) in parsed.into_iter().enumerate() {
+        let torrent = match result {
+            Ok(torrent) => torrent,
+            Err(error) => {
+                errors.push(format!("{}: {error}", path.display()));
                 continue;
             }
         };
 
-        let preset = config.resolve_for_instance();
-        let faker_config: FakerConfig = preset.into();
         let torrent_name = torrent.name.clone();
         let torrent_info_hash = torrent.info_hash;
 
@@ -80,35 +111,60 @@ async fn import_torrent_files(
             continue;
         }
 
-        if fakers_lock.values().any(|instance| instance.torrent.info_hash == torrent_info_hash) {
+        if existing_hashes.contains(&torrent_info_hash) {
             duplicates.push(format!("{}: already imported", path.display()));
             continue;
         }
 
+        let preset = config.resolve_for_instance();
+        let faker_config: FakerConfig = preset.into();
         let torrent_arc = Arc::new(torrent.without_files());
         let summary_arc = Arc::new(torrent_arc.summary());
 
         let faker = match RatioFaker::new(
             Arc::clone(&torrent_arc),
             faker_config.clone(),
-            Some(state.http_client().await),
+            Some(client.clone()),
         ) {
-            Ok(f) => f,
-            Err(e) => {
-                errors.push(format!("{torrent_name}: {e}"));
+            Ok(faker) => faker,
+            Err(error) => {
+                errors.push(format!("{torrent_name}: {error}"));
                 continue;
             }
         };
 
-        let instance_id = base_id + i as u32;
-        let hash_hex = hex_info_hash(&torrent_info_hash);
+        let Ok(offset) = u32::try_from(index) else {
+            errors.push(format!("{}: too many torrents in one import", path.display()));
+            continue;
+        };
+        let instance_id = base_id.saturating_add(offset);
+        prepared.push((
+            instance_id,
+            torrent_arc,
+            summary_arc,
+            faker_config,
+            torrent_name,
+            torrent_info_hash,
+            faker,
+        ));
+    }
+
+    let mut fakers_lock = state.fakers.write().await;
+    let mut current_hashes: std::collections::HashSet<[u8; 20]> =
+        fakers_lock.values().map(|instance| instance.torrent.info_hash).collect();
+
+    for (instance_id, torrent, summary, faker_config, torrent_name, hash, faker) in prepared {
+        if !current_hashes.insert(hash) {
+            duplicates.push(format!("{torrent_name}: already imported"));
+            continue;
+        }
 
         fakers_lock.insert(
             instance_id,
             FakerInstance {
                 faker: Arc::new(RatioFakerHandle::new(faker)),
-                torrent: torrent_arc,
-                summary: summary_arc,
+                torrent,
+                summary,
                 config: faker_config,
                 cumulative_uploaded: 0,
                 cumulative_downloaded: 0,
@@ -121,7 +177,7 @@ async fn import_torrent_files(
         imported.push(GridImportedInstance {
             id: instance_id,
             name: torrent_name,
-            info_hash: hash_hex,
+            info_hash: hex_info_hash(&hash),
         });
 
         if config.auto_start {
@@ -133,7 +189,7 @@ async fn import_torrent_files(
     drop(fakers_lock);
     let mut next_id = state.next_instance_id.write().await;
     if max_id >= *next_id {
-        *next_id = max_id + 1;
+        *next_id = max_id.saturating_add(1);
     }
     drop(next_id);
 
@@ -149,8 +205,7 @@ async fn import_torrent_files(
     if !auto_start_ids.is_empty() {
         let state_fakers = Arc::clone(&state.fakers);
         let app_handle = app.clone();
-        let stagger = config.stagger_start_secs;
-        let use_stagger = stagger.is_some_and(|s| s > 0);
+        let stagger = config.stagger_start_secs.filter(|seconds| *seconds > 0);
 
         tauri::async_runtime::spawn(async move {
             let faker_arcs: Vec<_> = {
@@ -161,8 +216,7 @@ async fn import_torrent_files(
                     .collect()
             };
 
-            if use_stagger {
-                let delay = stagger.expect("use_stagger implies stagger is Some");
+            if let Some(delay) = stagger {
                 for (i, (id, faker)) in faker_arcs.into_iter().enumerate() {
                     if i > 0 {
                         tokio::time::sleep(std::time::Duration::from_secs(delay)).await;
@@ -663,76 +717,16 @@ pub async fn set_instance_tags(
 
 #[tauri::command]
 pub async fn list_summaries(state: State<'_, AppState>) -> Result<Vec<InstanceSummary>, String> {
-    // Collect Arcs and instance data under read lock, then drop HashMap lock
-    let instance_data: Vec<_> = {
+    let mut summaries = {
         let fakers = state.fakers.read().await;
         fakers
             .iter()
             .map(|(id, instance)| {
-                (
-                    *id,
-                    Arc::clone(&instance.faker),
-                    instance.summary.name.clone(),
-                    hex_info_hash(&instance.summary.info_hash),
-                    instance.summary.announce.clone(),
-                    instance.tags.clone(),
-                    instance.summary.total_size,
-                    instance.created_at,
-                    instance.source,
-                )
+                instance.faker.with_stats(|stats| crate::state::build_summary(*id, instance, stats))
             })
-            .collect()
+            .collect::<Vec<_>>()
     };
 
-    let mut summaries = Vec::new();
-    for (id, faker, name, info_hash, announce, tags, total_size, created_at, source) in
-        instance_data
-    {
-        let stats = faker.stats_snapshot();
-        let state_str = match stats.state {
-            FakerState::Paused => "paused",
-            _ if stats.is_idling => "idle",
-            FakerState::Idle => "idle",
-            FakerState::Starting => "starting",
-            FakerState::Running => "running",
-            FakerState::Stopping => "stopping",
-            FakerState::Stopped => "stopped",
-        };
-
-        summaries.push(InstanceSummary {
-            id: id.to_string(),
-            name,
-            info_hash,
-            primary_tracker_host: primary_tracker_host(&announce),
-            state: state_str.to_string(),
-            is_tracker_invalid: stats.tracker_error.is_some(),
-            tracker_error: stats.tracker_error.clone(),
-            tracker_retry_attempt: stats.tracker_retry_attempt,
-            tracker_retry_at_ms: stats.tracker_retry_at_ms,
-            tags,
-            total_size,
-            uploaded: stats.uploaded,
-            downloaded: stats.downloaded,
-            ratio: stats.ratio,
-            current_upload_rate: stats.current_upload_rate,
-            current_download_rate: stats.current_download_rate,
-            seeders: stats.seeders,
-            leechers: stats.leechers,
-            left: stats.left,
-            torrent_completion: stats.torrent_completion,
-            source: match source {
-                InstanceSource::Manual => "manual".to_string(),
-                InstanceSource::WatchFolder => "watch_folder".to_string(),
-            },
-            created_at,
-            is_idling: stats.is_idling,
-            idling_reason: stats.idling_reason.clone(),
-            stop_condition_met: stats.stop_condition_met,
-            post_stop_action: stats.post_stop_action,
-            effective_stop_at_ratio: stats.effective_stop_at_ratio,
-        });
-    }
-
-    summaries.sort_by_key(|s| s.id.parse::<u32>().unwrap_or(0));
+    summaries.sort_by_key(|summary| summary.id.parse::<u32>().unwrap_or(0));
     Ok(summaries)
 }

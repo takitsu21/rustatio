@@ -284,23 +284,50 @@ export async function listenToLogs(callback) {
 
 // Instance events subscription (for real-time sync)
 // Server mode: SSE for watch folder events and pushed summaries
-// Tauri mode: listens for instance-restored events during startup
+// Tauri mode: listens for restored instances plus scheduler summaries/deletions.
 export function listenToInstanceEvents(callback) {
   if (isTauri) {
-    let unlisten = null;
+    let disposed = false;
+    const unlisteners = [];
+
     import('@tauri-apps/api/event')
       .then(({ listen }) => {
-        listen('instance-restored', () => {
-          callback({ type: 'created' });
-        }).then(fn => {
-          unlisten = fn;
+        if (disposed) return;
+
+        const register = (name, handler) => {
+          listen(name, event => {
+            if (!disposed) handler(event);
+          })
+            .then(unlisten => {
+              if (disposed) {
+                unlisten();
+              } else {
+                unlisteners.push(unlisten);
+              }
+            })
+            .catch(error => {
+              console.error(`Failed to listen for ${name}:`, error);
+            });
+        };
+
+        register('instance-restored', event => {
+          callback({ type: 'created', id: event.payload });
+        });
+        register('instance-summaries', event => {
+          callback({ type: 'summaries', instances: event.payload });
+        });
+        register('instance-deleted', event => {
+          callback({ type: 'deleted', id: event.payload });
         });
       })
       .catch(error => {
         console.error('Failed to set up Tauri instance event listener:', error);
       });
+
     return () => {
-      if (unlisten) unlisten();
+      disposed = true;
+      for (const unlisten of unlisteners) unlisten();
+      unlisteners.length = 0;
     };
   }
 

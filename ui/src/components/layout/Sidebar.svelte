@@ -7,7 +7,7 @@
   import { getStateMeta, getTone } from '$lib/core/statusMeta.js';
   import { getWindow, getScrollTopForIndex } from '$lib/core/virtual.js';
   import { getZoom } from '$lib/core/zoomStore.svelte.js';
-  import { cn } from '$lib/core/utils.js';
+  import { cn, sameId } from '$lib/core/utils.js';
   import Button from '$lib/components/ui/button.svelte';
   import ConfirmDialog from '../common/ConfirmDialog.svelte';
   import {
@@ -104,7 +104,7 @@
     if (activeId == null) return;
 
     untrack(() => {
-      if (search && !filteredInstances.some(inst => inst.id === activeId)) {
+      if (search && !filteredInstances.some(inst => sameId(inst.id, activeId))) {
         search = '';
       }
       scrollInstanceIntoView(activeId);
@@ -113,7 +113,7 @@
 
   function scrollInstanceIntoView(id) {
     if (!listEl) return;
-    const index = filteredInstances.findIndex(inst => inst.id === id);
+    const index = filteredInstances.findIndex(inst => sameId(inst.id, id));
     if (index < 0) return;
 
     const target = getScrollTopForIndex({
@@ -469,7 +469,7 @@
       {@const state = getInstanceState(instance)}
       {@const meta = getStateMeta(state)}
       {@const tone = getTone(meta.tone)}
-      {@const isActive = $activeInstanceId === instance.id}
+      {@const isActive = sameId($activeInstanceId, instance.id)}
       {@const issueMessage = getIssueMessage(instance)}
 
       <div

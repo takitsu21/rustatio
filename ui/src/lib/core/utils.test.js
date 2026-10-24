@@ -7,10 +7,13 @@ import {
   getActiveInstanceIndex,
   getBackendInstanceStateFlags,
   getDownloadType,
+  normalizeId,
+  sameId,
   selectActiveInstanceId,
   serializeSessionInstances,
   shouldRetryDesktopRestore,
 } from './utils.js';
+import { buildFakerConfig } from './fakerConfig.js';
 
 function withWindow(windowValue, fn) {
   const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'window');
@@ -278,6 +281,21 @@ test('shouldRetryDesktopRestore only retries when prior desktop state exists', (
   );
 });
 
+test('normalizeId keeps nullish selections empty and normalizes real ids', () => {
+  assert.equal(normalizeId(null), null);
+  assert.equal(normalizeId(undefined), null);
+  assert.equal(normalizeId(5), '5');
+  assert.equal(normalizeId('5'), '5');
+});
+
+test('sameId matches number and string ids but not different ids', () => {
+  assert.equal(sameId(5, '5'), true);
+  assert.equal(sameId('5', 5), true);
+  assert.equal(sameId(null, undefined), true);
+  assert.equal(sameId(5, '6'), false);
+  assert.equal(sameId(null, 5), false);
+});
+
 test('selectActiveInstanceId prefers saved id when it exists', () => {
   const restored = [{ id: '2' }, { id: '5' }];
 
@@ -319,4 +337,16 @@ test('selectActiveInstanceId falls back to first instance when saved index is ou
 
 test('selectActiveInstanceId returns null when no instances exist', () => {
   assert.equal(selectActiveInstanceId([], { activeInstanceId: '5' }), null);
+});
+
+test('buildFakerConfig includes the per-instance update interval', () => {
+  const config = buildFakerConfig({ updateIntervalSeconds: 30 });
+
+  assert.equal(config.update_interval_seconds, 30);
+});
+
+test('buildFakerConfig defaults the update interval to five seconds', () => {
+  const config = buildFakerConfig({});
+
+  assert.equal(config.update_interval_seconds, 5);
 });

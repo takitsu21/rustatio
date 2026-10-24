@@ -299,6 +299,7 @@ pub fn create_faker_config(config: &RunnerConfig) -> FakerConfig {
         idle_when_no_leechers: config.idle_when_no_leechers,
         idle_when_no_seeders: config.idle_when_no_seeders,
         scrape_interval: 60,
+        update_interval_seconds: 5,
         post_stop_action: config.post_stop_action.into(),
         progressive_rates: config.progressive,
         target_upload_rate: config.target_upload,

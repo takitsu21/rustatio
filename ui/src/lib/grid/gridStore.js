@@ -1,6 +1,7 @@
 import { writable, derived, get } from 'svelte/store';
 import { api, getRunMode } from '$lib/api';
 import { normalizeViewMode } from '$lib/core/viewMode.js';
+import { sameId } from '$lib/core/utils.js';
 import { instanceActions } from '$lib/core/instanceStore.js';
 import {
   applyAllGridFilters,
@@ -144,11 +145,10 @@ async function syncImportedInstances(imported, importConfig = {}) {
   try {
     const serverInstances = await api.listInstances();
     if (serverInstances?.length > 0) {
-      for (const serverInst of serverInstances) {
-        if (importedIds.has(String(serverInst.id))) {
-          instanceActions.mergeServerInstance(serverInst);
-          importedIds.delete(String(serverInst.id));
-        }
+      const matched = serverInstances.filter(inst => importedIds.has(String(inst.id)));
+      instanceActions.mergeServerInstances(matched);
+      for (const inst of matched) {
+        importedIds.delete(String(inst.id));
       }
     }
   } catch {
@@ -169,17 +169,12 @@ export const gridActions = {
     if (isFetching) return;
     isFetching = true;
     try {
-      // On desktop/WASM, stats only advance when update() or updateStatsOnly() is called.
-      // The server has a background scheduler, but desktop/WASM rely on the frontend.
-      // Advance stats for all running instances before reading the snapshot.
-      if (getRunMode() !== 'server') {
-        const current = get(gridInstances);
-        const running = current.filter(i => i.state === 'running');
-        if (running.length > 0) {
-          await Promise.allSettled(running.map(i => api.updateStatsOnly(i.id)));
-        }
+      // Desktop and server advance fakers in backend schedulers. WASM has no
+      // scheduler, so its grid still advances running fakers before reading.
+      if (getRunMode() === 'wasm') {
+        const running = get(gridInstances).filter(i => i.state === 'running');
+        await Promise.allSettled(running.map(i => api.updateStatsOnly(i.id)));
       }
-
       const summaries = await api.listSummaries();
       if (!summaries) return;
 
@@ -253,7 +248,7 @@ export const gridActions = {
     if (ids.length === 0) return;
     const instances = get(gridInstances);
     const startable = ids.filter(id => {
-      const inst = instances.find(i => i.id === id);
+      const inst = instances.find(i => sameId(i.id, id));
       return inst?.state?.toLowerCase() === 'stopped';
     });
     if (startable.length === 0) return;
@@ -278,7 +273,7 @@ export const gridActions = {
     if (ids.length === 0) return;
     const instances = get(gridInstances);
     const stoppable = ids.filter(id => {
-      const inst = instances.find(i => i.id === id);
+      const inst = instances.find(i => sameId(i.id, id));
       const s = inst?.state?.toLowerCase();
       return s === 'running' || s === 'idle' || s === 'paused' || s === 'starting';
     });
@@ -304,7 +299,7 @@ export const gridActions = {
     if (ids.length === 0) return;
     const instances = get(gridInstances);
     const pauseable = ids.filter(id => {
-      const inst = instances.find(i => i.id === id);
+      const inst = instances.find(i => sameId(i.id, id));
       const s = inst?.state?.toLowerCase();
       return s === 'running' || s === 'idle';
     });
@@ -322,7 +317,7 @@ export const gridActions = {
     if (ids.length === 0) return;
     const instances = get(gridInstances);
     const resumable = ids.filter(id => {
-      const inst = instances.find(i => i.id === id);
+      const inst = instances.find(i => sameId(i.id, id));
       return inst?.state?.toLowerCase() === 'paused';
     });
     if (resumable.length === 0) return;
@@ -380,7 +375,7 @@ export const gridActions = {
   startInstance: async id => {
     pendingStateIds.set(id, { optimistic: 'starting', target: 'running', ts: Date.now() });
     gridInstances.update(instances =>
-      instances.map(i => (i.id === id ? { ...i, state: 'starting' } : i))
+      instances.map(i => (sameId(i.id, id) ? { ...i, state: 'starting' } : i))
     );
     const result = await api.gridStart([id]);
     await gridActions.fetchSummaries();
@@ -391,7 +386,7 @@ export const gridActions = {
   stopInstance: async id => {
     pendingStateIds.set(id, { optimistic: 'stopping', target: 'stopped', ts: Date.now() });
     gridInstances.update(instances =>
-      instances.map(i => (i.id === id ? { ...i, state: 'stopping' } : i))
+      instances.map(i => (sameId(i.id, id) ? { ...i, state: 'stopping' } : i))
     );
     const result = await api.gridStop([id]);
     await gridActions.fetchSummaries();

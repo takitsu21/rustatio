@@ -23,6 +23,7 @@
     computeEffectiveRatio,
   } from './lib/core/instanceStore.js';
   import { getPausedStatus, getRunningStatus, getStatusFromStats } from './lib/core/status.js';
+  import { sameId } from './lib/core/utils.js';
 
   // Import components
   import Header from './components/layout/Header.svelte';
@@ -326,7 +327,7 @@
         !inst.isRunning &&
         !inst.vpnPortSync &&
         clientDefaultPorts[inst.selectedClient] &&
-        previousClientInstanceId === inst.id &&
+        sameId(previousClientInstanceId, inst.id) &&
         previousClient !== null &&
         previousClient !== inst.selectedClient
       ) {
@@ -407,7 +408,7 @@
       // Only manage live stats in standard view
       if (get(viewMode) !== 'standard') return;
 
-      const instance = get(instances).find(i => i.id === newActiveId);
+      const instance = get(instances).find(i => sameId(i.id, newActiveId));
       if (instance && instance.isRunning && !instance.isPaused) {
         startLiveStatsForInstance(newActiveId);
       } else {
@@ -517,8 +518,9 @@
     await instanceActions.initialize();
     startNetworkStatusPolling();
     window.addEventListener('rustatio:refresh-network-status', refreshNetworkStatus);
-    // Server mode receives tracker retry state through pushed summaries.
-    if (getRunMode() !== 'server') {
+    // WASM has no backend scheduler, so the frontend drives tracker retries.
+    // Desktop and server handle retries in their backend schedulers.
+    if (getRunMode() === 'wasm') {
       startTrackerRetryPolling();
     }
 
@@ -532,17 +534,21 @@
       }
     }
 
-    // Set up instance events subscription for real-time sync (server mode only)
-    // This allows watch folder instances to appear without page refresh
-    if (getRunMode() === 'server') {
+    // Set up instance events for real-time sync. Desktop receives scheduler
+    // summaries directly; server receives SSE summaries. Watch-folder changes
+    // without events are still caught by the desktop reconcile loop.
+    const runMode = getRunMode();
+    if (runMode === 'server' || runMode === 'desktop') {
       instanceEventsCleanup = listenToInstanceEvents(async event => {
         devLog('log', 'Received instance event:', event);
 
         if (event.type === 'created') {
+          if (runMode !== 'server') return;
+
           // Fetch full instance info from server
           try {
             const serverInstances = await api.listInstances();
-            const newInstance = serverInstances.find(inst => inst.id === event.id);
+            const newInstance = serverInstances.find(inst => sameId(inst.id, event.id));
 
             if (newInstance) {
               const wasAdded = instanceActions.mergeServerInstance(newInstance);
@@ -714,7 +720,7 @@
       const instanceId = $activeInstance.id;
       setTimeout(() => {
         // Only update status if the instance is not running
-        const instance = $instances.find(i => i.id === instanceId);
+        const instance = $instances.find(i => sameId(i.id, instanceId));
         if (instance && !instance.isRunning) {
           instanceActions.updateInstance(instanceId, {
             statusMessage: 'Ready to start faking',
@@ -739,7 +745,7 @@
 
   // Get instance by ID from the store
   function getInstance(instanceId) {
-    return $instances.find(i => i.id === instanceId);
+    return $instances.find(i => sameId(i.id, instanceId));
   }
 
   // Clear all polling intervals for an instance
@@ -749,7 +755,7 @@
       if (instance.updateInterval) clearInterval(instance.updateInterval);
     }
     // Clear active live stats if this instance owns it
-    if (activeLiveStatsInstanceId === instanceId) {
+    if (sameId(activeLiveStatsInstanceId, instanceId)) {
       stopLiveStats();
     }
   }
@@ -768,10 +774,9 @@
       return;
     }
 
-    // In server mode, the scheduler already called stop() when the condition was met.
-    // Calling stopFaker again would redundantly re-enter Stopping state (sending
-    // another tracker announce), causing the grid to briefly show "Stopping".
-    if (getRunMode() !== 'server') {
+    // Desktop and server schedulers already called stop() when the condition
+    // was met. Only WASM still needs the frontend to stop its faker.
+    if (getRunMode() === 'wasm') {
       try {
         await api.stopFaker(instanceId);
       } catch (error) {
@@ -804,6 +809,12 @@
     }
 
     clearInstanceIntervals(instanceId);
+
+    // The desktop scheduler owns deletion and emits instance-deleted; removing
+    // here would race with that event and issue a redundant backend delete.
+    if (getRunMode() === 'desktop') {
+      return true;
+    }
 
     // Use removeInstance which creates a replacement empty instance when deleting the last one
     try {
@@ -897,12 +908,9 @@
   // Polling Intervals
   // =============================================================================
 
-  // Create tracker announce interval
-  // In server mode, the backend scheduler already calls update() every 5s,
-  // so we only need to read stats. In desktop/WASM, the frontend drives updates.
+  // Create tracker announce interval. Only WASM calls this; desktop and
+  // server advance fakers in their backend schedulers.
   function createTrackerAnnounceInterval(instanceId, intervalMs) {
-    const isServer = getRunMode() === 'server';
-
     return setInterval(async () => {
       const instance = getInstance(instanceId);
 
@@ -917,9 +925,7 @@
       }
 
       try {
-        if (!isServer) {
-          await api.updateFaker(instanceId);
-        }
+        await api.updateFaker(instanceId);
         const stats = await api.getStats(instanceId);
 
         const updates = {
@@ -951,10 +957,11 @@
   }
 
   // Create live stats interval (updates UI every second for the active instance)
-  // In server mode, just reads stats (scheduler advances them) at the scheduler tick.
-  // In desktop/WASM, calls updateStatsOnly to advance stats locally.
+  // Desktop and server read stats while their backend schedulers advance them.
+  // WASM still advances stats locally because it has no backend scheduler.
   function createLiveStatsInterval(instanceId) {
-    const isServer = getRunMode() === 'server';
+    const mode = getRunMode();
+    const isServer = mode === 'server';
 
     return setInterval(
       async () => {
@@ -965,9 +972,10 @@
         }
 
         try {
-          const stats = isServer
-            ? await api.getStats(instanceId)
-            : await api.updateStatsOnly(instanceId);
+          const stats =
+            mode === 'wasm'
+              ? await api.updateStatsOnly(instanceId)
+              : await api.getStats(instanceId);
 
           if (stats && instance.isRunning) {
             const updates = {
@@ -1019,7 +1027,9 @@
   // Start live stats polling for a specific instance (only call for the active/visible instance)
   function startLiveStatsForInstance(instanceId) {
     // Already polling this instance
-    if (activeLiveStatsInstanceId === instanceId && activeLiveStatsIntervalId) return;
+    if (sameId(activeLiveStatsInstanceId, instanceId) && activeLiveStatsIntervalId) {
+      return;
+    }
 
     // Clear any existing live stats polling
     stopLiveStats();
@@ -1045,8 +1055,9 @@
   function startPollingForInstance(instanceId, intervalSeconds = 5) {
     let updateIntervalId = null;
 
-    // Server mode gets stats through pushed SSE summaries, so no per-instance interval.
-    if (getRunMode() !== 'server') {
+    // Desktop and server schedulers advance fakers in Rust. Only WASM still
+    // needs a per-instance tracker interval from the frontend.
+    if (getRunMode() === 'wasm') {
       const intervalMs = intervalSeconds * 1000;
       updateIntervalId = createTrackerAnnounceInterval(instanceId, intervalMs);
 
@@ -1058,7 +1069,7 @@
 
     // Start live stats only if this is the currently active instance
     const currentActiveId = get(activeInstanceId);
-    if (instanceId === currentActiveId && get(viewMode) !== 'grid') {
+    if (sameId(instanceId, currentActiveId) && get(viewMode) !== 'grid') {
       startLiveStatsForInstance(instanceId);
     }
 
@@ -1219,7 +1230,7 @@
         clearInterval($activeInstance.updateInterval);
       }
       // Clear live stats if this instance owns it
-      if (activeLiveStatsInstanceId === $activeInstance.id) {
+      if (sameId(activeLiveStatsInstanceId, $activeInstance.id)) {
         stopLiveStats();
       }
 
@@ -1244,7 +1255,7 @@
       const instanceId = $activeInstance.id;
       setTimeout(() => {
         // Only update status if the instance is not running
-        const instance = $instances.find(i => i.id === instanceId);
+        const instance = $instances.find(i => sameId(i.id, instanceId));
         if (instance && !instance.isRunning) {
           instanceActions.updateInstance(instanceId, {
             statusMessage: 'Ready to start a new session',
@@ -1372,7 +1383,7 @@
     // Update UI state and stop polling for each
     for (const instance of instancesToStop) {
       if (instance.updateInterval) clearInterval(instance.updateInterval);
-      if (activeLiveStatsInstanceId === instance.id) {
+      if (sameId(activeLiveStatsInstanceId, instance.id)) {
         stopLiveStats();
       }
 
@@ -1480,7 +1491,7 @@
       const instanceId = $activeInstance.id;
       setTimeout(() => {
         // Only update status if the instance is still running
-        const instance = $instances.find(i => i.id === instanceId);
+        const instance = $instances.find(i => sameId(i.id, instanceId));
         if (instance && instance.isRunning) {
           let statusMessage, statusType, statusIcon;
           if (instance.isPaused) {
@@ -1523,7 +1534,7 @@
   // Sync instance config to server (debounced)
   // This ensures form changes persist across page refreshes in server mode
   function syncConfigToServer(instanceId) {
-    const instance = $instances.find(i => i.id === instanceId);
+    const instance = $instances.find(i => sameId(i.id, instanceId));
     if (!instance) return;
 
     // Only sync if instance has a torrent loaded (exists on backend) and is not running

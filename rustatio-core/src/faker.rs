@@ -108,6 +108,10 @@ pub struct FakerConfig {
     #[serde(default = "default_scrape_interval")]
     pub scrape_interval: u64,
 
+    /// Interval in seconds between scheduler stats updates (default: 5)
+    #[serde(default = "default_update_interval_seconds")]
+    pub update_interval_seconds: u64,
+
     // Progressive rate adjustment
     /// Enable progressive rate adjustment
     #[serde(default)]
@@ -155,6 +159,7 @@ pub struct PresetSettings {
     pub stop_at_seed_time_hours: Option<f64>,
     pub idle_when_no_leechers: Option<bool>,
     pub idle_when_no_seeders: Option<bool>,
+    pub update_interval_seconds: Option<u64>,
     pub post_stop_action: Option<String>,
     // Progressive rates
     pub progressive_rates_enabled: Option<bool>,
@@ -209,6 +214,7 @@ impl From<PresetSettings> for FakerConfig {
             idle_when_no_leechers: p.idle_when_no_leechers.unwrap_or(false),
             idle_when_no_seeders: p.idle_when_no_seeders.unwrap_or(false),
             scrape_interval: 60,
+            update_interval_seconds: p.update_interval_seconds.unwrap_or(5),
             post_stop_action: match p.post_stop_action.as_deref() {
                 Some("stop_seeding") => PostStopAction::StopSeeding,
                 Some("delete_instance") => PostStopAction::DeleteInstance,
@@ -242,6 +248,10 @@ const fn default_scrape_interval() -> u64 {
     60 // 60 seconds
 }
 
+const fn default_update_interval_seconds() -> u64 {
+    5
+}
+
 impl Default for FakerConfig {
     fn default() -> Self {
         Self {
@@ -267,6 +277,7 @@ impl Default for FakerConfig {
             idle_when_no_leechers: false,
             idle_when_no_seeders: false,
             scrape_interval: 60,
+            update_interval_seconds: 5,
             progressive_rates: false,
             target_upload_rate: None,
             target_download_rate: None,
@@ -2044,6 +2055,7 @@ mod tests {
         assert_eq!(config.upload_rate, 50.0);
         assert_eq!(config.download_rate, 100.0);
         assert!(!config.vpn_port_sync);
+        assert_eq!(config.update_interval_seconds, 5);
     }
 
     #[test]
@@ -2064,6 +2076,7 @@ mod tests {
         assert!(config.stop_at_ratio.is_none());
         assert!(config.stop_at_uploaded.is_none());
         assert!(!config.progressive_rates);
+        assert_eq!(config.update_interval_seconds, 5);
     }
 
     #[test]
@@ -2085,6 +2098,7 @@ mod tests {
             progressive_rates_enabled: Some(true),
             target_upload_rate: Some(500.0),
             progressive_duration_hours: Some(2.0),
+            update_interval_seconds: Some(30),
             ..Default::default()
         };
         let config: FakerConfig = preset.into();
@@ -2105,6 +2119,7 @@ mod tests {
         assert_eq!(config.target_upload_rate, Some(500.0));
         // 2 hours in seconds
         assert_eq!(config.progressive_duration, 2 * 3600);
+        assert_eq!(config.update_interval_seconds, 30);
     }
 
     #[test]

@@ -3,9 +3,8 @@
 mod commands;
 mod logging;
 mod persistence;
+mod scheduler;
 mod state;
-#[cfg(test)]
-mod state_tests;
 mod watch;
 #[cfg(test)]
 mod watch_tests;
@@ -403,6 +402,7 @@ fn main() {
             let watch_state = Arc::clone(&state_inner.watch);
             let watch_auto_start = watch_settings.clone().unwrap_or_default().auto_start;
 
+            let scheduler_state = state_inner.clone();
             tauri::async_runtime::spawn(async move {
                 restore_saved_instances(
                     app_handle.clone(),
@@ -419,6 +419,11 @@ fn main() {
                 }
                 let mut watch_guard = watch_state.write().await;
                 *watch_guard = Some(watch);
+                drop(watch_guard);
+
+                // Start after the watch service is installed so scheduled
+                // watch-folder deletions can update its loaded hashes.
+                scheduler::spawn(scheduler_state, app_handle);
             });
 
             // Periodic auto-save every 30 seconds
