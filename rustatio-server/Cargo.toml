@@ -49,6 +49,6 @@ rust-embed = { version = "8", features = ["interpolate-folder-path"] }
 mime_guess = "2"
 
 [dev-dependencies]
-tempfile = "3"
+tempfile = "=3.27.0"
 [lints]
 workspace = true
