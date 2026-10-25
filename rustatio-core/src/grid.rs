@@ -119,6 +119,8 @@ pub struct InstanceSummary {
     pub leechers: i64,
     pub left: u64,
     pub torrent_completion: f64,
+    #[serde(default)]
+    pub overall_progress: f64,
     pub source: String,
     pub created_at: u64,
     #[serde(default)]
@@ -228,6 +230,7 @@ mod tests {
             leechers: 0,
             left: 0,
             torrent_completion: 100.0,
+            overall_progress: 35.0,
             source: "manual".to_string(),
             created_at: 0,
             is_idling: true,
@@ -243,5 +246,6 @@ mod tests {
         assert_eq!(value["stopConditionMet"], true);
         assert_eq!(value["postStopAction"], "delete_instance");
         assert_eq!(value["effectiveStopAtRatio"], 2.5);
+        assert_eq!(value["overallProgress"], 35.0);
     }
 }

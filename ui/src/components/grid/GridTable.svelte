@@ -357,7 +357,7 @@
 
         {#each visibleData as instance (instance.id)}
           {@const isSelected = $selectedIds.has(instance.id)}
-          {@const completionPct = instance.torrentCompletion ?? 100}
+          {@const completionPct = instance.overallProgress ?? instance.torrentCompletion ?? 100}
           {@const issueMessage = getIssueMessage(instance)}
           {@const liveRateUp = getGridLiveRate(instance.state, instance.currentUploadRate)}
           {@const liveRateDown = getGridLiveRate(instance.state, instance.currentDownloadRate)}

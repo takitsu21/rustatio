@@ -59,6 +59,7 @@ pub fn build_summary(id: u32, instance: &FakerInstance, stats: &FakerStats) -> I
         leechers: stats.leechers,
         left: stats.left,
         torrent_completion: stats.torrent_completion,
+        overall_progress: stats.overall_progress(&instance.config),
         source: match instance.source {
             rustatio_watch::InstanceSource::Manual => "manual",
             rustatio_watch::InstanceSource::WatchFolder => "watch_folder",
