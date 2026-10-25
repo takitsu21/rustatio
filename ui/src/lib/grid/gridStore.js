@@ -87,9 +87,10 @@ export const filteredGridInstances = derived(
 
     // Sort
     result = [...result].sort((a, b) => {
-      const sortKey = $sort.column === 'progress' ? 'torrentCompletion' : $sort.column;
-      let aVal = a[sortKey];
-      let bVal = b[sortKey];
+      const isProgress = $sort.column === 'progress';
+      const sortKey = $sort.column;
+      let aVal = isProgress ? (a.overallProgress ?? a.torrentCompletion) : a[sortKey];
+      let bVal = isProgress ? (b.overallProgress ?? b.torrentCompletion) : b[sortKey];
 
       if (typeof aVal === 'string') {
         aVal = aVal.toLowerCase();

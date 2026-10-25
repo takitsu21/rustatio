@@ -103,6 +103,7 @@ fn build_summary(id: &str, instance: &FakerInstance, stats: &FakerStats) -> Inst
         leechers: stats.leechers,
         left: stats.left,
         torrent_completion: stats.torrent_completion,
+        overall_progress: stats.overall_progress(&instance.config),
         source: source.to_string(),
         created_at: instance.created_at,
         is_idling: stats.is_idling,
