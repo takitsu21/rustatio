@@ -49,9 +49,21 @@ fn parse_announce_list(dict: &BencodeDict) -> Option<Vec<Vec<String>>> {
 
 fn first_announce_url(announce_list: Option<&Vec<Vec<String>>>) -> bencode::Result<String> {
     announce_list
-        .and_then(|tiers| tiers.iter().flat_map(|tier| tier.iter()).find(|url| !url.is_empty()))
+        .and_then(|tiers| {
+            tiers.iter().flat_map(|tier| tier.iter()).find(|url| !url.trim().is_empty())
+        })
         .cloned()
         .ok_or_else(|| BencodeError::InvalidStructure("Missing or invalid key: announce".into()))
+}
+
+fn parse_announce_url(
+    dict: &BencodeDict,
+    announce_list: Option<&Vec<Vec<String>>>,
+) -> bencode::Result<String> {
+    match bencode::get_string(dict, "announce") {
+        Ok(url) if !url.trim().is_empty() => Ok(url),
+        _ => first_announce_url(announce_list),
+    }
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -175,8 +187,7 @@ impl TorrentInfo {
         // Extract announce-list (optional)
         let announce_list = parse_announce_list(dict);
 
-        let announce = bencode::get_string(dict, "announce")
-            .or_else(|_| first_announce_url(announce_list.as_ref()))?;
+        let announce = parse_announce_url(dict, announce_list.as_ref())?;
 
         // Extract info dictionary
         let info_dict = dict
@@ -370,8 +381,7 @@ impl TorrentSummary {
 
         let dict = Self::root_dict(&value)?;
         let announce_list = parse_announce_list(dict);
-        let announce = bencode::get_string(dict, "announce")
-            .or_else(|_| first_announce_url(announce_list.as_ref()))?;
+        let announce = parse_announce_url(dict, announce_list.as_ref())?;
         let info_dict = Self::info_dict(dict)?;
         let info_hash = calculate_info_hash(data)?;
         let (name, piece_length, num_pieces) = Self::basic_info(info_dict)?;
@@ -574,14 +584,16 @@ mod tests {
         ])
     }
 
-    fn sample_without_announce() -> Value {
-        dict(vec![
+    fn sample_with_announce_list(announce: Option<&str>, tiers: Vec<Vec<&str>>) -> Value {
+        let mut entries = vec![
             (
                 b"announce-list".to_vec(),
-                list(vec![
-                    list(vec![bytes("http://tracker.first/announce")]),
-                    list(vec![bytes("http://tracker.second/announce")]),
-                ]),
+                list(
+                    tiers
+                        .into_iter()
+                        .map(|tier| list(tier.into_iter().map(bytes).collect()))
+                        .collect(),
+                ),
             ),
             (
                 b"info".to_vec(),
@@ -592,7 +604,11 @@ mod tests {
                     (b"length".to_vec(), int(123)),
                 ]),
             ),
-        ])
+        ];
+        if let Some(url) = announce {
+            entries.push((b"announce".to_vec(), bytes(url)));
+        }
+        dict(entries)
     }
 
     fn sample_multi_file() -> Value {
@@ -714,13 +730,60 @@ mod tests {
 
     #[test]
     fn test_from_bytes_uses_first_announce_list_url() -> Result<()> {
-        let data = encode(&sample_without_announce())?;
+        let tracker = "http://tracker.first/announce?passkey=fixture";
 
-        let torrent = TorrentInfo::from_bytes(&data)?;
-        let summary = TorrentSummary::from_bytes(&data)?;
+        for announce in [None, Some(""), Some(" \t\r\n")] {
+            let data = encode(&sample_with_announce_list(
+                announce,
+                vec![vec![tracker], vec!["http://tracker.second/announce"]],
+            ))?;
+            let torrent = TorrentInfo::from_bytes(&data)?;
+            let summary = TorrentSummary::from_bytes(&data)?;
 
-        assert_eq!(torrent.announce, "http://tracker.first/announce");
-        assert_eq!(summary.announce, "http://tracker.first/announce");
+            assert_eq!(torrent.announce, tracker);
+            assert_eq!(summary.announce, tracker);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_from_bytes_announce_list_skips_blank_urls_and_empty_tiers() -> Result<()> {
+        for announce in [None, Some("")] {
+            let data = encode(&sample_with_announce_list(
+                announce,
+                vec![vec![], vec!["", " \t"], vec!["http://tracker.test/announce"]],
+            ))?;
+
+            assert_eq!(TorrentInfo::from_bytes(&data)?.announce, "http://tracker.test/announce");
+            assert_eq!(TorrentSummary::from_bytes(&data)?.announce, "http://tracker.test/announce");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_from_bytes_preserves_nonblank_primary_announce() -> Result<()> {
+        let tracker = "https://tracker.primary/announce?passkey=fixture";
+        let data = encode(&sample_with_announce_list(
+            Some(tracker),
+            vec![vec!["http://tracker.fallback/announce"]],
+        ))?;
+
+        assert_eq!(TorrentInfo::from_bytes(&data)?.announce, tracker);
+        assert_eq!(TorrentSummary::from_bytes(&data)?.announce, tracker);
+        Ok(())
+    }
+
+    #[test]
+    fn test_from_bytes_rejects_blank_announce_without_usable_fallback() -> Result<()> {
+        for tiers in [vec![], vec![vec!["", " \t"]]] {
+            let data = encode(&sample_with_announce_list(Some(""), tiers))?;
+
+            assert!(matches!(TorrentInfo::from_bytes(&data), Err(TorrentError::BencodeError(_))));
+            assert!(matches!(
+                TorrentSummary::from_bytes(&data),
+                Err(TorrentError::BencodeError(_))
+            ));
+        }
         Ok(())
     }
 
