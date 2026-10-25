@@ -57,10 +57,13 @@ where
     F: FnOnce(WasmFakerInstance) -> Fut,
     Fut: std::future::Future<Output = (WasmFakerInstance, Result<T, JsValue>)>,
 {
-    let instance = take_instance(id)?;
-    let (instance, result) = f(instance).await;
-    put_instance(id, instance);
-    result
+    rustatio_core::logger::with_instance_context(id, async move {
+        let instance = take_instance(id)?;
+        let (instance, result) = f(instance).await;
+        put_instance(id, instance);
+        result
+    })
+    .await
 }
 
 fn now_millis() -> u64 {
@@ -192,79 +195,91 @@ pub async fn start_faker(
     torrent_json: JsValue,
     config_json: JsValue,
 ) -> Result<(), JsValue> {
-    rustatio_core::logger::set_instance_context(Some(id));
+    rustatio_core::logger::with_instance_context(id, async move {
 
-    let torrent: TorrentInfo = serde_wasm_bindgen::from_value(torrent_json)
-        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+        let torrent: TorrentInfo = serde_wasm_bindgen::from_value(torrent_json)
+            .map_err(|e| JsValue::from_str(&e.to_string()))?;
 
-    let mut config: FakerConfig = serde_wasm_bindgen::from_value(config_json)
-        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+        let mut config: FakerConfig = serde_wasm_bindgen::from_value(config_json)
+            .map_err(|e| JsValue::from_str(&e.to_string()))?;
 
-    let torrent_info_hash = torrent.info_hash;
+        let torrent_info_hash = torrent.info_hash;
 
-    // Preserve cumulative stats if same torrent
-    let (cumulative_uploaded, cumulative_downloaded, tags, created_at) = INSTANCES.with(|instances| {
-        let instances_ref = instances.borrow();
-        if let Some(existing) = instances_ref.get(&id) {
-            if existing.torrent_info_hash == torrent_info_hash {
-                rustatio_core::log_info!(
-                    "Same torrent detected - continuing with cumulative stats: uploaded={} bytes, downloaded={} bytes",
-                    existing.cumulative_uploaded,
-                    existing.cumulative_downloaded
-                );
-                (
-                    existing.cumulative_uploaded,
-                    existing.cumulative_downloaded,
-                    existing.tags.clone(),
-                    existing.created_at,
-                )
-            } else {
-                rustatio_core::log_info!(
-                    "Different torrent detected - resetting cumulative stats (was: {}, now: {})",
-                    existing.torrent.name,
-                    torrent.name
-                );
-                (0u64, 0u64, Vec::new(), now_millis())
-            }
-        } else {
-            (0u64, 0u64, Vec::new(), now_millis())
-        }
-    });
+        // Preserve cumulative stats if same torrent
+        let (cumulative_uploaded, cumulative_downloaded, cumulative_elapsed_secs, tags, created_at) =
+            INSTANCES.with(|instances| {
+                let instances_ref = instances.borrow();
+                if let Some(existing) = instances_ref.get(&id) {
+                    if existing.torrent_info_hash == torrent_info_hash {
+                        let elapsed_secs = existing
+                            .faker
+                            .get_stats()
+                            .elapsed_time
+                            .as_secs()
+                            .max(config.initial_elapsed_secs);
+                        rustatio_core::log_info!(
+                            "Same torrent detected - continuing with cumulative stats: uploaded={} bytes, downloaded={} bytes, seed_time={}s",
+                            existing.cumulative_uploaded,
+                            existing.cumulative_downloaded,
+                            elapsed_secs
+                        );
+                        (
+                            existing.cumulative_uploaded,
+                            existing.cumulative_downloaded,
+                            elapsed_secs,
+                            existing.tags.clone(),
+                            existing.created_at,
+                        )
+                    } else {
+                        rustatio_core::log_info!(
+                            "Different torrent detected - resetting cumulative stats (was: {}, now: {})",
+                            existing.torrent.name,
+                            torrent.name
+                        );
+                        (0u64, 0u64, 0u64, Vec::new(), now_millis())
+                    }
+                } else {
+                    // No instance in memory (e.g. after a page reload): use the saved seed time
+                    (0u64, 0u64, config.initial_elapsed_secs, Vec::new(), now_millis())
+                }
+            });
 
-    config.initial_uploaded = cumulative_uploaded;
-    config.initial_downloaded = cumulative_downloaded;
+        config.initial_uploaded = cumulative_uploaded;
+        config.initial_downloaded = cumulative_downloaded;
+        config.initial_elapsed_secs = cumulative_elapsed_secs;
 
-    let stored_config = config.clone();
-    let torrent = Arc::new(torrent.without_files());
-    let summary = Arc::new(torrent.summary());
-    let mut faker = RatioFaker::new(Arc::clone(&torrent), config, None)
-        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+        let stored_config = config.clone();
+        let torrent = Arc::new(torrent.without_files());
+        let summary = Arc::new(torrent.summary());
+        let mut faker = RatioFaker::new(Arc::clone(&torrent), config, None)
+            .map_err(|e| JsValue::from_str(&e.to_string()))?;
 
-    faker.start().await.map_err(|e| JsValue::from_str(&e.to_string()))?;
+        faker.start().await.map_err(|e| JsValue::from_str(&e.to_string()))?;
 
-    INSTANCES.with(|instances| {
-        instances.borrow_mut().insert(
-            id,
-            WasmFakerInstance {
-                faker,
-                torrent,
-                summary,
-                config: stored_config,
-                torrent_info_hash,
-                cumulative_uploaded,
-                cumulative_downloaded,
-                tags,
-                created_at,
-            },
-        );
-    });
+        INSTANCES.with(|instances| {
+            instances.borrow_mut().insert(
+                id,
+                WasmFakerInstance {
+                    faker,
+                    torrent,
+                    summary,
+                    config: stored_config,
+                    torrent_info_hash,
+                    cumulative_uploaded,
+                    cumulative_downloaded,
+                    tags,
+                    created_at,
+                },
+            );
+        });
 
-    Ok(())
+        Ok(())
+    })
+    .await
 }
 
 #[wasm_bindgen]
 pub async fn update_faker(id: u32) -> Result<JsValue, JsValue> {
-    rustatio_core::logger::set_instance_context(Some(id));
     with_instance(id, |mut instance| async move {
         let result = instance.faker.update().await;
         if let Err(e) = result {
@@ -279,7 +294,6 @@ pub async fn update_faker(id: u32) -> Result<JsValue, JsValue> {
 
 #[wasm_bindgen]
 pub async fn update_stats_only(id: u32) -> Result<JsValue, JsValue> {
-    rustatio_core::logger::set_instance_context(Some(id));
     with_instance(id, |mut instance| async move {
         let result = instance.faker.update_stats_only().await;
         if let Err(e) = result {
@@ -304,7 +318,6 @@ pub async fn get_stats(id: u32) -> Result<JsValue, JsValue> {
 
 #[wasm_bindgen]
 pub async fn stop_faker(id: u32) -> Result<(), JsValue> {
-    rustatio_core::logger::set_instance_context(Some(id));
     with_instance(id, |mut instance| async move {
         let final_stats = instance.faker.get_stats();
 
@@ -326,7 +339,6 @@ pub async fn stop_faker(id: u32) -> Result<(), JsValue> {
 
 #[wasm_bindgen]
 pub async fn pause_faker(id: u32) -> Result<(), JsValue> {
-    rustatio_core::logger::set_instance_context(Some(id));
     with_instance(id, |mut instance| async move {
         let result = instance.faker.pause().map_err(|e| JsValue::from_str(&e.to_string()));
         (instance, result)
@@ -336,7 +348,6 @@ pub async fn pause_faker(id: u32) -> Result<(), JsValue> {
 
 #[wasm_bindgen]
 pub async fn resume_faker(id: u32) -> Result<(), JsValue> {
-    rustatio_core::logger::set_instance_context(Some(id));
     with_instance(id, |mut instance| async move {
         let result = instance.faker.resume().map_err(|e| JsValue::from_str(&e.to_string()));
         (instance, result)
@@ -346,7 +357,6 @@ pub async fn resume_faker(id: u32) -> Result<(), JsValue> {
 
 #[wasm_bindgen]
 pub async fn recover_tracker_faker(id: u32) -> Result<JsValue, JsValue> {
-    rustatio_core::logger::set_instance_context(Some(id));
     with_instance(id, |mut instance| async move {
         let result = instance
             .faker
@@ -366,7 +376,6 @@ pub async fn recover_tracker_faker(id: u32) -> Result<JsValue, JsValue> {
 
 #[wasm_bindgen]
 pub async fn scrape_tracker(id: u32) -> Result<JsValue, JsValue> {
-    rustatio_core::logger::set_instance_context(Some(id));
     with_instance(id, |instance| async move {
         let scrape_result = instance.faker.scrape().await;
         match scrape_result {

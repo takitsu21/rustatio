@@ -506,7 +506,7 @@
             <!-- Actions -->
             <td class="whitespace-nowrap border-b border-border/60 px-1 py-1">
               <div
-                class="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100"
+                class="flex items-center gap-0.5 opacity-50 transition-opacity group-hover:opacity-100"
               >
                 {#if primary}
                   <button

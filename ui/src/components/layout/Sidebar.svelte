@@ -28,7 +28,7 @@
 
   /* global __APP_VERSION__ */
   let appVersion = $state(__APP_VERSION__);
-  const repository = 'https://github.com/takitsu21/rustatio';
+  const repository = 'https://github.com/testycro/rustatio';
   const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
   let {
@@ -522,7 +522,7 @@
         {#if !isCompact}
           {#if instance.source !== 'watch_folder'}
             <button
-              class="flex-shrink-0 p-0.5 text-muted-foreground opacity-0 transition-colors hover:text-stat-danger group-hover:opacity-100 focus-visible:opacity-100 cursor-pointer"
+              class="flex-shrink-0 p-0.5 text-muted-foreground opacity-50 transition-colors hover:text-stat-danger group-hover:opacity-100 focus-visible:opacity-100 cursor-pointer"
               onclick={e => handleRemoveInstance(e, instance.id)}
               title="Close instance"
               aria-label="Close instance"
@@ -531,7 +531,7 @@
             </button>
           {:else}
             <button
-              class="flex-shrink-0 p-0.5 text-muted-foreground opacity-0 transition-colors hover:text-stat-danger group-hover:opacity-100 cursor-pointer"
+              class="flex-shrink-0 p-0.5 text-muted-foreground opacity-50 transition-colors hover:text-stat-danger group-hover:opacity-100 cursor-pointer"
               onclick={e =>
                 handleForceRemoveInstance(e, instance.id, instance.torrent?.name || instance.name)}
               title="Force delete (file may be missing)"

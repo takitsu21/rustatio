@@ -5,7 +5,6 @@ use super::persistence::{
     now_timestamp, CustomPreset, DefaultPreset, InstanceSource, PersistedInstance,
     PersistedRuntime, PersistedState, Persistence, WatchSettings,
 };
-use rustatio_core::logger::set_instance_context_str;
 use rustatio_core::{
     primary_tracker_host, FakerConfig, FakerState, FakerStats, InstanceSummary,
     PeerListenerService, PeerListenerStatus, ProxySettings, RatioFaker, RatioFakerHandle,
@@ -60,6 +59,7 @@ impl InstanceBuildContext {
 struct ExistingInstanceState {
     cumulative_uploaded: u64,
     cumulative_downloaded: u64,
+    elapsed_secs: u64,
     created_at: u64,
     source: InstanceSource,
     tags: Vec<String>,
@@ -417,6 +417,8 @@ impl AppState {
                 runtime.map_or(persisted.cumulative_uploaded, |rt| rt.uploaded);
             faker_config.initial_downloaded =
                 runtime.map_or(persisted.cumulative_downloaded, |rt| rt.downloaded);
+            faker_config.initial_elapsed_secs =
+                runtime.map_or(persisted.config.initial_elapsed_secs, |rt| rt.elapsed_secs);
 
             let summary = Arc::new(persisted.torrent.clone());
             let torrent = Arc::new(persisted.torrent.to_info());
@@ -711,21 +713,23 @@ impl AppState {
     }
 
     async fn create_instance_internal(&self, context: InstanceBuildContext) -> Result<(), String> {
-        set_instance_context_str(Some(context.summary.name.as_str()));
+        let label = context.summary.name.clone();
+        rustatio_core::logger::with_instance_context(label, async move {
+            if let Some(existing_id) =
+                self.duplicate_instance_id(&context.id, &context.torrent.info_hash).await
+            {
+                return Err(format!(
+                    "Duplicate torrent skipped: already imported as instance {existing_id}"
+                ));
+            }
 
-        if let Some(existing_id) =
-            self.duplicate_instance_id(&context.id, &context.torrent.info_hash).await
-        {
-            return Err(format!(
-                "Duplicate torrent skipped: already imported as instance {existing_id}"
-            ));
-        }
-
-        let id = context.id.clone();
-        let existing = self.collect_existing_instance_state(&context).await;
-        let faker_config = Self::build_faker_config(&context, &existing);
-        let instance = self.build_instance(context, faker_config, existing).await?;
-        self.insert_instance(id, instance).await
+            let id = context.id.clone();
+            let existing = self.collect_existing_instance_state(&context).await;
+            let faker_config = Self::build_faker_config(&context, &existing);
+            let instance = self.build_instance(context, faker_config, existing).await?;
+            self.insert_instance(id, instance).await
+        })
+        .await
     }
 
     pub async fn get_stats(&self, id: &str) -> Result<FakerStats, String> {
@@ -1062,6 +1066,7 @@ impl AppState {
                 return ExistingInstanceState {
                     cumulative_uploaded: existing.cumulative_uploaded,
                     cumulative_downloaded: existing.cumulative_downloaded,
+                    elapsed_secs: stats.elapsed_time.as_secs(),
                     created_at: existing.created_at,
                     source: existing.source,
                     tags: existing.tags.clone(),
@@ -1073,6 +1078,7 @@ impl AppState {
         ExistingInstanceState {
             cumulative_uploaded: 0,
             cumulative_downloaded: 0,
+            elapsed_secs: 0,
             created_at: now_timestamp(),
             source: context.source,
             tags: Vec::new(),
@@ -1090,6 +1096,9 @@ impl AppState {
             existing.cumulative_uploaded,
             existing.cumulative_downloaded,
         );
+        faker_config.initial_elapsed_secs =
+            faker_config.initial_elapsed_secs.max(existing.elapsed_secs);
+
         if let Some(completion) = existing.completion_percent {
             faker_config.completion_percent = completion;
         }
@@ -1296,6 +1305,28 @@ mod tests {
 
     fn torrent() -> TorrentInfo {
         torrent_with_hash(7)
+    }
+
+    #[test]
+    fn build_faker_config_keeps_existing_seed_time() {
+        let config = FakerConfig { initial_elapsed_secs: 10, ..FakerConfig::default() };
+        let context = InstanceBuildContext::new("seed", torrent(), config, InstanceSource::Manual);
+        let mut existing = ExistingInstanceState {
+            cumulative_uploaded: 0,
+            cumulative_downloaded: 0,
+            elapsed_secs: 3600,
+            created_at: 0,
+            source: InstanceSource::Manual,
+            tags: Vec::new(),
+            completion_percent: None,
+        };
+
+        let built = AppState::build_faker_config(&context, &existing);
+        assert_eq!(built.initial_elapsed_secs, 3600);
+
+        existing.elapsed_secs = 5;
+        let built = AppState::build_faker_config(&context, &existing);
+        assert_eq!(built.initial_elapsed_secs, 10);
     }
 
     fn torrent_with_hash(byte: u8) -> TorrentInfo {

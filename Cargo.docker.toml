@@ -10,7 +10,7 @@ version = "0.1.0"
 edition = "2021"
 authors = ["Dylann Batisse <dylann.batisse@protonmail.com>"]
 license = "MIT"
-repository = "https://github.com/takitsu21/rustatio"
+repository = "https://github.com/testycro/rustatio"
 
 [workspace.lints.rust]
 unsafe_code = "deny"

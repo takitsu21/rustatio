@@ -4,6 +4,7 @@
 @import url('https://cdn.jsdelivr.net/npm/@fontsource/maple-mono@latest/700.css');
 
 /* Color themes */
+@import './lib/themes/old.css';
 @import './lib/themes/catppuccin.css';
 @import './lib/themes/tokyo-night.css';
 @import './lib/themes/dracula.css';

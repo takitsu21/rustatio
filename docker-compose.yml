@@ -18,10 +18,11 @@ services:
       - HTTP_CONTROL_SERVER_AUTH_DEFAULT_ROLE={"auth":"apikey","apikey":"${GLUETUN_API_KEY:-CHANGE_ME}"}
     ports:
       - "${WEBUI_PORT:-8080}:8080" # Rustatio Web UI
+      - "8081:8081"  # Admin Daemon
     restart: unless-stopped
 
   rustatio:
-    image: ghcr.io/takitsu21/rustatio:latest
+    image: ghcr.io/testycro/rustatio:latest
     container_name: rustatio
     environment:
       - PORT=8080
@@ -32,6 +33,9 @@ services:
       - PGID=${PGID:-1000}
       # Optional authentication for your server (Recommended if exposing on internet)
       # - AUTH_TOKEN=${AUTH_TOKEN:-CHANGE_ME}
+      - DAEMON_ENABLED=true  # Admin Daemon
+      - DAEMON_SCRIPT=/app/rustatio_daemon.py  # Admin Daemon
+      - WATCH_AUTO_START=true  # Set to true to auto-start faking new torrents
     volumes:
       - rustatio_data:/data
       # Optional: Uncomment to enable watch folder feature

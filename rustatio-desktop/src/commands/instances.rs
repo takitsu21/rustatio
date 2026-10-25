@@ -191,7 +191,12 @@ pub async fn load_instance_torrent(
         }
         std::collections::hash_map::Entry::Occupied(mut entry) => {
             let instance = entry.get_mut();
-            let config = instance.config.clone();
+            let mut config = instance.config.clone();
+            if instance.torrent.info_hash == torrent_arc.info_hash {
+                config.initial_elapsed_secs = config
+                    .initial_elapsed_secs
+                    .max(instance.faker.stats_snapshot().elapsed_time.as_secs());
+            }
             let faker =
                 RatioFaker::new(Arc::clone(&torrent_arc), config, Some(state.http_client().await))
                     .map_err(|e| format!("Failed to create faker: {e}"))?;

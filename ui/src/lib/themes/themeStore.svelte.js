@@ -2,6 +2,7 @@
  * Shared theme store for consistent theming across all pages
  * Supports:
  * - Original themes: Light, Dark, Automatic (system)
+ * - Old Dark and Old Light: the palette and geometry of the previous UI
  * - Catppuccin flavors: Latte (light), Frappé, Macchiato, Mocha (dark)
  * - Tokyo Night flavors: Night, Storm, Moon (dark), Light
  * - Dracula (dark) and Alucard (light)

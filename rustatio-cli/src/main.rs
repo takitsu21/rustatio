@@ -119,6 +119,9 @@ async fn main() -> Result<()> {
                 completion,
                 initial_uploaded: effective_uploaded,
                 initial_downloaded: effective_downloaded,
+                initial_elapsed_secs: existing_session
+                    .as_ref()
+                    .map_or(0, |session| session.total_seed_time_secs),
                 stop_ratio,
                 stop_uploaded,
                 stop_downloaded,
@@ -222,6 +225,7 @@ async fn main() -> Result<()> {
                 completion: session.completion_percent,
                 initial_uploaded: session.uploaded,
                 initial_downloaded: session.downloaded,
+                initial_elapsed_secs: session.total_seed_time_secs,
                 stop_ratio: stop_ratio.or(session.stop_at_ratio),
                 stop_uploaded: stop_uploaded.or(session.stop_at_uploaded_gb),
                 stop_downloaded: None,

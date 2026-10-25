@@ -77,11 +77,11 @@ jobs:
         with:
           tag: ${{ steps.new_version.outputs.tag }}
           message: "Release ${{ steps.new_version.outputs.tag }}"
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          github_token: ${{ secrets.G_TOKEN }}
 
       - name: Create draft release
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.G_TOKEN }}
           TAG: ${{ steps.new_version.outputs.tag }}
         run: |
           if gh release view "$TAG" >/dev/null 2>&1; then
@@ -118,7 +118,7 @@ jobs:
       - name: Install mise
         uses: jdx/mise-action@c37c93293d6b742fc901e1406b8f764f6fb19dac # v2
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          github_token: ${{ secrets.G_TOKEN }}
           cache: true
 
       - name: Setup mold linker
@@ -188,7 +188,7 @@ jobs:
       - name: Install mise
         uses: jdx/mise-action@c37c93293d6b742fc901e1406b8f764f6fb19dac # v2
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          github_token: ${{ secrets.G_TOKEN }}
           cache: true
 
       - name: Cache cargo
@@ -216,7 +216,7 @@ jobs:
 
       - name: Upload CLI binary to release
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.G_TOKEN }}
           TAG: ${{ needs.prepare-release.outputs.tag }}
         run: |
           gh release upload "$TAG" target/x86_64-unknown-linux-gnu/release/rustatio --clobber
@@ -256,7 +256,7 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          password: ${{ secrets.G_TOKEN }}
 
       - name: Extract platform short name
         id: platform
@@ -316,7 +316,7 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          password: ${{ secrets.G_TOKEN }}
 
       - name: Extract metadata for Docker
         id: meta
@@ -431,7 +431,7 @@ jobs:
       - name: Install mise
         uses: jdx/mise-action@c37c93293d6b742fc901e1406b8f764f6fb19dac # v2
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          github_token: ${{ secrets.G_TOKEN }}
           cache: true
 
       - name: Install wasm32 target
@@ -497,7 +497,7 @@ jobs:
       - name: Build Tauri App
         uses: tauri-apps/tauri-action@73fb865345c54760d875b94642314f8c0c894afa # action-v0.6.1
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          github_token: ${{ secrets.G_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
         with:
@@ -513,6 +513,7 @@ jobs:
   prepare-pages:
     name: Prepare GitHub Pages
     needs: [prepare-release, build-web-assets]
+    if: github.ref_name == 'main'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -540,7 +541,7 @@ jobs:
     steps:
       - name: Generate release notes
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.G_TOKEN }}
           TAG: ${{ needs.prepare-release.outputs.tag }}
         run: |
           gh api \
@@ -551,7 +552,7 @@ jobs:
 
       - name: Publish release
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.G_TOKEN }}
           GH_REPO: ${{ github.repository }}
           TAG: ${{ needs.prepare-release.outputs.tag }}
         run: |
@@ -571,6 +572,7 @@ jobs:
   deploy-pages:
     name: Deploy to GitHub Pages
     needs: [prepare-release, prepare-pages]
+    if: github.ref_name == 'main'
     runs-on: ubuntu-latest
     permissions:
       pages: write

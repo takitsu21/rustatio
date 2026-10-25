@@ -26,6 +26,14 @@ function isServerMode() {
 // Helper to convert bytes to MB (rounded to integer)
 const bytesToMB = bytes => Math.round((bytes || 0) / (1024 * 1024));
 
+// Seed time (seconds) from backend stats; a Duration is serialized as { secs, nanos }
+export const getStatsSeedSeconds = stats => {
+  const t = stats?.elapsed_time;
+  if (typeof t === 'number') return Math.floor(t);
+  if (typeof t?.secs === 'number') return t.secs;
+  return null;
+};
+
 // Compute the effective (randomized) stop ratio
 export function computeEffectiveRatio(stopAtRatio, randomizeRatio, randomRatioRangePercent) {
   if (!randomizeRatio) {
@@ -59,6 +67,7 @@ function createDefaultInstance(id, defaults = {}) {
     cumulativeUploaded: defaults.cumulativeUploaded !== undefined ? defaults.cumulativeUploaded : 0,
     cumulativeDownloaded:
       defaults.cumulativeDownloaded !== undefined ? defaults.cumulativeDownloaded : 0,
+    cumulativeSeedTime: defaults.cumulativeSeedTime !== undefined ? defaults.cumulativeSeedTime : 0,
 
     // Form values
     selectedClient: defaults.selectedClient || 'qbittorrent',
@@ -233,6 +242,7 @@ function loadSessionFromStorage(config = null) {
         initialDownloaded: bytesToMB(inst.initial_downloaded),
         cumulativeUploaded: bytesToMB(inst.cumulative_uploaded),
         cumulativeDownloaded: bytesToMB(inst.cumulative_downloaded),
+        cumulativeSeedTime: inst.cumulative_seed_time ?? 0,
         randomizeRates: inst.randomize_rates,
         randomRangePercent: inst.random_range_percent,
         updateIntervalSeconds: inst.update_interval_seconds,
@@ -312,6 +322,10 @@ function buildInstanceDefaultsFromServer(serverInst) {
     initialDownloaded: bytesToMB(config.initial_downloaded),
     cumulativeUploaded: bytesToMB(serverInst.stats.uploaded),
     cumulativeDownloaded: bytesToMB(serverInst.stats.downloaded),
+    cumulativeSeedTime: Math.max(
+      getStatsSeedSeconds(serverInst.stats) ?? 0,
+      Math.floor(Number(config.initial_elapsed_secs) || 0)
+    ),
     randomizeRates: config.randomize_rates,
     randomRangePercent: config.random_range_percent,
     stopAtRatioEnabled: config.stop_at_ratio !== null,
@@ -673,6 +687,14 @@ export const instanceActions = {
     const currentInstances = get(instances);
     const currentInst = currentInstances.find(i => sameId(i.id, id));
     if (!currentInst) return;
+
+    // Keep the cumulative seed time in sync with backend stats (never decreases)
+    if (updates.stats) {
+      const secs = getStatsSeedSeconds(updates.stats);
+      if (secs !== null && secs > (currentInst.cumulativeSeedTime || 0)) {
+        updates = { ...updates, cumulativeSeedTime: secs };
+      }
+    }
 
     // Check if updates are actually different
     let hasChanges = false;

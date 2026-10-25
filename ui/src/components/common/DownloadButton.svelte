@@ -5,7 +5,7 @@
   import { Download, ChevronDown, ExternalLink, Github } from '@lucide/svelte';
   import OSIcon from './OSIcon.svelte';
 
-  const GITHUB_REPO = 'https://github.com/takitsu21/rustatio';
+  const GITHUB_REPO = 'https://github.com/testycro/rustatio';
 
   let os = $state('unknown');
   let downloadType = $state('');
@@ -29,7 +29,7 @@
   async function fetchLatestVersion() {
     try {
       const response = await fetch(
-        'https://api.github.com/repos/takitsu21/rustatio/releases/latest'
+        'https://api.github.com/repos/testycro/rustatio/releases/latest'
       );
       const data = await response.json();
       return data.tag_name; // Returns version like "v0.4.0"

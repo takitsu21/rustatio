@@ -7,17 +7,15 @@ use tauri::{AppHandle, State};
 use crate::logging::log_and_emit;
 use crate::state::{AppState, FakerInstance};
 
-fn set_instance_label(state: &AppState, instance_id: u32, fallback: Option<&str>) {
-    let label = state
+fn instance_label(state: &AppState, instance_id: u32, fallback: Option<&str>) -> String {
+    state
         .fakers
         .try_read()
         .ok()
-        .and_then(|fakers| fakers.get(&instance_id).map(|instance| instance.summary.name.clone()))
+        .and_then(|fakers| fakers.get(&instance_id).map(|i| i.summary.name.clone()))
         .filter(|name| !name.is_empty())
         .or_else(|| fallback.map(std::string::ToString::to_string))
-        .unwrap_or_else(|| instance_id.to_string());
-
-    rustatio_core::logger::set_instance_context_str(Some(&label));
+        .unwrap_or_else(|| instance_id.to_string())
 }
 
 #[tauri::command]
@@ -59,88 +57,91 @@ pub async fn start_faker(
 
     let torrent_info_hash = torrent.info_hash;
 
-    set_instance_label(&state, instance_id, Some(&torrent.name));
+    let label = instance_label(&state, instance_id, Some(&torrent.name));
+    rustatio_core::logger::with_instance_context(label, async {
 
-    // Check if instance already exists (restarting) - preserve cumulative stats
-    let mut config_with_cumulative = config.clone();
-    let (existing_tags, created_at, existing_source) = {
-        let fakers = state.fakers.read().await;
-        if let Some(existing) = fakers.get(&instance_id) {
-            if existing.torrent.info_hash == torrent_info_hash {
-                config_with_cumulative.initial_uploaded = existing.cumulative_uploaded;
-                config_with_cumulative.initial_downloaded = existing.cumulative_downloaded;
-                log_and_emit!(
-                    &app,
-                    instance_id,
-                    info,
-                    "Same torrent detected - continuing with cumulative stats: uploaded={} bytes, downloaded={} bytes, completion={:.1}%",
-                    existing.cumulative_uploaded,
-                    existing.cumulative_downloaded,
-                    config_with_cumulative.completion_percent
-                );
-                (existing.tags.clone(), existing.created_at, existing.source)
+        // Check if instance already exists (restarting) - preserve cumulative stats
+        let mut config_with_cumulative = config.clone();
+        let (existing_tags, created_at, existing_source) = {
+            let fakers = state.fakers.read().await;
+            if let Some(existing) = fakers.get(&instance_id) {
+                if existing.torrent.info_hash == torrent_info_hash {
+                    config_with_cumulative.initial_uploaded = existing.cumulative_uploaded;
+                    config_with_cumulative.initial_downloaded = existing.cumulative_downloaded;
+                    log_and_emit!(
+                        &app,
+                        instance_id,
+                        info,
+                        "Same torrent detected - continuing with cumulative stats: uploaded={} bytes, downloaded={} bytes, completion={:.1}%",
+                        existing.cumulative_uploaded,
+                        existing.cumulative_downloaded,
+                        config_with_cumulative.completion_percent
+                    );
+                    (existing.tags.clone(), existing.created_at, existing.source)
+                } else {
+                    log_and_emit!(
+                        &app,
+                        instance_id,
+                        info,
+                        "Different torrent detected - resetting cumulative stats (was: {}, now: {})",
+                        existing.torrent.name,
+                        torrent.name
+                    );
+                    (existing.tags.clone(), existing.created_at, InstanceSource::Manual)
+                }
             } else {
-                log_and_emit!(
-                    &app,
-                    instance_id,
-                    info,
-                    "Different torrent detected - resetting cumulative stats (was: {}, now: {})",
-                    existing.torrent.name,
-                    torrent.name
-                );
-                (existing.tags.clone(), existing.created_at, InstanceSource::Manual)
+                (vec![], crate::state::now_secs(), InstanceSource::Manual)
             }
-        } else {
-            (vec![], crate::state::now_secs(), InstanceSource::Manual)
-        }
-    };
+        };
 
-    let cumulative_uploaded = config_with_cumulative.initial_uploaded;
-    let cumulative_downloaded = config_with_cumulative.initial_downloaded;
+        let cumulative_uploaded = config_with_cumulative.initial_uploaded;
+        let cumulative_downloaded = config_with_cumulative.initial_downloaded;
 
-    let torrent_arc = Arc::new(torrent.without_files());
-    let summary_arc = Arc::new(torrent_arc.summary());
+        let torrent_arc = Arc::new(torrent.without_files());
+        let summary_arc = Arc::new(torrent_arc.summary());
 
-    let mut faker = RatioFaker::new(
-        Arc::clone(&torrent_arc),
-        config_with_cumulative,
-        Some(state.http_client().await),
-    )
-    .map_err(|e| {
-        let error_msg = format!("Failed to create faker: {e}");
-        log_and_emit!(&app, instance_id, error, "{}", error_msg);
-        error_msg
-    })?;
+        let mut faker = RatioFaker::new(
+            Arc::clone(&torrent_arc),
+            config_with_cumulative,
+            Some(state.http_client().await),
+        )
+        .map_err(|e| {
+            let error_msg = format!("Failed to create faker: {e}");
+            log_and_emit!(&app, instance_id, error, "{}", error_msg);
+            error_msg
+        })?;
 
-    // HTTP happens here — no HashMap lock held
-    faker.start().await.map_err(|e| {
-        let error_msg = format!("Failed to start faker: {e}");
-        log_and_emit!(&app, instance_id, error, "{}", error_msg);
-        error_msg
-    })?;
+        // HTTP happens here — no HashMap lock held
+        faker.start().await.map_err(|e| {
+            let error_msg = format!("Failed to start faker: {e}");
+            log_and_emit!(&app, instance_id, error, "{}", error_msg);
+            error_msg
+        })?;
 
-    // Brief write lock just for the insert
-    let mut fakers = state.fakers.write().await;
-    fakers.insert(
-        instance_id,
-        FakerInstance {
-            faker: Arc::new(RatioFakerHandle::new(faker)),
-            torrent: torrent_arc,
-            summary: summary_arc,
-            config,
-            cumulative_uploaded,
-            cumulative_downloaded,
-            tags: existing_tags,
-            created_at,
-            source: existing_source,
-        },
-    );
-    drop(fakers);
+        // Brief write lock just for the insert
+        let mut fakers = state.fakers.write().await;
+        fakers.insert(
+            instance_id,
+            FakerInstance {
+                faker: Arc::new(RatioFakerHandle::new(faker)),
+                torrent: torrent_arc,
+                summary: summary_arc,
+                config,
+                cumulative_uploaded,
+                cumulative_downloaded,
+                tags: existing_tags,
+                created_at,
+                source: existing_source,
+            },
+        );
+        drop(fakers);
 
-    state.refresh_peer_listener_port().await;
+        state.refresh_peer_listener_port().await;
 
-    log_and_emit!(&app, instance_id, info, "Faker started successfully");
-    Ok(())
+        log_and_emit!(&app, instance_id, info, "Faker started successfully");
+        Ok(())
+    })
+    .await
 }
 
 #[tauri::command]
@@ -150,62 +151,66 @@ pub async fn stop_faker(
     app: AppHandle,
 ) -> Result<(), String> {
     log_and_emit!(&app, instance_id, info, "Stopping faker");
-    set_instance_label(&state, instance_id, None);
+    let label = instance_label(&state, instance_id, None);
+    rustatio_core::logger::with_instance_context(label, async {
+        // Clone the Arc under read lock, then drop the HashMap lock
+        let faker = {
+            let fakers = state.fakers.read().await;
+            let instance = fakers
+                .get(&instance_id)
+                .ok_or_else(|| format!("Instance {instance_id} not found"))?;
+            Arc::clone(&instance.faker)
+        };
 
-    // Clone the Arc under read lock, then drop the HashMap lock
-    let faker = {
-        let fakers = state.fakers.read().await;
-        let instance =
-            fakers.get(&instance_id).ok_or_else(|| format!("Instance {instance_id} not found"))?;
-        Arc::clone(&instance.faker)
-    };
+        // HTTP happens here (announce Stopped) — only this instance is locked
+        let final_stats = faker.stats_snapshot();
+        faker.stop().await.map_err(|e| {
+            let error_msg = format!("Failed to stop faker: {e}");
+            log_and_emit!(&app, instance_id, error, "{}", error_msg);
+            error_msg
+        })?;
 
-    // HTTP happens here (announce Stopped) — only this instance is locked
-    let final_stats = faker.stats_snapshot();
-    faker.stop().await.map_err(|e| {
-        let error_msg = format!("Failed to stop faker: {e}");
-        log_and_emit!(&app, instance_id, error, "{}", error_msg);
-        error_msg
-    })?;
-
-    // Brief write lock to update cumulative stats
-    {
-        let mut fakers = state.fakers.write().await;
-        if let Some(instance) = fakers.get_mut(&instance_id) {
-            instance.cumulative_uploaded = final_stats.uploaded;
-            instance.cumulative_downloaded = final_stats.downloaded;
-            instance.config.completion_percent = final_stats.torrent_completion;
+        // Brief write lock to update cumulative stats
+        {
+            let mut fakers = state.fakers.write().await;
+            if let Some(instance) = fakers.get_mut(&instance_id) {
+                instance.cumulative_uploaded = final_stats.uploaded;
+                instance.cumulative_downloaded = final_stats.downloaded;
+                instance.config.completion_percent = final_stats.torrent_completion;
+            }
         }
-    }
 
-    state.refresh_peer_listener_port().await;
+        state.refresh_peer_listener_port().await;
 
-    log_and_emit!(
-        &app,
-        instance_id,
-        info,
-        "Faker stopped successfully - Cumulative: uploaded={} bytes, downloaded={} bytes",
-        final_stats.uploaded,
-        final_stats.downloaded
-    );
+        log_and_emit!(
+            &app,
+            instance_id,
+            info,
+            "Faker stopped successfully - Cumulative: uploaded={} bytes, downloaded={} bytes",
+            final_stats.uploaded,
+            final_stats.downloaded
+        );
 
-    Ok(())
+        Ok(())
+    })
+    .await
 }
 
 #[tauri::command]
 pub async fn update_faker(instance_id: u32, state: State<'_, AppState>) -> Result<(), String> {
-    set_instance_label(&state, instance_id, None);
-
-    let faker = {
-        let fakers = state.fakers.read().await;
-        let instance =
-            fakers.get(&instance_id).ok_or_else(|| format!("Instance {instance_id} not found"))?;
-        Arc::clone(&instance.faker)
-    };
-
-    faker.update().await.map_err(|e| format!("Failed to update faker: {e}"))?;
-
-    Ok(())
+    let label = instance_label(&state, instance_id, None);
+    rustatio_core::logger::with_instance_context(label, async {
+        let faker = {
+            let fakers = state.fakers.read().await;
+            let instance = fakers
+                .get(&instance_id)
+                .ok_or_else(|| format!("Instance {instance_id} not found"))?;
+            Arc::clone(&instance.faker)
+        };
+        faker.update().await.map_err(|e| format!("Failed to update faker: {e}"))?;
+        Ok(())
+    })
+    .await
 }
 
 #[tauri::command]
@@ -213,19 +218,22 @@ pub async fn update_stats_only(
     instance_id: u32,
     state: State<'_, AppState>,
 ) -> Result<FakerStats, String> {
-    set_instance_label(&state, instance_id, None);
+    let label = instance_label(&state, instance_id, None);
+    rustatio_core::logger::with_instance_context(label, async {
+        let faker = {
+            let fakers = state.fakers.read().await;
+            let instance = fakers
+                .get(&instance_id)
+                .ok_or_else(|| format!("Instance {instance_id} not found"))?;
+            Arc::clone(&instance.faker)
+        };
 
-    let faker = {
-        let fakers = state.fakers.read().await;
-        let instance =
-            fakers.get(&instance_id).ok_or_else(|| format!("Instance {instance_id} not found"))?;
-        Arc::clone(&instance.faker)
-    };
+        faker.update_stats_only().await.map_err(|e| format!("Failed to update stats: {e}"))?;
 
-    faker.update_stats_only().await.map_err(|e| format!("Failed to update stats: {e}"))?;
-
-    let stats = faker.stats_snapshot();
-    Ok(stats)
+        let stats = faker.stats_snapshot();
+        Ok(stats)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -246,18 +254,21 @@ pub async fn scrape_tracker(
     instance_id: u32,
     state: State<'_, AppState>,
 ) -> Result<(i64, i64, i64), String> {
-    set_instance_label(&state, instance_id, None);
+    let label = instance_label(&state, instance_id, None);
+    rustatio_core::logger::with_instance_context(label, async {
+        let faker = {
+            let fakers = state.fakers.read().await;
+            let instance = fakers
+                .get(&instance_id)
+                .ok_or_else(|| format!("Instance {instance_id} not found"))?;
+            Arc::clone(&instance.faker)
+        };
 
-    let faker = {
-        let fakers = state.fakers.read().await;
-        let instance =
-            fakers.get(&instance_id).ok_or_else(|| format!("Instance {instance_id} not found"))?;
-        Arc::clone(&instance.faker)
-    };
+        let scrape = faker.scrape().await.map_err(|e| format!("Failed to scrape: {e}"))?;
 
-    let scrape = faker.scrape().await.map_err(|e| format!("Failed to scrape: {e}"))?;
-
-    Ok((scrape.complete, scrape.incomplete, scrape.downloaded))
+        Ok((scrape.complete, scrape.incomplete, scrape.downloaded))
+    })
+    .await
 }
 
 #[tauri::command]
@@ -267,21 +278,24 @@ pub async fn pause_faker(
     app: AppHandle,
 ) -> Result<(), String> {
     log_and_emit!(&app, instance_id, info, "Pausing faker");
-    set_instance_label(&state, instance_id, None);
+    let label = instance_label(&state, instance_id, None);
+    rustatio_core::logger::with_instance_context(label, async {
+        let faker = {
+            let fakers = state.fakers.read().await;
+            let instance = fakers
+                .get(&instance_id)
+                .ok_or_else(|| format!("Instance {instance_id} not found"))?;
+            Arc::clone(&instance.faker)
+        };
 
-    let faker = {
-        let fakers = state.fakers.read().await;
-        let instance =
-            fakers.get(&instance_id).ok_or_else(|| format!("Instance {instance_id} not found"))?;
-        Arc::clone(&instance.faker)
-    };
+        faker.pause().await.map_err(|e| format!("Failed to pause faker: {e}"))?;
 
-    faker.pause().await.map_err(|e| format!("Failed to pause faker: {e}"))?;
+        state.refresh_peer_listener_port().await;
 
-    state.refresh_peer_listener_port().await;
-
-    log_and_emit!(&app, instance_id, info, "Faker paused successfully");
-    Ok(())
+        log_and_emit!(&app, instance_id, info, "Faker paused successfully");
+        Ok(())
+    })
+    .await
 }
 
 #[tauri::command]
@@ -291,21 +305,24 @@ pub async fn resume_faker(
     app: AppHandle,
 ) -> Result<(), String> {
     log_and_emit!(&app, instance_id, info, "Resuming faker");
-    set_instance_label(&state, instance_id, None);
+    let label = instance_label(&state, instance_id, None);
+    rustatio_core::logger::with_instance_context(label, async {
+        let faker = {
+            let fakers = state.fakers.read().await;
+            let instance = fakers
+                .get(&instance_id)
+                .ok_or_else(|| format!("Instance {instance_id} not found"))?;
+            Arc::clone(&instance.faker)
+        };
 
-    let faker = {
-        let fakers = state.fakers.read().await;
-        let instance =
-            fakers.get(&instance_id).ok_or_else(|| format!("Instance {instance_id} not found"))?;
-        Arc::clone(&instance.faker)
-    };
+        faker.resume().await.map_err(|e| format!("Failed to resume faker: {e}"))?;
 
-    faker.resume().await.map_err(|e| format!("Failed to resume faker: {e}"))?;
+        state.refresh_peer_listener_port().await;
 
-    state.refresh_peer_listener_port().await;
-
-    log_and_emit!(&app, instance_id, info, "Faker resumed successfully");
-    Ok(())
+        log_and_emit!(&app, instance_id, info, "Faker resumed successfully");
+        Ok(())
+    })
+    .await
 }
 
 #[tauri::command]
@@ -315,19 +332,22 @@ pub async fn recover_tracker_faker(
     app: AppHandle,
 ) -> Result<FakerStats, String> {
     log_and_emit!(&app, instance_id, info, "Retrying tracker after temporary failure");
-    set_instance_label(&state, instance_id, None);
+    let label = instance_label(&state, instance_id, None);
+    rustatio_core::logger::with_instance_context(label, async {
+        let faker = {
+            let fakers = state.fakers.read().await;
+            let instance = fakers
+                .get(&instance_id)
+                .ok_or_else(|| format!("Instance {instance_id} not found"))?;
+            Arc::clone(&instance.faker)
+        };
 
-    let faker = {
-        let fakers = state.fakers.read().await;
-        let instance =
-            fakers.get(&instance_id).ok_or_else(|| format!("Instance {instance_id} not found"))?;
-        Arc::clone(&instance.faker)
-    };
+        let stats =
+            faker.recover_tracker().await.map_err(|e| format!("Failed to retry tracker: {e}"))?;
 
-    let stats =
-        faker.recover_tracker().await.map_err(|e| format!("Failed to retry tracker: {e}"))?;
+        state.refresh_peer_listener_port().await;
 
-    state.refresh_peer_listener_port().await;
-
-    Ok(stats)
+        Ok(stats)
+    })
+    .await
 }

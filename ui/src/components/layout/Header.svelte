@@ -15,7 +15,7 @@
 
   let { onToggleSidebar = () => {}, onOpenSettings = () => {} } = $props();
 
-  const repository = 'https://github.com/takitsu21/rustatio';
+  const repository = 'https://github.com/testycro/rustatio';
   const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 </script>
 

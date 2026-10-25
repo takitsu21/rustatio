@@ -51,7 +51,7 @@
           <p class="mb-1.5">
             <strong>Solution 1 (recommended):</strong> Use the
             <a
-              href="https://github.com/takitsu21/rustatio/releases/latest"
+              href="https://github.com/testycro/rustatio/releases/latest"
               target="_blank"
               class="font-semibold text-primary hover:underline"
             >

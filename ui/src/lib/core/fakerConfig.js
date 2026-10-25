@@ -22,6 +22,7 @@ export function buildFakerConfig(instance, clientVersions = {}, opts = {}) {
       '',
     initial_uploaded: parseInt(instance.initialUploaded ?? 0) * 1024 * 1024,
     initial_downloaded: initialDownloaded,
+    initial_elapsed_secs: Math.max(0, Math.floor(Number(instance.cumulativeSeedTime) || 0)),
     completion_percent: completionPercent,
     num_want: 50,
     randomize_rates: instance.randomizeRates ?? true,

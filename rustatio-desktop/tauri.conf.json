@@ -34,9 +34,9 @@
   "plugins": {
     "updater": {
       "endpoints": [
-        "https://github.com/takitsu21/rustatio/releases/latest/download/latest.json"
+        "https://github.com/testycro/rustatio/releases/latest/download/latest.json"
       ],
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDI1NThGQ0JBNjFBOTA0RjkKUldUNUJLbGh1dnhZSmFnMDRxRzMxVmZEN0JiTW5GVmtmYTFpNStWZlZJWVo0eGJsWXhKMjBWOVMK"
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDExQzQxRTM3NjlEMDkxMTYKUldRV2tkQnBOeDdFRWNrKzVPVVJ6a3pBSjZmdVVsQTVMQ21SOTY2aW0rTU9GcmpjNDdnMnMwMmEK"
     }
   },
   "app": {

@@ -216,6 +216,7 @@ impl AppState {
             let stats = instance.faker.stats_snapshot();
             let mut config = instance.config.clone();
             config.completion_percent = stats.torrent_completion;
+            config.initial_elapsed_secs = stats.elapsed_time.as_secs();
             instances.insert(
                 *id,
                 PersistedInstance {
@@ -260,6 +261,7 @@ impl AppState {
             let stats = instance.faker.stats_snapshot();
             let mut config = instance.config.clone();
             config.completion_percent = stats.torrent_completion;
+            config.initial_elapsed_secs = stats.elapsed_time.as_secs();
             instances.insert(
                 *id,
                 PersistedInstance {

@@ -53,15 +53,54 @@ function writeJsonStorage(key, value) {
 }
 
 async function getLocalDefaultPreset() {
-  return readJsonStorage(DEFAULT_PRESET_KEY, null);
+  const stored = readJsonStorage(DEFAULT_PRESET_KEY, null);
+  if (stored) {
+    return stored;
+  }
+
+  if (isTauri) {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const config = await invoke('get_default_config');
+      if (config && typeof config === 'object') {
+        return {
+          id: 'rustatio-default',
+          name: 'Rustatio defaults',
+          settings: config,
+        };
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  return null;
 }
 
 async function setLocalDefaultPreset(preset) {
   writeJsonStorage(DEFAULT_PRESET_KEY, preset);
+
+  if (isTauri && preset?.settings) {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('set_default_config', { config: preset.settings });
+    } catch (error) {
+      console.warn('Failed to sync default preset to backend config:', error);
+    }
+  }
 }
 
 async function clearLocalDefaultPreset() {
   localStorage.removeItem(DEFAULT_PRESET_KEY);
+
+  if (isTauri) {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('clear_default_config');
+    } catch (error) {
+      console.warn('Failed to clear backend default config:', error);
+    }
+  }
 }
 
 async function listLocalCustomPresets() {

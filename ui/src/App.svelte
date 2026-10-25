@@ -21,6 +21,7 @@
     instanceActions,
     saveSession,
     computeEffectiveRatio,
+    getStatsSeedSeconds,
   } from './lib/core/instanceStore.js';
   import { getPausedStatus, getRunningStatus, getStatusFromStats } from './lib/core/status.js';
   import { sameId } from './lib/core/utils.js';
@@ -133,6 +134,7 @@
   let instanceEventsCleanup = null;
   let logsCleanup = null;
   let closeRequestedCleanup = null;
+  let periodicSaveId = null;
   let desktopReconcileIntervalId = null;
   let trackerRetryIntervalId = null;
   let networkStatusIntervalId = null;
@@ -422,6 +424,21 @@
     // Server mode persists state, so no warning needed there
     const runMode = getRunMode();
     if (runMode === 'wasm') {
+      const flush = () => {
+        const insts = get(instances);
+        const active = get(activeInstance);
+        if (insts.length > 0 && active) saveSession(insts, active.id);
+      };
+
+      periodicSaveId = setInterval(() => {
+        if (get(instances).some(i => i.isRunning)) flush();
+      }, 10_000);
+
+      window.addEventListener('pagehide', flush);
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden) flush();
+      });
+
       beforeUnloadHandler = event => {
         const currentInstances = get(instances);
         const hasRunning = currentInstances.some(inst => inst.isRunning);
@@ -646,6 +663,11 @@
       closeRequestedCleanup = null;
     }
 
+    if (periodicSaveId) {
+      clearInterval(periodicSaveId);
+      periodicSaveId = null;
+    }
+
     if (desktopReconcileIntervalId) {
       clearInterval(desktopReconcileIntervalId);
       desktopReconcileIntervalId = null;
@@ -797,6 +819,9 @@
     // Save cumulative stats (convert bytes to MB)
     const cumulativeUploaded = Math.round(stats.uploaded / (1024 * 1024));
     const cumulativeDownloaded = Math.round(stats.downloaded / (1024 * 1024));
+    const seedSecs = getStatsSeedSeconds(stats);
+    const currentSeed = $instances.find(i => sameId(i.id, instanceId))?.cumulativeSeedTime || 0;
+    const cumulativeSeedTime = seedSecs !== null ? Math.max(seedSecs, currentSeed) : currentSeed;
 
     instanceActions.updateInstance(instanceId, {
       isRunning: false,
@@ -806,7 +831,12 @@
       statusIcon: null,
       cumulativeUploaded,
       cumulativeDownloaded,
+      cumulativeSeedTime,
     });
+
+    if (getRunMode() === 'wasm') {
+      await saveSession(get(instances), instanceId);
+    }
   }
 
   // Handle post-stop delete action (delete_instance)
@@ -1255,6 +1285,13 @@
       if (finalStats) {
         updates.cumulativeUploaded = Math.round(finalStats.uploaded / (1024 * 1024));
         updates.cumulativeDownloaded = Math.round(finalStats.downloaded / (1024 * 1024));
+        const finalSeedSecs = getStatsSeedSeconds(finalStats);
+        if (finalSeedSecs !== null) {
+          updates.cumulativeSeedTime = Math.max(
+            finalSeedSecs,
+            $activeInstance.cumulativeSeedTime || 0
+          );
+        }
       }
 
       // Update instance - keep stats visible for review

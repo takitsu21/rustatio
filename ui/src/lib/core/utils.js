@@ -116,6 +116,7 @@ export function serializeSessionInstances(instances) {
     initial_downloaded: parseInt(inst.initialDownloaded) * 1024 * 1024,
     cumulative_uploaded: parseInt(inst.cumulativeUploaded) * 1024 * 1024,
     cumulative_downloaded: parseInt(inst.cumulativeDownloaded) * 1024 * 1024,
+    cumulative_seed_time: Math.max(0, Math.floor(Number(inst.cumulativeSeedTime) || 0)),
     randomize_rates: inst.randomizeRates,
     random_range_percent: parseFloat(inst.randomRangePercent),
     update_interval_seconds: parseInt(inst.updateIntervalSeconds),

@@ -1,0 +1,18 @@
+stats.seeders <= 2 AND tags != P | addtags | P
+stats.seeders > 2 AND tags = P | removetags | P
+stats.leechers = 0 AND tags != I AND stats.is_idling = false | addtags | I
+stats.leechers = 0 AND tags = I AND stats.is_idling = true | removetags | I
+stats.leechers > 0 AND tags = I | removetags | I
+stats.ratio: 1.8 - 2.4 AND config.upload_rate > 2 AND tags != SR AND tags != P | addtags | SR
+stats.leechers > 10 AND stats.seeders > 100 AND stats.ratio < 9.5 AND tags = SR AND tags != P AND tags != I AND tags != F | addtags | F
+stats.leechers < 10 AND tags = F AND tags = SR AND tags != P AND tags != I | removetags | F
+tags = F AND stats.ratio: 9.5 - 11.5 | removetags | F
+tags = P AND config.upload_rate > 0 | update | config.upload_rate = 0
+tags = I AND config.upload_rate > 0 | update | config.upload_rate = 0
+tags != SR AND tags != P AND tags != I AND config.upload_rate <= 1.1 | update | config.upload_rate = default_config.upload_rate
+tags = F AND config.upload_rate != default_config.upload_rate | update | config.upload_rate = default_config.upload_rate
+tags = SR AND tags != P AND tags != I AND tags != F AND config.upload_rate != 1.1 | update | config.upload_rate = 1.1
+stats.stop_condition_met = true AND stats.is_idling = true AND stats.idling_reason = "stop_condition_met" AND tags != end | addtags | end
+tags = end AND stats.state != "Stopped" | stop |
+stats.state: Stopped AND tags = end | delete | watchfile,archive
+stats.state = "Stopped" AND stats.stop_condition_met = False AND tags != end | start |

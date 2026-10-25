@@ -111,7 +111,7 @@
     try {
       // Fetch the latest.json to get version info
       const response = await fetch(
-        'https://github.com/takitsu21/rustatio/releases/latest/download/latest.json'
+        'https://github.com/testycro/rustatio/releases/latest/download/latest.json'
       );
       const data = await response.json();
 
@@ -147,9 +147,9 @@
     const archString = currentArch === 'x86_64' ? 'amd64' : currentArch;
 
     if (installMethod === 'deb') {
-      downloadUrl = `https://github.com/takitsu21/rustatio/releases/download/v${updateVersion}/Rustatio_${updateVersion}_${archString}.deb`;
+      downloadUrl = `https://github.com/testycro/rustatio/releases/download/v${updateVersion}/Rustatio_${updateVersion}_${archString}.deb`;
     } else if (installMethod === 'rpm') {
-      downloadUrl = `https://github.com/takitsu21/rustatio/releases/download/v${updateVersion}/Rustatio-${updateVersion}-1.x86_64.rpm`;
+      downloadUrl = `https://github.com/testycro/rustatio/releases/download/v${updateVersion}/Rustatio-${updateVersion}-1.x86_64.rpm`;
     }
   }
 

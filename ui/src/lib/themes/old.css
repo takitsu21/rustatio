@@ -1,0 +1,117 @@
+/**
+ * Old Color Themes for Rustatio
+ *
+ * Faithful port of the previous UI's default themes, so the original look can
+ * be restored on top of the current UI:
+ * - Old Dark: the former dark theme (slate greys, indigo primary)
+ * - Old Light: the former light theme (cool greys, indigo primary)
+ *
+ * Besides the palette, each block restores the geometry of the previous UI:
+ * Tailwind's default rounded corners and soft shadows, which the current
+ * default themes flatten to a square, shadowless panel language (see @theme in
+ * ui/src/app.css).
+ */
+
+/* ========================================
+   Old Dark
+   ======================================== */
+:root.old-dark,
+.old-dark {
+  color-scheme: dark;
+  --color-background: hsl(223 7% 15%);
+  --color-foreground: hsl(213 5% 91%);
+  --color-card: hsl(220 7% 18%);
+  --color-card-foreground: hsl(213 5% 91%);
+  --color-popover: hsl(220 9% 12%);
+  --color-popover-foreground: hsl(213 5% 91%);
+  --color-primary: hsl(235 86% 65%);
+  --color-primary-foreground: hsl(0 0% 100%);
+  --color-secondary: hsl(222 10% 24%);
+  --color-secondary-foreground: hsl(213 5% 91%);
+  --color-muted: hsl(223 7% 23%);
+  --color-muted-foreground: hsl(215 10% 65%);
+  --color-accent: hsl(235 86% 25%);
+  --color-accent-foreground: hsl(235 86% 85%);
+  --color-destructive: #e8393f;
+  --color-destructive-foreground: hsl(0 0% 100%);
+  --color-border: hsl(220 9% 28%);
+  --color-input: hsl(223 7% 23%);
+  --color-ring: hsl(235 86% 65%);
+  --color-stat-upload: #34a34d;
+  --color-stat-download: hsl(201 75% 62%);
+  --color-stat-ratio: hsl(38 80% 62%);
+  --color-stat-leecher: #e8393f;
+  --color-stat-danger: #c41e3a;
+
+  /* Soft geometry of the previous UI (Tailwind defaults) */
+  --radius: 0.5rem;
+  --radius-xs: 0.125rem;
+  --radius-sm: 0.25rem;
+  --radius-md: 0.375rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
+  --radius-2xl: 1rem;
+  --radius-3xl: 1.5rem;
+  --radius-4xl: 2rem;
+
+  /* Soft elevation of the previous UI (Tailwind defaults) */
+  --shadow-2xs: 0 1px rgb(0 0 0 / 0.05);
+  --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+  --shadow-2xl: 0 25px 50px -12px rgb(0 0 0 / 0.25);
+}
+
+/* ========================================
+   Old Light
+   ======================================== */
+:root.old-light,
+.old-light {
+  color-scheme: light;
+  --color-background: hsl(220 13% 95%);
+  --color-foreground: hsl(216 12% 12%);
+  --color-card: hsl(0 0% 100%);
+  --color-card-foreground: hsl(216 12% 12%);
+  --color-popover: hsl(0 0% 100%);
+  --color-popover-foreground: hsl(216 12% 12%);
+  --color-primary: hsl(235 86% 65%);
+  --color-primary-foreground: hsl(0 0% 100%);
+  --color-secondary: hsl(220 13% 91%);
+  --color-secondary-foreground: hsl(216 12% 16%);
+  --color-muted: hsl(220 13% 96%);
+  --color-muted-foreground: hsl(220 9% 46%);
+  --color-accent: hsl(235 86% 95%);
+  --color-accent-foreground: hsl(235 86% 35%);
+  --color-destructive: #dc171e;
+  --color-destructive-foreground: hsl(0 0% 100%);
+  --color-border: hsl(220 13% 87%);
+  --color-input: hsl(220 13% 91%);
+  --color-ring: hsl(235 86% 65%);
+  --color-stat-upload: #297f3d;
+  --color-stat-download: hsl(201 75% 38%);
+  --color-stat-ratio: hsl(38 80% 42%);
+  --color-stat-leecher: #dc171e;
+  --color-stat-danger: #ad0a2d;
+
+  /* Soft geometry of the previous UI (Tailwind defaults) */
+  --radius: 0.5rem;
+  --radius-xs: 0.125rem;
+  --radius-sm: 0.25rem;
+  --radius-md: 0.375rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
+  --radius-2xl: 1rem;
+  --radius-3xl: 1.5rem;
+  --radius-4xl: 2rem;
+
+  /* Soft elevation of the previous UI (Tailwind defaults) */
+  --shadow-2xs: 0 1px rgb(0 0 0 / 0.05);
+  --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+  --shadow-2xl: 0 25px 50px -12px rgb(0 0 0 / 0.25);
+}

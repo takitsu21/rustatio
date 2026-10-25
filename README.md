@@ -1,8 +1,13 @@
+> [!IMPORTANT]
+> This fork include a daemon for advanced automation (docker only) with default rules and preset, the old ui, and the "stop on error" is deactivated.
+
 <div align="center">
   <img src="rustatio-desktop/icons/icon.png" alt="Rustatio Logo" width="128" height="128">
 </div>
 
 # 🚀 Rustatio
+
+
 
 A modern, cross-platform BitTorrent ratio management tool that emulates popular torrent clients. Built with Rust and Tauri for a fast, native desktop experience.
 
@@ -11,9 +16,9 @@ Accurately simulate seeding behavior by emulating **uTorrent**, **qBittorrent**,
 > [!IMPORTANT]
 > This tool is for **educational purposes only**. Manipulating upload/download statistics on BitTorrent trackers may violate the terms of service of private trackers and could result in account suspension or ban. Use at your own risk.
 
-## 🎥 Demo
+## Admin Panel
 
-[https://github.com/user-attachments/assets/2285bd54-95f3-4a56-b62a-978465abfa0f](https://github.com/user-attachments/assets/2285bd54-95f3-4a56-b62a-978465abfa0f)
+<img width="1305" height="874" alt="rdap" src="https://github.com/user-attachments/assets/7b7808d2-1ef5-4c11-ba19-4f667a884a5b" />
 
 ## 📸 Screenshots
 
@@ -60,7 +65,7 @@ Rustatio runs as a native desktop app or as a self-hosted Docker server with a w
 
 ### Desktop
 
-Download the latest release for your platform from [Releases](https://github.com/takitsu21/rustatio/releases).
+Download the latest release for your platform from [Releases](https://github.com/testycro/rustatio/releases).
 
 **Windows**
 
@@ -129,10 +134,11 @@ services:
       - HTTP_CONTROL_SERVER_AUTH_DEFAULT_ROLE={"auth":"apikey","apikey":"${GLUETUN_API_KEY:-CHANGE_ME}"}
     ports:
       - "${WEBUI_PORT:-8080}:8080" # Rustatio Web UI
+      - "8081:8081"  # Admin Daemon
     restart: unless-stopped
 
   rustatio:
-    image: ghcr.io/takitsu21/rustatio:latest
+    image: ghcr.io/testycro/rustatio:latest
     container_name: rustatio
     environment:
       - PORT=8080
@@ -141,12 +147,16 @@ services:
       - GLUETUN_CONTROL_SERVER_API_KEY=${GLUETUN_API_KEY:-CHANGE_ME}
       - PUID=${PUID:-1000}
       - PGID=${PGID:-1000}
+      - TZ=Europe/Paris
+      - DAEMON_ENABLED=true  # Admin Daemon
+      - DAEMON_SCRIPT=/app/rustatio_daemon.py  # Admin Daemon
+      - WATCH_AUTO_START=true  # Set to true to auto-start faking new torrents
       # Optional: protect the web UI with a secret token
       # - AUTH_TOKEN=${AUTH_TOKEN:-CHANGE_ME}
     volumes:
       - rustatio_data:/data
       # Optional: mount a folder to auto-load torrents from
-      # - ${TORRENTS_DIR:-/path/to/your/torrents}:/torrents
+      - ${TORRENTS_DIR:-/path/to/your/torrents}:/torrents
     restart: unless-stopped
     network_mode: service:gluetun
     depends_on:

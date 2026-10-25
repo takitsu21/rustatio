@@ -53,3 +53,7 @@ jobs:
 
       - name: Run all CI checks
         run: mise run ci
+
+      - name: Show exact typos errors
+        if: failure()
+        run: typos --format brief
