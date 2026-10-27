@@ -80,6 +80,8 @@ test('every concrete theme pairs with the opposite tone in its family', () => {
 test('pairPrefs maps a theme to its automatic light and dark counterparts', () => {
   assert.deepEqual(pairPrefs('light'), { light: 'light', dark: 'dark' });
   assert.deepEqual(pairPrefs('dark'), { light: 'light', dark: 'dark' });
+  assert.deepEqual(pairPrefs('old-dark'), { light: 'old-light', dark: 'old-dark' });
+  assert.deepEqual(pairPrefs('old-light'), { light: 'old-light', dark: 'old-dark' });
   assert.deepEqual(pairPrefs('latte'), { light: 'latte', dark: 'mocha' });
   assert.deepEqual(pairPrefs('mocha'), { light: 'latte', dark: 'mocha' });
   assert.deepEqual(pairPrefs('frappe'), { light: 'latte', dark: 'frappe' });
@@ -128,10 +130,11 @@ test('groupThemes keeps category order, filters ids and drops empty groups', () 
 
   assert.deepEqual(
     lightGroups.map(group => group.id),
-    ['default', 'catppuccin', 'tokyo-night', 'dracula', 'gruvbox']
+    ['default', 'old', 'catppuccin', 'tokyo-night', 'dracula', 'gruvbox']
   );
   assert.deepEqual(lightGroups[0].ids, ['light']);
-  assert.deepEqual(lightGroups[1].ids, ['latte']);
+  assert.deepEqual(lightGroups[1].ids, ['old-light']);
+  assert.deepEqual(lightGroups[2].ids, ['latte']);
 
   for (const group of lightGroups) {
     for (const themeId of group.ids) {
