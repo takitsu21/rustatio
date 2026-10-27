@@ -60,6 +60,10 @@ export const THEME_CATEGORIES = {
     name: 'Default',
     themes: ['system', 'light', 'dark'],
   },
+  old: {
+    name: 'Old',
+    themes: ['old-dark', 'old-light'],
+  },
   catppuccin: {
     name: 'Catppuccin',
     themes: ['latte', 'frappe', 'macchiato', 'mocha'],
@@ -106,6 +110,27 @@ export const THEMES = {
     category: 'default',
     icon: 'moon',
     pair: 'light',
+  },
+  // Old themes (palette and geometry of the previous UI)
+  'old-dark': {
+    id: 'old-dark',
+    name: 'Old Dark',
+    description: 'Previous UI dark theme',
+    isDark: true,
+    category: 'old',
+    icon: 'moon',
+    color: '#5966f3', // Primary
+    pair: 'old-light',
+  },
+  'old-light': {
+    id: 'old-light',
+    name: 'Old Light',
+    description: 'Previous UI light theme',
+    isDark: false,
+    category: 'old',
+    icon: 'sun',
+    color: '#5966f3', // Primary
+    pair: 'old-dark',
   },
   // Catppuccin themes
   latte: {
