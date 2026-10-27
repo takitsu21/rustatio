@@ -5,7 +5,6 @@ use super::persistence::{
     now_timestamp, CustomPreset, DefaultPreset, InstanceSource, PersistedInstance,
     PersistedRuntime, PersistedState, Persistence, WatchSettings,
 };
-use rustatio_core::logger::set_instance_context_str;
 use rustatio_core::{
     primary_tracker_host, FakerConfig, FakerState, FakerStats, InstanceSummary,
     PeerListenerService, PeerListenerStatus, ProxySettings, RatioFaker, RatioFakerHandle,
@@ -711,21 +710,23 @@ impl AppState {
     }
 
     async fn create_instance_internal(&self, context: InstanceBuildContext) -> Result<(), String> {
-        set_instance_context_str(Some(context.summary.name.as_str()));
+        let label = context.summary.name.clone();
+        rustatio_core::logger::with_instance_context(label, async move {
+            if let Some(existing_id) =
+                self.duplicate_instance_id(&context.id, &context.torrent.info_hash).await
+            {
+                return Err(format!(
+                    "Duplicate torrent skipped: already imported as instance {existing_id}"
+                ));
+            }
 
-        if let Some(existing_id) =
-            self.duplicate_instance_id(&context.id, &context.torrent.info_hash).await
-        {
-            return Err(format!(
-                "Duplicate torrent skipped: already imported as instance {existing_id}"
-            ));
-        }
-
-        let id = context.id.clone();
-        let existing = self.collect_existing_instance_state(&context).await;
-        let faker_config = Self::build_faker_config(&context, &existing);
-        let instance = self.build_instance(context, faker_config, existing).await?;
-        self.insert_instance(id, instance).await
+            let id = context.id.clone();
+            let existing = self.collect_existing_instance_state(&context).await;
+            let faker_config = Self::build_faker_config(&context, &existing);
+            let instance = self.build_instance(context, faker_config, existing).await?;
+            self.insert_instance(id, instance).await
+        })
+        .await
     }
 
     pub async fn get_stats(&self, id: &str) -> Result<FakerStats, String> {

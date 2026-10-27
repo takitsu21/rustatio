@@ -2,29 +2,89 @@
 // Desktop uses Tauri Emitter, CLI uses standard logging, WASM uses web_sys console
 
 use std::cell::RefCell;
+use std::future::Future;
+use std::pin::Pin;
+use std::task::{Context, Poll};
 
 // Thread-local storage for instance context (string-based for server compatibility)
 thread_local! {
-    static INSTANCE_CONTEXT: RefCell<Option<String>> = const { RefCell::new(None) };
+    static THREAD_CONTEXT: RefCell<Option<String>> = const { RefCell::new(None) };
 }
 
-/// Set the instance context for the current thread (string version for server/wasm)
+fn swap_context(slot: &mut Option<String>) {
+    let _ = THREAD_CONTEXT.try_with(|ctx| std::mem::swap(&mut *ctx.borrow_mut(), slot));
+}
+
+/// Échange le contexte du thread avec `slot`, et le rétablit à la sortie (même en cas de panic).
+struct SwapGuard<'a>(&'a mut Option<String>);
+
+impl<'a> SwapGuard<'a> {
+    fn new(slot: &'a mut Option<String>) -> Self {
+        swap_context(slot);
+        Self(slot)
+    }
+}
+
+impl Drop for SwapGuard<'_> {
+    fn drop(&mut self) {
+        swap_context(self.0);
+    }
+}
+
+/// Future qui pose le contexte d'instance à chaque `poll`, quel que soit le thread.
+#[must_use = "futures do nothing unless awaited"]
+pub struct WithInstanceContext<F> {
+    slot: Option<String>,
+    fut: Pin<Box<F>>,
+}
+
+impl<F: Future> Future for WithInstanceContext<F> {
+    type Output = F::Output;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let this = self.get_mut();
+        let _guard = SwapGuard::new(&mut this.slot);
+        this.fut.as_mut().poll(cx)
+    }
+}
+
+/// Exécute `fut` avec ce contexte d'instance. Le contexte suit la tâche, même si elle
+/// change de thread après un `.await`
+#[allow(clippy::needless_pass_by_value)]
+pub fn with_instance_context<F: Future>(
+    instance_id: impl ToString,
+    fut: F,
+) -> WithInstanceContext<F> {
+    WithInstanceContext { slot: Some(instance_id.to_string()), fut: Box::pin(fut) }
+}
+
+/// Version synchrone de [`with_instance_context`].
+#[allow(clippy::needless_pass_by_value)]
+pub fn with_instance_context_sync<R>(instance_id: impl ToString, f: impl FnOnce() -> R) -> R {
+    let mut slot = Some(instance_id.to_string());
+    let _guard = SwapGuard::new(&mut slot);
+    f()
+}
+
+/// Set the instance context for the current thread (string version for server/wasm).
+/// Code synchrone uniquement : ne pas utiliser avant un `.await`, préférer `with_instance_context`.
 pub fn set_instance_context_str(instance_id: Option<&str>) {
-    INSTANCE_CONTEXT.with(|ctx| {
+    THREAD_CONTEXT.with(|ctx| {
         *ctx.borrow_mut() = instance_id.map(std::string::ToString::to_string);
     });
 }
 
-/// Set the instance context for the current thread (u32 version for desktop/cli compatibility)
+/// Set the instance context for the current thread (u32 version for desktop/cli compatibility).
+/// Code synchrone uniquement : ne pas utiliser avant un `.await`, préférer `with_instance_context`.
 pub fn set_instance_context(instance_id: Option<u32>) {
-    INSTANCE_CONTEXT.with(|ctx| {
+    THREAD_CONTEXT.with(|ctx| {
         *ctx.borrow_mut() = instance_id.map(|id| id.to_string());
     });
 }
 
 /// Get the current instance context
 fn get_instance_prefix() -> String {
-    INSTANCE_CONTEXT
+    THREAD_CONTEXT
         .with(|ctx| ctx.borrow().as_ref().map_or_else(String::new, |label| format!("[{label}] ")))
 }
 
@@ -319,6 +379,43 @@ mod tests {
         set_instance_context(Some(7));
         assert_eq!(get_instance_prefix(), "[7] ");
         set_instance_context(None);
+        assert_eq!(get_instance_prefix(), "");
+    }
+
+    #[test]
+    fn test_context_follows_future_when_polls_interleave() {
+        use std::task::Waker;
+
+        struct YieldOnce(bool);
+        impl Future for YieldOnce {
+            type Output = ();
+            fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
+                if self.0 {
+                    Poll::Ready(())
+                } else {
+                    self.0 = true;
+                    cx.waker().wake_by_ref();
+                    Poll::Pending
+                }
+            }
+        }
+
+        let waker = Waker::noop();
+        let mut cx = Context::from_waker(waker);
+
+        let mut task_a = Box::pin(with_instance_context("task_a", async {
+            YieldOnce(false).await;
+            get_instance_prefix()
+        }));
+        let mut task_b = Box::pin(with_instance_context("task_b", async {
+            YieldOnce(false).await;
+            get_instance_prefix()
+        }));
+
+        assert!(task_a.as_mut().poll(&mut cx).is_pending());
+        assert!(task_b.as_mut().poll(&mut cx).is_pending());
+        assert_eq!(task_a.as_mut().poll(&mut cx), Poll::Ready("[task_a] ".to_string()));
+        assert_eq!(task_b.as_mut().poll(&mut cx), Poll::Ready("[task_b] ".to_string()));
         assert_eq!(get_instance_prefix(), "");
     }
 }

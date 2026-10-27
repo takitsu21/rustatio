@@ -1,7 +1,6 @@
 use super::instance::FakerInstance;
 use super::lifecycle::InstanceLifecycle;
 use super::state::AppState;
-use rustatio_core::logger::set_instance_context_str;
 use rustatio_core::{FakerState, RatioFakerHandle};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -121,12 +120,14 @@ async fn update_instances(
                 .filter(|name| !name.is_empty())
                 .unwrap_or_else(|| id.clone())
         };
-        set_instance_context_str(Some(&label));
-        let result = if should_retry {
-            state.recover_tracker_instance(&id).await.map(|_| ())
-        } else {
-            faker.update().await.map_err(|e| e.to_string())
-        };
+        let result = rustatio_core::logger::with_instance_context(label, async {
+            if should_retry {
+                state.recover_tracker_instance(&id).await.map(|_| ())
+            } else {
+                faker.update().await.map_err(|e| e.to_string())
+            }
+        })
+        .await;
         if let Err(e) = result {
             let action = if should_retry { "tracker recovery" } else { "update" };
             tracing::warn!("Scheduler: {} failed for instance {}: {}", action, id, e);
