@@ -379,6 +379,36 @@ pub struct FakerStats {
     pub announce_count: u32,
 }
 
+impl FakerStats {
+    /// Overall progress (0-100) shown in list views.
+    ///
+    /// - Still downloading: download completion of the torrent.
+    /// - Seeding with stop conditions: the highest progress among the *enabled*
+    ///   conditions, i.e. the one that will be reached first.
+    /// - Seeding with no stop condition: 100.
+    ///
+    /// Disabled conditions are ignored (their `*_progress` is 0.0, which would
+    /// be indistinguishable from an enabled condition that has just started).
+    #[must_use]
+    pub fn overall_progress(&self, config: &FakerConfig) -> f64 {
+        if self.torrent_completion < 100.0 {
+            return self.torrent_completion.clamp(0.0, 100.0);
+        }
+
+        [
+            config.stop_at_uploaded.map(|_| self.upload_progress),
+            config.stop_at_downloaded.map(|_| self.download_progress),
+            config.stop_at_ratio.map(|_| self.ratio_progress),
+            config.stop_at_seed_time.map(|_| self.seed_time_progress),
+        ]
+        .into_iter()
+        .flatten()
+        .reduce(f64::max)
+        .unwrap_or(100.0)
+        .clamp(0.0, 100.0)
+    }
+}
+
 pub struct RatioFaker {
     torrent: Arc<TorrentInfo>,
     config: FakerConfig,
@@ -2439,6 +2469,44 @@ mod tests {
         assert_eq!(faker.stats.tracker_retry_attempt, 0);
         assert!(faker.stats.tracker_retry_at_ms.is_none());
         assert!(!faker.can_retry_tracker());
+    }
+
+    #[test]
+    fn overall_progress_uses_highest_enabled_condition_while_seeding() {
+        let config = FakerConfig {
+            completion_percent: 100.0,
+            stop_at_seed_time: Some(3600),
+            stop_at_uploaded: Some(1024),
+            ..FakerConfig::default()
+        };
+        let mut stats = RatioFaker::stats_from_config(&config);
+        stats.seed_time_progress = 35.0;
+        stats.upload_progress = 60.0;
+        // Ratio is not enabled in the config, so its progress must be ignored.
+        stats.ratio_progress = 90.0;
+
+        assert_eq!(stats.overall_progress(&config), 60.0);
+    }
+
+    #[test]
+    fn overall_progress_is_100_without_stop_conditions() {
+        let config = FakerConfig { completion_percent: 100.0, ..FakerConfig::default() };
+        let stats = RatioFaker::stats_from_config(&config);
+
+        assert_eq!(stats.overall_progress(&config), 100.0);
+    }
+
+    #[test]
+    fn overall_progress_follows_download_while_leeching() {
+        let config = FakerConfig {
+            completion_percent: 40.0,
+            stop_at_seed_time: Some(3600),
+            ..FakerConfig::default()
+        };
+        let mut stats = RatioFaker::stats_from_config(&config);
+        stats.seed_time_progress = 80.0;
+
+        assert_eq!(stats.overall_progress(&config), stats.torrent_completion);
     }
 
     #[test]

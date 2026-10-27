@@ -792,6 +792,7 @@ pub fn list_summaries() -> Result<JsValue, JsValue> {
             leechers: stats.leechers,
             left: stats.left,
             torrent_completion: stats.torrent_completion,
+            overall_progress: stats.overall_progress(&instance.config),
             source: "manual".to_string(),
             created_at: instance.created_at,
             is_idling: stats.is_idling,
