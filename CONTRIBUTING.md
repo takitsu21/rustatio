@@ -42,6 +42,7 @@ If you use the bootstrap script, you can replace `mise ...` in the commands belo
 That will install:
 
 - Rust + `rustfmt` + `clippy`
+- `cargo-nextest`
 - Node.js
 - `hk` and repo lint tools
 - UI dependencies

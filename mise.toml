@@ -12,6 +12,9 @@ node = "latest"
 # Rust toolchain with components
 rust = { version = "latest", components = "rustfmt,clippy" }
 
+# Rust test runner
+"aqua:nextest-rs/nextest/cargo-nextest" = "latest"
+
 # WASM tools
 "github:WebAssembly/binaryen" = "latest"
 
@@ -102,8 +105,10 @@ run = [
 [tasks.test]
 description = "Run all tests"
 run = [
-    "echo '🧪 Running Rust tests...'",
-    "cargo test",
+    "echo '🧪 Running Rust tests with nextest...'",
+    "cargo nextest run --workspace",
+    "echo '🧪 Running Rust doc tests...'",
+    "cargo test --workspace --doc",
     "echo '🧪 Running UI JavaScript tests...'",
     "mise run ui:test",
     "echo '✅ All tests passed!'"
@@ -178,8 +183,10 @@ depends = ["ci:install"]
 run = [
     "echo '🔍 Running cargo clippy...'",
     "hk check --all --step cargo-clippy",
-    "echo '🧪 Running Rust tests...'",
-    "cargo test -p rustatio-core -p rustatio-cli -p rustatio-watch -p rustatio-server",
+    "echo '🧪 Running Rust tests with nextest...'",
+    "cargo nextest run --no-fail-fast -p rustatio-core -p rustatio-cli -p rustatio-watch -p rustatio-server",
+    "echo '🧪 Running Rust doc tests...'",
+    "cargo test -p rustatio-core -p rustatio-cli -p rustatio-watch -p rustatio-server --doc",
     "echo '✅ Rust checks passed!'"
 ]
 
