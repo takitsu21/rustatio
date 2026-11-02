@@ -23,14 +23,17 @@
     "echarts": "^6.0.0",
     "simple-icons": "^16.5.0"
   },
+  "overrides": {
+    "minimatch": "11.0.4"
+  },
   "devDependencies": {
-    "@eslint/js": "9.39.5",
+    "@eslint/js": "10.0.1",
     "@sveltejs/vite-plugin-svelte": "6.2.4",
     "@tailwindcss/postcss": "4.3.3",
     "@typescript-eslint/eslint-plugin": "8.72.0",
     "@typescript-eslint/parser": "8.72.0",
     "clsx": "2.1.1",
-    "eslint": "9.39.5",
+    "eslint": "10.14.0",
     "eslint-plugin-svelte": "3.23.1",
     "globals": "16.5.0",
     "postcss": "8.5.31",

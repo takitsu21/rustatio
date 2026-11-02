@@ -24,7 +24,7 @@ export async function hydrateInstances(ids, summaries, fetchServerInstances, app
   const list = Array.isArray(ids) ? ids : [];
   if (list.length === 0) return [];
 
-  let serverInstances = [];
+  let serverInstances;
   try {
     serverInstances = (await fetchServerInstances()) || [];
   } catch {
