@@ -23,7 +23,7 @@ export function initializeZoom() {
   if (isInitialized) return zoom;
   isInitialized = true;
 
-  let stored = null;
+  let stored;
   try {
     stored = localStorage.getItem(ZOOM_STORAGE_KEY);
   } catch {
