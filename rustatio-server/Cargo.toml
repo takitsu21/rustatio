@@ -18,7 +18,7 @@ rustatio-watch = { path = "../rustatio-watch" }
 # Web framework
 axum = { version = "0.8", features = ["multipart"] }
 tower = { version = "0.5", features = ["util"] }
-tower-http = { version = "0.6", features = ["fs", "cors", "trace"] }
+tower-http = { version = "0.7", features = ["fs", "cors", "trace"] }
 utoipa = { version = "6.0", features = ["macros", "axum_extras"] }
 utoipa-swagger-ui = { version = "10", features = ["axum"] }
 
@@ -36,12 +36,12 @@ serde_json = "1.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-log = "0.2"
-nanoid = "0.4"
+nanoid = "0.5"
 urlencoding = "2.1"
 hex = "0.4"
 
 # HTTP client for network status
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls-tls"] }
 
 # File system watcher for watch folder feature
 # Include static files at compile time (optional, for single binary)

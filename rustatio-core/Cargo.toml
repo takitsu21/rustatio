@@ -13,11 +13,11 @@ crate-type = ["cdylib", "rlib"]
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_bencode = "0.2"
-toml = "0.8"
-sha1 = "0.10"
+toml = "0.9"
+sha1 = "0.11"
 url = "2.5"
-rand = "0.9"
-getrandom = { version = "0.3", features = ["wasm_js"] }
+rand = "0.10"
+getrandom = { version = "0.4", features = ["wasm_js"] }
 thiserror = "2.0"
 log = "0.4"
 instant = { version = "0.1", features = ["wasm-bindgen"] }
@@ -25,7 +25,7 @@ async-trait = "0.1"
 dirs = "6"
 
 # HTTP client - works on both native and WASM
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "gzip"], optional = true }
+reqwest = { version = "0.13", default-features = false, features = ["rustls-tls", "gzip"], optional = true }
 
 # Async runtime
 tokio = { version = "1.48", default-features = false, features = ["sync", "time", "macros", "rt", "net", "io-util"], optional = true }
@@ -42,10 +42,10 @@ percent-encoding = "2.3"
 
 # Native-only extra: SOCKS proxy support for tracker traffic (not available in browsers)
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "gzip", "socks"], optional = true }
+reqwest = { version = "0.13", default-features = false, features = ["rustls-tls", "gzip", "socks"], optional = true }
 
 [dev-dependencies]
-mockall = "=0.13.1"
+mockall = "=0.15.0"
 
 [features]
 default = ["native"]
