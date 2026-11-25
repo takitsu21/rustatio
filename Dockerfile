@@ -1,5 +1,5 @@
 # Build stage for the Rust server
-FROM rust:1.99.1-slim-bookworm@sha256:24707e70a4f1e23d9a7b25202ec43126d28a52294b96aad5c670df1fd1f1d400 AS builder
+FROM rust:1.100.0-slim-bookworm@sha256:bb875b0f8ce726053e259034848c471840e96bfe591fd52556178ae9a05e6126 AS builder
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y \
@@ -25,7 +25,7 @@ COPY ui/dist ./ui/dist
 RUN cargo build --release -p rustatio-server
 
 # Runtime stage
-FROM debian:bookworm-slim@sha256:99c0b25c46d0214d5a2091092e7908907dcaecd6a962cde0ac700acee222b6f3
+FROM debian:bookworm-slim@sha256:e67eeead736ff7bbe258ef088bff683635c561b1fcfefad0806c1df4ab49ce0e
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \
