@@ -13,7 +13,9 @@ Accurately simulate seeding behavior by emulating **uTorrent**, **qBittorrent**,
 
 ## 🎥 Demo
 
-[https://github.com/user-attachments/assets/2285bd54-95f3-4a56-b62a-978465abfa0f](https://github.com/user-attachments/assets/2285bd54-95f3-4a56-b62a-978465abfa0f)
+A quick walkthrough of the instance grid, torrent details, performance charts, Watch folder, and theme switching.
+
+[https://github.com/user-attachments/assets/fb4feeb9-b08e-4326-856b-2c3b4fd745de](https://github.com/user-attachments/assets/fb4feeb9-b08e-4326-856b-2c3b4fd745de)
 
 ## 📸 Screenshots
 
@@ -40,9 +42,32 @@ Accurately simulate seeding behavior by emulating **uTorrent**, **qBittorrent**,
   </tr>
 </table>
 
+<p align="center"><sub>Main screenshot set captured with the optional WireGuard VPN integration enabled.</sub></p>
+
+### 📥 Watch Folder
+
+Rustatio can monitor a directory and automatically load new `.torrent` files as they appear. The Watch tab shows loaded, pending, and invalid files with per-file reload and delete controls.
+
+<p align="center">
+  <img src="screenshots/watch.png" alt="Rustatio Watch Folder">
+  <br>
+  <em>Watch Folder - Automatic Torrent Imports</em>
+</p>
+
+### 🎨 Themes
+
+Rustatio includes 15 built-in themes across five families. Choose one from **Settings → Theme**.
+
+<p align="center">
+  <img src="screenshots/themes.png" alt="Rustatio built-in themes">
+  <br>
+  <em>Catppuccin Latte, Tokyo Night, Dracula, and Gruvbox Dark</em>
+</p>
+
 ## Features
 
 - **Modern GUI**: Built with Tauri and Svelte 5
+- **15 built-in themes**: Default, Catppuccin, Tokyo Night, Dracula, and Gruvbox palettes
 - **Cross-platform**: Linux, Windows, and macOS
 - **Client emulation**: uTorrent, qBittorrent, Transmission, Deluge, BitTorrent, and rTorrent
 - **Multi-instance support**: Run and manage multiple torrents at the same time
