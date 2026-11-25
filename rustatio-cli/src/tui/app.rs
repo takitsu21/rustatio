@@ -646,8 +646,7 @@ fn render_progress(frame: &mut Frame, app: &App, area: Rect) {
             let progress = (stats.ratio_progress).min(100.0);
             let eta_str = stats
                 .eta_ratio
-                .map(|d| format!(" ETA: {}", format_duration(d.as_secs())))
-                .unwrap_or_default();
+                .map_or_default(|d| format!(" ETA: {}", format_duration(d.as_secs())));
 
             let gauge = Gauge::default()
                 .gauge_style(Style::default().fg(Color::Cyan))
@@ -666,8 +665,7 @@ fn render_progress(frame: &mut Frame, app: &App, area: Rect) {
             let current_gb = stats.session_uploaded as f64 / (1024.0 * 1024.0 * 1024.0);
             let eta_str = stats
                 .eta_uploaded
-                .map(|d| format!(" ETA: {}", format_duration(d.as_secs())))
-                .unwrap_or_default();
+                .map_or_default(|d| format!(" ETA: {}", format_duration(d.as_secs())));
 
             let gauge = Gauge::default()
                 .gauge_style(Style::default().fg(Color::Green))
@@ -685,8 +683,7 @@ fn render_progress(frame: &mut Frame, app: &App, area: Rect) {
             let current_hours = stats.elapsed_time.as_secs() as f64 / 3600.0;
             let eta_str = stats
                 .eta_seed_time
-                .map(|d| format!(" ETA: {}", format_duration(d.as_secs())))
-                .unwrap_or_default();
+                .map_or_default(|d| format!(" ETA: {}", format_duration(d.as_secs())));
 
             let gauge = Gauge::default()
                 .gauge_style(Style::default().fg(Color::Magenta))
