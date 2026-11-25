@@ -82,8 +82,9 @@ impl ClientType {
             Self::QBittorrent => ClientInfo {
                 id: "qbittorrent".to_string(),
                 name: "qBittorrent".to_string(),
-                default_version: "5.3.0".to_string(),
+                default_version: "5.3.1".to_string(),
                 versions: vec![
+                    "5.3.1".to_string(),
                     "5.3.0".to_string(),
                     "5.2.4".to_string(),
                     "5.2.3".to_string(),
@@ -151,8 +152,10 @@ impl ClientType {
             Self::RTorrent => ClientInfo {
                 id: "rtorrent".to_string(),
                 name: "rTorrent".to_string(),
-                default_version: "0.16.26".to_string(),
+                default_version: "0.16.28".to_string(),
                 versions: vec![
+                    "0.16.28".to_string(),
+                    "0.16.27".to_string(),
                     "0.16.26".to_string(),
                     "0.16.25".to_string(),
                     "0.16.24".to_string(),
@@ -435,14 +438,19 @@ mod tests {
         let config = ClientConfig::get(ClientType::QBittorrent, Some("5.3.0".to_string()));
         let peer_id = config.generate_peer_id();
         assert!(peer_id.starts_with("-qB5300-"), "Peer ID should include version 5.3.0");
+
+        let config = ClientConfig::get(ClientType::QBittorrent, Some("5.3.1".to_string()));
+        let peer_id = config.generate_peer_id();
+        assert!(peer_id.starts_with("-qB5310-"), "Peer ID should include version 5.3.1");
     }
 
     #[test]
     fn test_qbittorrent_info() {
         let info = ClientType::QBittorrent.info();
         assert_eq!(info.id, "qbittorrent");
-        assert_eq!(info.default_version, "5.3.0");
+        assert_eq!(info.default_version, "5.3.1");
         assert_eq!(info.versions.first(), Some(&info.default_version));
+        assert!(info.versions.contains(&"5.3.0".to_string()));
         assert!(info.versions.contains(&"5.2.4".to_string()));
     }
 
@@ -648,8 +656,9 @@ mod tests {
         let info = ClientType::RTorrent.info();
         assert_eq!(info.id, "rtorrent");
         assert_eq!(info.name, "rTorrent");
-        assert_eq!(info.default_version, "0.16.26");
+        assert_eq!(info.default_version, "0.16.28");
         assert_eq!(info.versions.first(), Some(&info.default_version));
+        assert!(info.versions.contains(&"0.16.27".to_string()));
         assert_eq!(info.default_port, 6881);
     }
 
